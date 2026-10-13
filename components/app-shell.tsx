@@ -26,6 +26,18 @@ function userInitials(firstName: string, lastName: string, email: string) {
   return (initials || email.slice(0, 2) || "SP").toLocaleUpperCase("de-DE");
 }
 
+function migrationErrorText(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object") {
+    const detail = error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+    const parts = [detail.message, detail.code ? `Code ${String(detail.code)}` : null, detail.details, detail.hint]
+      .filter((part): part is string => typeof part === "string" && Boolean(part.trim()));
+    if (parts.length) return parts.join(" · ");
+  }
+  if (typeof error === "string" && error.trim()) return error;
+  return "Unbekannter Fehler bei der Datenübernahme.";
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const [userDisplay, setUserDisplay] = useState(defaultUserDisplay);
@@ -56,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           if (active) setDataMigration("ready");
         } catch (error) {
           if (active) {
-            setDataMigrationError(error instanceof Error ? error.message : "Unbekannter Fehler bei der Datenübernahme.");
+            setDataMigrationError(migrationErrorText(error));
             setDataMigration("error");
           }
         }
