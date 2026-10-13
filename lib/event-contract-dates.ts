@@ -1,5 +1,3 @@
-export const eventContractDatesKey = "sponsorproof.event-contract-dates.v1";
-
 const germanMonths: Record<string, string> = {
   januar: "01", februar: "02", märz: "03", april: "04", mai: "05", juni: "06",
   juli: "07", august: "08", september: "09", oktober: "10", november: "11", dezember: "12",

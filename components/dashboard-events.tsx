@@ -2,16 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { fetchStoredEventsFromDatabase, formatEventDateRange, readStoredEvents, type StoredEvent } from "@/lib/events-storage";
+import { fetchStoredEventsFromDatabase, formatEventDateRange, type StoredEvent } from "@/lib/events-storage";
 import { EmptyState, Icon, Progress } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { useEventMetrics } from "@/lib/event-metrics";
 
-const deletedEventsKey = "sponsorproof.deleted-events.v1";
 
 export function DashboardEvents() {
   const [createdEvents, setCreatedEvents] = useState<StoredEvent[]>([]);
-  const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -19,24 +17,16 @@ export function DashboardEvents() {
       try {
         if (isSupabaseConfigured) {
           const { data, error } = await fetchStoredEventsFromDatabase();
-          setCreatedEvents(!error && data ? data : readStoredEvents());
-        } else {
-          setCreatedEvents(readStoredEvents());
-        }
+          setCreatedEvents(!error && data ? data : []);
+        } else setCreatedEvents([]);
       } finally {
         setReady(true);
       }
     }
     void loadEvents();
-    try {
-      const storedIds: unknown = JSON.parse(localStorage.getItem(deletedEventsKey) ?? "[]");
-      if (Array.isArray(storedIds)) setDeletedIds(storedIds.filter((id): id is string => typeof id === "string"));
-    } catch {
-      setDeletedIds([]);
-    }
   }, []);
 
-  const visibleEvents = createdEvents.filter((event) => !deletedIds.includes(event.id)).slice(0, 3);
+  const visibleEvents = createdEvents.slice(0, 3);
   const eventMetrics = useEventMetrics(visibleEvents.map((event) => event.id));
   const featuredEvents = visibleEvents.map((event) => {
     const metrics = eventMetrics.byEvent[event.id];

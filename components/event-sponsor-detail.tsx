@@ -4,33 +4,23 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import type { Sponsor, SponsorContract } from "@/lib/sponsor-types";
 import { EmptyState, Icon, Progress, Status } from "@/components/ui";
-import { contractDateForInput, eventContractDatesKey } from "@/lib/event-contract-dates";
-import { contractPdfStorageKey, type SavedContractPdf, type SavedContractPdfs } from "@/lib/contract-pdf-storage";
-import { eventContractValuesKey, formatContractValue, parseContractValue, parseContractValueInput, type EventContractValues } from "@/lib/event-contract-values";
+import { contractDateForInput } from "@/lib/event-contract-dates";
+import { formatContractValue, parseContractValue, parseContractValueInput } from "@/lib/event-contract-values";
 import { contractFilename, fillContractTemplate } from "@/lib/render-contract-template";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { createStoredBenefits, fetchStoredBenefits, syncLegacyBenefitsToSupabase, type StoredBenefit } from "@/lib/benefits-storage";
+import { createStoredBenefits, fetchStoredBenefits, type StoredBenefit } from "@/lib/benefits-storage";
+import { fetchStoredTasks } from "@/lib/tasks-storage";
+import { fetchStoredEvidence } from "@/lib/evidence-storage";
+import { deleteContractDocument, downloadContractDocument, fetchContractDocuments, saveContractDocument, type ContractDocument } from "@/lib/contract-documents-storage";
+import { updateContractRecord } from "@/lib/sponsors-storage";
+import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
 
 type Block = { title: string; category: string; description: string; detail: string };
 type BenefitTemplate = Pick<Block, "title" | "category" | "description" | "detail">;
 type EventBenefit = { id?: string; title: string; category: string; description: string; detail?: string; status: string; evidence: string; sponsorId: string; eventId: string; dueAt?: string };
-const storageKey = "sponsorproof.additional-benefits.v1";
-const grossContractValuesKey = "sponsorproof.event-contract-gross-values.v1";
-const blocksStorageKey = "sponsorproof.blocks.v1";
-const editedBlocksStorageKey = "sponsorproof.block-edits.v1";
-const deletedBlocksStorageKey = "sponsorproof.block-deletions.v1";
-const manualTasksKey = "sponsorproof.manual-tasks.v1";
-const evidenceDatabase = "sponsorproof-evidence";
-const evidenceStore = "proofs";
-const contractFileDatabase = "sponsorproof-contract-files";
-const contractFileStore = "signed-contracts";
-const generatedContractStore = "generated-contracts";
-
-type ManualTask = { id: string; sponsor: string; sponsorId?: string; eventId?: string };
-type StoredSignedContract = { contractId: string; file: Blob; name: string; mimeType: string; uploadedAt: string };
-type GeneratedContractFile = { file: Blob; filename: string; mimeType: string; generatedAt: string };
-type StoredGeneratedContracts = { contractId: string; pdf?: GeneratedContractFile; docx?: GeneratedContractFile };
+type ManualTask = { id: string; title: string };
+type StoredGeneratedContracts = { pdf?: ContractDocument; docx?: ContractDocument };
 type AssignedTemplate = { name: string; storagePath: string; file: Blob };
 
 function grossValueFromNet(netValue: number) {
@@ -43,93 +33,6 @@ function normalizeBenefitTitle(title: string) {
 
 function storedBenefitToEventBenefit(benefit: StoredBenefit): EventBenefit {
   return { id: benefit.id, title: benefit.title, category: benefit.category, description: benefit.description, detail: benefit.detail, status: benefit.status, evidence: benefit.evidence, sponsorId: benefit.sponsorId ?? "", eventId: benefit.eventId, dueAt: benefit.dueAt };
-}
-
-function openContractFileDatabase() {
-  return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(contractFileDatabase, 2);
-    request.onupgradeneeded = () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(contractFileStore)) database.createObjectStore(contractFileStore, { keyPath: "contractId" });
-      if (!database.objectStoreNames.contains(generatedContractStore)) database.createObjectStore(generatedContractStore, { keyPath: "contractId" });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function readGeneratedContracts(contractId: string) {
-  const database = await openContractFileDatabase();
-  return new Promise<StoredGeneratedContracts | null>((resolve, reject) => {
-    const request = database.transaction(generatedContractStore, "readonly").objectStore(generatedContractStore).get(contractId);
-    request.onsuccess = () => { resolve((request.result as StoredGeneratedContracts | undefined) ?? null); database.close(); };
-    request.onerror = () => { reject(request.error); database.close(); };
-  });
-}
-
-async function saveGeneratedContract(contractId: string, format: "pdf" | "docx", file: Blob, filename: string) {
-  const database = await openContractFileDatabase();
-  return new Promise<StoredGeneratedContracts>((resolve, reject) => {
-    const transaction = database.transaction(generatedContractStore, "readwrite");
-    const store = transaction.objectStore(generatedContractStore);
-    let saved: StoredGeneratedContracts = { contractId };
-    const request = store.get(contractId);
-    request.onsuccess = () => {
-      saved = {
-        ...((request.result as StoredGeneratedContracts | undefined) ?? { contractId }),
-        [format]: { file, filename, mimeType: file.type, generatedAt: new Date().toISOString() },
-      };
-      store.put(saved);
-    };
-    request.onerror = () => transaction.abort();
-    transaction.oncomplete = () => { resolve(saved); database.close(); };
-    transaction.onerror = () => { reject(transaction.error); database.close(); };
-    transaction.onabort = () => { reject(transaction.error); database.close(); };
-  });
-}
-
-async function readSignedContract(contractId: string) {
-  const database = await openContractFileDatabase();
-  return new Promise<StoredSignedContract | null>((resolve, reject) => {
-    const request = database.transaction(contractFileStore, "readonly").objectStore(contractFileStore).get(contractId);
-    request.onsuccess = () => { resolve((request.result as StoredSignedContract | undefined) ?? null); database.close(); };
-    request.onerror = () => { reject(request.error); database.close(); };
-  });
-}
-
-async function saveSignedContract(contract: StoredSignedContract) {
-  const database = await openContractFileDatabase();
-  return new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(contractFileStore, "readwrite");
-    transaction.objectStore(contractFileStore).put(contract);
-    transaction.oncomplete = () => { resolve(); database.close(); };
-    transaction.onerror = () => { reject(transaction.error); database.close(); };
-  });
-}
-
-async function deleteSignedContract(contractId: string) {
-  const database = await openContractFileDatabase();
-  return new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(contractFileStore, "readwrite");
-    transaction.objectStore(contractFileStore).delete(contractId);
-    transaction.oncomplete = () => { resolve(); database.close(); };
-    transaction.onerror = () => { reject(transaction.error); database.close(); };
-    transaction.onabort = () => { reject(transaction.error); database.close(); };
-  });
-}
-
-function readEvidenceTaskIds(): Promise<string[]> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(evidenceDatabase, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(evidenceStore, { keyPath: "taskId" });
-    request.onsuccess = () => {
-      const database = request.result;
-      const read = database.transaction(evidenceStore, "readonly").objectStore(evidenceStore).getAll();
-      read.onsuccess = () => { resolve((read.result as { taskId: string }[]).map((item) => item.taskId)); database.close(); };
-      read.onerror = () => { reject(read.error); database.close(); };
-    };
-    request.onerror = () => reject(request.error);
-  });
 }
 
 function benefitTaskId(eventId: string, benefit: EventBenefit) {
@@ -240,14 +143,13 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   const [signedOn, setSignedOn] = useState(() => contractDateForInput(contract.signedAt));
   const [evidenceTaskIds, setEvidenceTaskIds] = useState<string[]>([]);
   const [manualTasks, setManualTasks] = useState<ManualTask[]>([]);
-  const [savedContractPdf, setSavedContractPdf] = useState<SavedContractPdf | null>(null);
   const [generatedContracts, setGeneratedContracts] = useState<StoredGeneratedContracts | null>(null);
   const [contractAmountInput, setContractAmountInput] = useState(() => String(parseContractValue(contract.value)));
   const [contractAmountFocused, setContractAmountFocused] = useState(false);
-  const [grossContractAmountInput, setGrossContractAmountInput] = useState("");
+  const [grossContractAmountInput, setGrossContractAmountInput] = useState(() => String(parseContractValue(contract.grossValue ?? "") || grossValueFromNet(parseContractValue(contract.value))));
   const [grossContractAmountFocused, setGrossContractAmountFocused] = useState(false);
   const [grossContractAmountManuallyEdited, setGrossContractAmountManuallyEdited] = useState(false);
-  const [signedContractFile, setSignedContractFile] = useState<StoredSignedContract | null>(null);
+  const [signedContractFile, setSignedContractFile] = useState<ContractDocument | null>(null);
   const [showContractOutput, setShowContractOutput] = useState(false);
   const [contractTemplate, setContractTemplate] = useState<AssignedTemplate | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
@@ -258,61 +160,27 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
 
   useEffect(() => {
     let cancelled = false;
-    try {
-      const saved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as EventBenefit[];
-      const savedForSponsor = saved.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id);
-      if (!isSupabaseConfigured) {
-        setAddedBenefits(savedForSponsor);
-      } else {
-        void (async () => {
-          try {
-            const synced = await syncLegacyBenefitsToSupabase(savedForSponsor.map((benefit) => ({ ...benefit, contractId: contract.id })));
-            if (synced.error) throw synced.error;
-            const databaseResult = await fetchStoredBenefits(eventId);
-            if (databaseResult.error) throw databaseResult.error;
-            const allBenefits = databaseResult.data.filter((benefit) => benefit.sponsorId === sponsor.id);
-            if (cancelled) return;
-            const mapped = allBenefits.map(storedBenefitToEventBenefit);
-            setAddedBenefits(mapped);
-            const otherBenefits = saved.filter((benefit) => benefit.eventId !== eventId || benefit.sponsorId !== sponsor.id);
-            localStorage.setItem(storageKey, JSON.stringify([...otherBenefits, ...mapped]));
-            if (synced.imported) setMessage(`${synced.imported} lokal gespeicherte ${synced.imported === 1 ? "Leistung wurde" : "Leistungen wurden"} mit Supabase synchronisiert.`);
-          } catch {
-            if (!cancelled) {
-              setAddedBenefits(savedForSponsor);
-              setMessage("Die Leistungen konnten nicht mit Supabase synchronisiert werden. Bitte prüfe die Verbindung und lade die Seite erneut.");
-            }
-          }
-        })();
+    void (async () => {
+      try {
+        const result = await fetchStoredBenefits(eventId);
+        if (result.error) throw result.error;
+        if (!cancelled) setAddedBenefits(result.data.filter((benefit) => benefit.sponsorId === sponsor.id).map(storedBenefitToEventBenefit));
+        const [documents, tasks, evidence] = await Promise.all([fetchContractDocuments(contract.id), fetchStoredTasks(eventId), fetchStoredEvidence()]);
+        if (documents.error || tasks.error || evidence.error) throw documents.error ?? tasks.error ?? evidence.error;
+        if (cancelled) return;
+        setGeneratedContracts({ pdf: documents.data?.find((document) => document.kind === "generated_pdf"), docx: documents.data?.find((document) => document.kind === "generated_docx") });
+        setSignedContractFile(documents.data?.find((document) => document.kind === "signed") ?? null);
+        setManualTasks((tasks.data ?? []).filter((task) => task.event_id === eventId && task.source === "Manuell" && task.sponsor_id === sponsor.id).map((task) => ({ id: task.id, title: task.title })));
+        setEvidenceTaskIds((evidence.data ?? []).map((item) => item.taskId));
+        setContractAmountInput(String(parseContractValue(contract.value)));
+        const grossValue = parseContractValue(contract.grossValue ?? "") || grossValueFromNet(parseContractValue(contract.value));
+        setGrossContractAmountInput(String(grossValue));
+        setGrossContractAmountManuallyEdited(grossValue !== grossValueFromNet(parseContractValue(contract.value)));
+        setSignedOn(contractDateForInput(contract.signedAt));
+      } catch {
+        if (!cancelled) setMessage("Daten konnten nicht aus Supabase geladen werden.");
       }
-      const savedBlocks = JSON.parse(localStorage.getItem(blocksStorageKey) ?? "[]") as Block[];
-      const editedStarters = JSON.parse(localStorage.getItem(editedBlocksStorageKey) ?? "{}") as Record<string, Partial<Block>>;
-      const deletedStarterIds = JSON.parse(localStorage.getItem(deletedBlocksStorageKey) ?? "[]") as string[];
-      const updatedStarterBlocks = blocks.flatMap((block, index) => {
-        const id = `starter-${index + 1}`;
-        return deletedStarterIds.includes(id) ? [] : [{ ...block, ...editedStarters[id] }];
-      });
-      if (!isSupabaseConfigured) setAvailableBlocks([...updatedStarterBlocks, ...savedBlocks]);
-      const savedPdfs = JSON.parse(localStorage.getItem(contractPdfStorageKey) ?? "{}") as SavedContractPdfs;
-      setSavedContractPdf(savedPdfs[contract.id] ?? null);
-      const savedAmounts = JSON.parse(localStorage.getItem(eventContractValuesKey) ?? "{}") as EventContractValues;
-      const savedAmount = savedAmounts[contract.id];
-      const netAmount = typeof savedAmount === "number" && Number.isFinite(savedAmount) ? savedAmount : parseContractValue(contract.value);
-      if (typeof savedAmount === "number" && Number.isFinite(savedAmount)) {
-        setContractAmountInput(String(savedAmount));
-      }
-      const savedGrossAmounts = JSON.parse(localStorage.getItem(grossContractValuesKey) ?? "{}") as EventContractValues;
-      const savedGrossAmount = savedGrossAmounts[contract.id];
-      const calculatedGrossAmount = grossValueFromNet(netAmount);
-      const hasSavedGrossAmount = typeof savedGrossAmount === "number" && Number.isFinite(savedGrossAmount);
-      setGrossContractAmountInput(String(hasSavedGrossAmount ? savedGrossAmount : calculatedGrossAmount));
-      setGrossContractAmountManuallyEdited(hasSavedGrossAmount && savedGrossAmount !== calculatedGrossAmount);
-    } catch {
-      setMessage("Gespeicherte zusätzliche Leistungen konnten nicht geladen werden.");
-    }
-    readGeneratedContracts(contract.id).then(setGeneratedContracts).catch(() => {
-      setMessage("Erstellte Vertragsdateien konnten nicht geladen werden.");
-    });
+    })();
     return () => { cancelled = true; };
   }, [contract.id, eventId, sponsor.id]);
 
@@ -349,28 +217,6 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    try {
-      const savedDates = JSON.parse(localStorage.getItem(eventContractDatesKey) ?? "{}") as Record<string, string>;
-      setSignedOn(savedDates[contract.id] !== undefined ? savedDates[contract.id] : contractDateForInput(contract.signedAt));
-      const savedManualTasks = JSON.parse(localStorage.getItem(manualTasksKey) ?? "[]") as ManualTask[];
-      setManualTasks(savedManualTasks.filter((task) => task.eventId === eventId && (task.sponsorId === sponsor.id || (!task.sponsorId && task.sponsor === sponsor.name))));
-    } catch {
-      setMessage("Gespeicherte Vertrags- und Aufgabendaten konnten nicht vollständig geladen werden.");
-    }
-    readEvidenceTaskIds().then((ids) => { if (!cancelled) setEvidenceTaskIds(ids); }).catch(() => { if (!cancelled) setMessage("Nachweise konnten nicht für den Vertragsstatus geladen werden."); });
-    return () => { cancelled = true; };
-  }, [contract.id, contract.signedAt, eventId, sponsor.id, sponsor.name]);
-
-  useEffect(() => {
-    let cancelled = false;
-    readSignedContract(contract.id).then((file) => { if (!cancelled) setSignedContractFile(file); }).catch(() => {
-      if (!cancelled) setMessage("Die hochgeladene Vertragsfassung konnte nicht geladen werden.");
-    });
-    return () => { cancelled = true; };
-  }, [contract.id]);
-
   const benefits = useMemo(() => [...baseBenefits, ...addedBenefits], [baseBenefits, addedBenefits]);
   const existingBenefitTitles = new Set(benefits.map((benefit) => normalizeBenefitTitle(benefit.title)));
   const taskIds = [...benefits.map((benefit) => benefitTaskId(eventId, benefit)), ...manualTasks.map((task) => task.id)];
@@ -404,7 +250,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     setGrossContractAmountFocused(false);
   }
 
-  function saveContractDetails() {
+  async function saveContractDetails() {
     const amount = parseContractValueInput(contractAmountInput);
     const grossAmount = grossContractAmountInput.trim() ? parseContractValueInput(grossContractAmountInput) : grossValueFromNet(amount);
     if (!Number.isFinite(amount) || amount < 0) {
@@ -416,19 +262,12 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       return;
     }
     try {
-      const savedAmounts = JSON.parse(localStorage.getItem(eventContractValuesKey) ?? "{}") as EventContractValues;
-      const savedGrossAmounts = JSON.parse(localStorage.getItem(grossContractValuesKey) ?? "{}") as EventContractValues;
-      const savedDates = JSON.parse(localStorage.getItem(eventContractDatesKey) ?? "{}") as Record<string, string>;
-      savedAmounts[contract.id] = amount;
-      savedGrossAmounts[contract.id] = grossAmount;
-      localStorage.setItem(eventContractValuesKey, JSON.stringify(savedAmounts));
-      localStorage.setItem(grossContractValuesKey, JSON.stringify(savedGrossAmounts));
-      savedDates[contract.id] = signedOn;
-      localStorage.setItem(eventContractDatesKey, JSON.stringify(savedDates));
+      const { error } = await updateContractRecord(contract.id, { netValueCents: Math.round(amount * 100), grossValueCents: Math.round(grossAmount * 100), signedAt: signedOn || null });
+      if (error) throw error;
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setContractAmountInput(String(amount));
       setContractAmountFocused(false);
-      setMessage(savedContractPdf || generatedContracts?.pdf ? "Vertragswerte und Vertragsdatum gespeichert. Erstelle den Vertrag erneut, damit die PDF-Datei die Änderungen enthält." : "Vertragswerte und Vertragsdatum gespeichert.");
+      setMessage(generatedContracts?.pdf ? "Vertragswerte und Vertragsdatum gespeichert. Erstelle den Vertrag erneut, damit die PDF-Datei die Änderungen enthält." : "Vertragswerte und Vertragsdatum gespeichert.");
     } catch {
       setMessage("Vertragswerte und Vertragsdatum konnten nicht gespeichert werden.");
     }
@@ -438,8 +277,8 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const savedFile = { contractId: contract.id, file, name: file.name, mimeType: file.type || "application/octet-stream", uploadedAt: new Date().toISOString() };
-      await saveSignedContract(savedFile);
+      const { data: savedFile, error } = await saveContractDocument(contract.id, "signed", file, file.name);
+      if (error || !savedFile) throw error ?? new Error("Datei konnte nicht gespeichert werden.");
       setSignedContractFile(savedFile);
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setMessage("Die gezeichnete Vertragsfassung wurde hochgeladen.");
@@ -450,19 +289,23 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     }
   }
 
-  function downloadSignedContractFile() {
+  async function downloadSignedContractFile() {
     if (!signedContractFile) return;
-    const url = URL.createObjectURL(signedContractFile.file);
+    const { data, error } = await downloadContractDocument(signedContractFile);
+    if (error || !data) { setMessage("Die gezeichnete Fassung konnte nicht heruntergeladen werden."); return; }
+    const url = URL.createObjectURL(data);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = signedContractFile.name;
+    anchor.download = signedContractFile.fileName;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   async function removeSignedContractFile() {
     try {
-      await deleteSignedContract(contract.id);
+      if (!signedContractFile) return;
+      const { error } = await deleteContractDocument(signedContractFile);
+      if (error) throw error;
       setSignedContractFile(null);
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setMessage("Die gezeichnete Fassung wurde gelöscht. Du kannst eine neue Datei hochladen.");
@@ -485,9 +328,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
 
   async function addSelectedBlocks() {
     try {
-      const allSaved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as EventBenefit[];
-      const savedForThisContract = allSaved.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id);
-      const alreadyAdded = new Set([...benefits, ...savedForThisContract].map((benefit) => normalizeBenefitTitle(benefit.title)));
+      const alreadyAdded = new Set(benefits.map((benefit) => normalizeBenefitTitle(benefit.title)));
       const requested = availableBlocks.filter((block) => selectedBlocks.includes(block.title));
       const seen = new Set(alreadyAdded);
       const eligible = requested.filter((block) => {
@@ -499,8 +340,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       if (eligible.length < requested.length) {
         setMessage("Ein oder mehrere Bausteine wurden diesem Sponsor im Event bereits hinzugefügt und übersprungen.");
       }
-      const additions = eligible.map((block, index): EventBenefit => ({
-        id: `custom-${Date.now()}-${index}`,
+      const additions = eligible.map((block): EventBenefit => ({
         title: block.title,
         category: block.category,
         description: block.description,
@@ -520,9 +360,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
         }
         return;
       }
-      let savedAdditions = additions;
-      if (isSupabaseConfigured) {
-        const result = await createStoredBenefits(additions.map((benefit) => ({
+      const result = await createStoredBenefits(additions.map((benefit) => ({
           eventId: benefit.eventId,
           sponsorId: benefit.sponsorId,
           contractId: contract.id,
@@ -533,12 +371,9 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
           status: benefit.status,
           evidence: benefit.evidence,
           dueAt: benefit.dueAt,
-        })));
-        if (result.error) throw result.error;
-        savedAdditions = result.data.map(storedBenefitToEventBenefit);
-      }
-      const updated = [...allSaved.filter((benefit) => !(benefit.eventId === eventId && benefit.sponsorId === sponsor.id)), ...addedBenefits, ...savedAdditions];
-      localStorage.setItem(storageKey, JSON.stringify(updated));
+      })));
+      if (result.error) throw result.error;
+      const savedAdditions = result.data.map(storedBenefitToEventBenefit);
       setAddedBenefits((current) => [...current, ...savedAdditions]);
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setSelectedBlocks([]);
@@ -552,20 +387,12 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     }
   }
 
-  function downloadSavedContractPdf() {
-    if (!savedContractPdf) return;
-    const url = URL.createObjectURL(new Blob([savedContractPdf.document], { type: "application/pdf" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = savedContractPdf.filename;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  function downloadGeneratedContract(format: "pdf" | "docx") {
+  async function downloadGeneratedContract(format: "pdf" | "docx") {
     const generated = generatedContracts?.[format];
     if (!generated) return;
-    downloadDocument(generated.file, generated.filename);
+    const { data, error } = await downloadContractDocument(generated);
+    if (error || !data) { setMessage("Die erstellte Vertragsdatei konnte nicht geladen werden."); return; }
+    downloadDocument(data, generated.fileName);
   }
 
   async function renderContractTemplatePdf(documentBlob: Blob, preview: HTMLDivElement) {
@@ -645,21 +472,9 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     try {
-      const savedPdfs = JSON.parse(localStorage.getItem(contractPdfStorageKey) ?? "{}") as SavedContractPdfs;
-      const savedAmounts = JSON.parse(localStorage.getItem(eventContractValuesKey) ?? "{}") as EventContractValues;
-      const savedGrossAmounts = JSON.parse(localStorage.getItem(grossContractValuesKey) ?? "{}") as EventContractValues;
-      const savedPdf = { document: await blob.text(), filename, generatedAt: new Date().toISOString() };
-      savedPdfs[contract.id] = savedPdf;
-      savedAmounts[contract.id] = amount;
-      savedGrossAmounts[contract.id] = grossAmount;
-      localStorage.setItem(eventContractValuesKey, JSON.stringify(savedAmounts));
-      localStorage.setItem(grossContractValuesKey, JSON.stringify(savedGrossAmounts));
-      localStorage.setItem(contractPdfStorageKey, JSON.stringify(savedPdfs));
-      setSavedContractPdf(savedPdf);
-    } catch {}
-    try {
-      const generated = await saveGeneratedContract(contract.id, "pdf", blob, filename);
-      setGeneratedContracts(generated);
+      const { data, error } = await saveContractDocument(contract.id, "generated_pdf", blob, filename);
+      if (error || !data) throw error ?? new Error("PDF konnte nicht gespeichert werden.");
+      setGeneratedContracts((current) => ({ ...current, pdf: data }));
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setMessage("Der Vertrag wurde heruntergeladen und steht im Vertragsreiter erneut zum Download bereit.");
     } catch {
@@ -733,7 +548,9 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     }
     setCreatingContract(format);
     try {
-      const savedOrganizer = JSON.parse(localStorage.getItem("sponsorproof.organizer-settings.v1") ?? "{}") as Record<string, string>;
+      const organizerResult = await fetchOrganizerSettings();
+      if (organizerResult.error) throw organizerResult.error;
+      const savedOrganizer = organizerResult.data ?? {};
       const contractForTemplate = { ...contract, value: formatContractValue(amount), signedAt: signedOn };
       const blob = await fillContractTemplate(contractTemplate.file, {
         organizer: savedOrganizer,
@@ -748,8 +565,9 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
         downloadDocument(blob, filename);
         setShowContractOutput(false);
         try {
-          const generated = await saveGeneratedContract(contract.id, "docx", blob, filename);
-          setGeneratedContracts(generated);
+          const { data, error } = await saveContractDocument(contract.id, "generated_docx", blob, filename);
+          if (error || !data) throw error ?? new Error("Word-Datei konnte nicht gespeichert werden.");
+          setGeneratedContracts((current) => ({ ...current, docx: data }));
           window.dispatchEvent(new Event("sponso:event-timeline-updated"));
           setMessage("Der Word-Vertrag wurde heruntergeladen und steht im Vertragsreiter erneut zum Download bereit.");
         } catch {
@@ -766,8 +584,9 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       setShowContractOutput(false);
       setPrintReady(false);
       try {
-        const generated = await saveGeneratedContract(contract.id, "pdf", pdfBlob, filename);
-        setGeneratedContracts(generated);
+        const { data, error } = await saveContractDocument(contract.id, "generated_pdf", pdfBlob, filename);
+        if (error || !data) throw error ?? new Error("PDF konnte nicht gespeichert werden.");
+        setGeneratedContracts((current) => ({ ...current, pdf: data }));
         window.dispatchEvent(new Event("sponso:event-timeline-updated"));
         setMessage("Der PDF-Vertrag wurde heruntergeladen und steht im Vertragsreiter erneut zum Download bereit.");
       } catch {
@@ -783,7 +602,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
 
   return <section className="panel sponsor-event-detail"><div className="panel-heading"><div><div className="eyebrow">SPONSOR IM EVENT</div><div className="sponsor-event-name-row"><h2>{sponsor.name}</h2><Link className="text-link sponsor-event-customer-link" href={`/sponsors/${sponsor.id}`}>Kundenkartei →</Link></div></div><div className="sponsor-event-heading-actions"><Status value={contractStatus}/><Link className="btn" href={`/events/${eventId}?tab=sponsoren`}>← Alle Sponsoren</Link></div></div>
     <section className="panel sponsor-contract-data"><div className="table-head"><div><h2>Vertragsdaten</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Nettowert, Bruttowert, Vertragsdatum und Fortschritt für diesen Eventvertrag.</p></div></div><div className="sponsor-contract-detail-grid"><div className="contract-volume-field"><label><span>Vertragswert netto</span><input aria-label="Vertragswert netto in Euro" inputMode="decimal" type="text" value={contractAmountFocused ? contractAmountInput : Number.isFinite(parseContractValueInput(contractAmountInput)) ? formatContractValue(parseContractValueInput(contractAmountInput)) : contractAmountInput} onFocus={() => setContractAmountFocused(true)} onChange={(event) => updateNetContractValue(event.target.value)} onBlur={() => setContractAmountFocused(false)} /></label></div><div className="contract-volume-field"><label><span>Vertragswert brutto</span><input aria-label="Vertragswert brutto in Euro" inputMode="decimal" type="text" value={grossContractAmountFocused ? grossContractAmountInput : grossContractAmountInput && Number.isFinite(parseContractValueInput(grossContractAmountInput)) ? formatContractValue(parseContractValueInput(grossContractAmountInput)) : grossContractAmountInput} onFocus={() => setGrossContractAmountFocused(true)} onChange={(event) => updateGrossContractValue(event.target.value)} onBlur={finishGrossContractValueEdit} /></label></div><div><span>Vereinbarte Leistungen</span><b>{benefits.length}</b></div><div><span>Leistungsfortschritt</span><Progress value={taskProgress}/></div><div className="event-contract-date"><label><span>Datum der Vertragsunterzeichnung</span><input aria-label="Datum der Vertragsunterzeichnung" type="date" value={signedOn} onChange={(event) => setSignedOn(event.target.value)} /></label></div></div><div className="contract-details-save"><button className="btn btn-primary" type="button" onClick={saveContractDetails}>Speichern</button></div></section>
-    <section className="panel sponsor-contract-files"><div className="table-head"><div><h2>Vertrag</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Erstelle eine Vertragsfassung oder füge eine gezeichnete Fassung hinzu.</p></div></div><div className="contract-file-actions"><button className="btn btn-primary" type="button" onClick={() => { void openContractOutput(); }}><Icon name="file" size={15}/> Vertrag erstellen</button>{generatedContracts?.pdf ? <button className="btn" type="button" onClick={() => downloadGeneratedContract("pdf")}><Icon name="file" size={15}/> PDF erneut herunterladen</button> : savedContractPdf && <button className="btn" type="button" onClick={downloadSavedContractPdf}><Icon name="file" size={15}/> Aktuelle Fassung herunterladen</button>}{generatedContracts?.docx && <button className="btn" type="button" onClick={() => downloadGeneratedContract("docx")}><Icon name="file" size={15}/> Word erneut herunterladen</button>}<label className="btn contract-upload-button"><Icon name="file" size={15}/> Gezeichnete Fassung hochladen<input type="file" accept=".pdf,application/pdf,image/*" onChange={(event) => { void uploadSignedContractFile(event); }} /></label></div>{signedContractFile && <div className="signed-contract-file"><div><b>{signedContractFile.name}</b><span>Hochgeladen am {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(signedContractFile.uploadedAt))}</span></div><div className="signed-contract-actions"><button className="btn" type="button" onClick={downloadSignedContractFile}><Icon name="file" size={14}/> Gezeichnete Fassung herunterladen</button><button className="btn signed-contract-delete" type="button" onClick={() => { void removeSignedContractFile(); }}>Datei löschen</button></div></div>}</section>
+    <section className="panel sponsor-contract-files"><div className="table-head"><div><h2>Vertrag</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Erstelle eine Vertragsfassung oder füge eine gezeichnete Fassung hinzu.</p></div></div><div className="contract-file-actions"><button className="btn btn-primary" type="button" onClick={() => { void openContractOutput(); }}><Icon name="file" size={15}/> Vertrag erstellen</button>{generatedContracts?.pdf && <button className="btn" type="button" onClick={() => downloadGeneratedContract("pdf")}><Icon name="file" size={15}/> PDF erneut herunterladen</button>}{generatedContracts?.docx && <button className="btn" type="button" onClick={() => downloadGeneratedContract("docx")}><Icon name="file" size={15}/> Word erneut herunterladen</button>}<label className="btn contract-upload-button"><Icon name="file" size={15}/> Gezeichnete Fassung hochladen<input type="file" accept=".pdf,application/pdf,image/*" onChange={(event) => { void uploadSignedContractFile(event); }} /></label></div>{signedContractFile && <div className="signed-contract-file"><div><b>{signedContractFile.fileName}</b><span>Hochgeladen am {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(signedContractFile.createdAt))}</span></div><div className="signed-contract-actions"><button className="btn" type="button" onClick={() => { void downloadSignedContractFile(); }}><Icon name="file" size={14}/> Gezeichnete Fassung herunterladen</button><button className="btn signed-contract-delete" type="button" onClick={() => { void removeSignedContractFile(); }}>Datei löschen</button></div></div>}</section>
     <div className="panel table-panel sponsor-contract-benefits"><div className="table-head"><div><h2>Vereinbarte Leistungen</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Einzelleistungen und Nachweisstatus für diesen Eventvertrag.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); openAddBenefits(); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button></div>{benefits.length ? <table className="table"><thead><tr><th>LEISTUNG</th><th>KATEGORIE</th><th>FÄLLIG</th><th>NACHWEIS</th><th>STATUS</th></tr></thead><tbody>{benefits.map((benefit) => <tr key={benefit.id ?? benefit.title}><td><b style={{ color: "#3d4c5b" }}>{benefit.title}</b><div className="task-caption">{benefit.description}</div></td><td>{benefit.category}</td><td>{benefit.dueAt ? new Intl.DateTimeFormat("de-DE").format(new Date(`${benefit.dueAt}T00:00:00`)) : "—"}</td><td>{benefit.evidence}</td><td><Status value={benefit.evidence && benefit.evidence !== "Noch kein Nachweis" ? "Erledigt" : "Offen"}/></td></tr>)}</tbody></table> : <EmptyState className="empty-state-compact" title="Noch keine Leistungen" description="Füge Leistungen aus der Bausteinbibliothek zu diesem Vertrag hinzu." action={<button className="btn btn-primary" type="button" onClick={() => { setMessage(""); openAddBenefits(); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button>} />}</div>
     {message && <p className="task-feedback" role="status">{message}</p>}
     {adding && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAddBenefits(); }}>

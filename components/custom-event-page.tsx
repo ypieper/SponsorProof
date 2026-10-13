@@ -8,7 +8,7 @@ import { EventReports } from "@/components/event-reports";
 import { EventSponsorDetail } from "@/components/event-sponsor-detail";
 import { TasksOverview } from "@/components/tasks-overview";
 import { EventTimeline } from "@/components/event-timeline";
-import { fetchStoredEventFromDatabase, readStoredEvents, type StoredEvent } from "@/lib/events-storage";
+import { fetchStoredEventFromDatabase, type StoredEvent } from "@/lib/events-storage";
 import { fetchSponsorRecordsForEvent, type SponsorRecord } from "@/lib/sponsors-storage";
 import { EmptyState, Icon, Metric, PageHeading, Tabs } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -33,10 +33,10 @@ export function CustomEventPage({ eventId, selectedTab, selectedSponsorId }: { e
           fetchStoredEventFromDatabase(eventId),
           fetchSponsorRecordsForEvent(eventId),
         ]);
-        setEvent(!error && data ? data : readStoredEvents().find((item) => item.id === eventId) ?? null);
+        setEvent(!error && data ? data : null);
         setEventSponsors((current) => mergeSponsorRecords(current, sponsorResult.data ?? []));
       } else {
-        setEvent(readStoredEvents().find((item) => item.id === eventId) ?? null);
+        setEvent(null);
         setEventSponsors([]);
       }
       setLoaded(true);

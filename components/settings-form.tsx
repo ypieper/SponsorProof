@@ -7,6 +7,7 @@ import { TeamSettings } from "@/components/team-settings";
 import { ContractTemplateSettings } from "@/components/contract-template-settings";
 import { formatIban, lookupGermanBank, normalizeIban, validateIban } from "@/lib/bank-lookup";
 import { normalizeCityName } from "@/lib/location";
+import { fetchOrganizerSettings, saveOrganizerSettings } from "@/lib/organization-settings-storage";
 
 type TabName = "Stammdaten" | "Ansprechperson" | "Vertragsvorlage" | "Meine Daten" | "Team";
 type Settings = {
@@ -38,7 +39,6 @@ const initialSettings: Settings = {
   email: "",
   phone: "",
 };
-const settingsStorageKey = "sponsorproof.organizer-settings.v1";
 
 function Field({ label, value, onChange, type = "text", placeholder, required = false, readOnly = false, autoComplete, onBlur, message, messageKind = "hint" }: {
   label: string;
@@ -142,19 +142,16 @@ export function SettingsForm() {
   }, [settings.postalCode]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(settingsStorageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Partial<Settings>;
-        const loaded = { ...initialSettings, ...parsed, city: normalizeCityName(parsed.city ?? "") };
-        setSettings(loaded);
-        setIbanDisplay(formatIban(loaded.iban));
-      }
-    } catch {
-      setSaveMessage("Gespeicherte Einstellungen konnten nicht geladen werden.");
-    } finally {
-      setSettingsReady(true);
-    }
+    let active = true;
+    void fetchOrganizerSettings().then(({ data, error }) => {
+      if (!active) return;
+      if (error) setSaveMessage("Veranstalterdaten konnten nicht aus Supabase geladen werden.");
+      const loaded = { ...initialSettings, ...(data ?? {}), city: normalizeCityName(data?.city ?? "") };
+      setSettings(loaded);
+      setIbanDisplay(formatIban(loaded.iban));
+    }).catch(() => { if (active) setSaveMessage("Veranstalterdaten konnten nicht aus Supabase geladen werden."); })
+      .finally(() => { if (active) setSettingsReady(true); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -217,13 +214,11 @@ export function SettingsForm() {
       setSaveMessage(postalCodeStatus === "unavailable" ? "Die PLZ konnte gerade nicht geprüft werden. Bitte versuche es erneut." : "Die PLZ wird geprüft. Bitte warte kurz.");
       return;
     }
-    try {
-      localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
+    void saveOrganizerSettings(settings).then(({ error }) => {
+      if (error) throw error;
       window.dispatchEvent(new Event("sponsorproof:organizer-settings-updated"));
-      setSaveMessage("Einstellungen auf diesem Gerät gespeichert.");
-    } catch {
-      setSaveMessage("Die Einstellungen konnten nicht gespeichert werden.");
-    }
+      setSaveMessage("Einstellungen im gemeinsamen Veranstalterbereich gespeichert.");
+    }).catch(() => setSaveMessage("Die Einstellungen konnten nicht in Supabase gespeichert werden."));
   }
 
   const ibanMessage = (() => {
@@ -291,7 +286,7 @@ export function SettingsForm() {
         </div>
       </div>
     </div>}
-    <div className="settings-save-row"><p role="status" aria-live="polite">{saveMessage || (settingsReady ? "Wird nur in diesem Browser gespeichert." : "Einstellungen werden geladen …")}</p><button className="btn btn-primary" type="submit" disabled={!settingsReady}><Icon name="check" size={15}/>Speichern</button></div>
+    <div className="settings-save-row"><p role="status" aria-live="polite">{saveMessage || (settingsReady ? "Wird im gemeinsamen Veranstalterbereich gespeichert." : "Einstellungen werden geladen …")}</p><button className="btn btn-primary" type="submit" disabled={!settingsReady}><Icon name="check" size={15}/>Speichern</button></div>
     </form>}
   </section>;
 }

@@ -2,18 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
-import { createStoredEventInDatabase, deleteStoredEventFromDatabase, fetchStoredEventsFromDatabase, formatEventDateRange, readStoredEvents, storedEventsKey, type StoredEvent } from "@/lib/events-storage";
+import { createStoredEventInDatabase, deleteStoredEventFromDatabase, fetchStoredEventsFromDatabase, formatEventDateRange, type StoredEvent } from "@/lib/events-storage";
 import { EmptyState, Icon } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { eventLifecycleStage, useEventMetrics } from "@/lib/event-metrics";
 
 type EventDraft = Omit<StoredEvent, "id" | "createdAt">;
 const emptyDraft: EventDraft = { title: "", startDate: "", endDate: "", location: "", responsible: "" };
-const deletedEventsKey = "sponsorproof.deleted-events.v1";
-
-function eventSlug(title: string) {
-  return title.toLocaleLowerCase("de-DE").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
 
 export function EventsOverview() {
   const [createdEvents, setCreatedEvents] = useState<StoredEvent[]>([]);
@@ -21,7 +16,6 @@ export function EventsOverview() {
   const [creating, setCreating] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<{ id: string; title: string } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [deletedEventIds, setDeletedEventIds] = useState<string[]>([]);
   const [showCompletedEvents, setShowCompletedEvents] = useState(false);
   const [draft, setDraft] = useState<EventDraft>(emptyDraft);
   const [message, setMessage] = useState("");
@@ -34,18 +28,12 @@ export function EventsOverview() {
         if (isSupabaseConfigured) {
           const { data, error } = await fetchStoredEventsFromDatabase();
           if (error || !data) {
-            setCreatedEvents(readStoredEvents());
             setMessage("Events konnten nicht aus Supabase geladen werden. Bitte prüfe, ob die Datenbankmigration ausgeführt wurde.");
           } else {
             setCreatedEvents(data);
           }
-        } else {
-          setCreatedEvents(readStoredEvents());
-        }
-        const storedIds: unknown = JSON.parse(localStorage.getItem(deletedEventsKey) ?? "[]");
-        if (Array.isArray(storedIds)) setDeletedEventIds(storedIds.filter((id): id is string => typeof id === "string"));
+        } else setMessage("Supabase ist nicht eingerichtet. Events können derzeit nicht gespeichert werden.");
       } catch {
-        setCreatedEvents(readStoredEvents());
         setMessage("Gespeicherte Events konnten nicht vollständig geladen werden.");
       } finally {
         setReady(true);
@@ -54,7 +42,7 @@ export function EventsOverview() {
     void loadEvents();
   }, []);
 
-  const visibleEvents = createdEvents.filter((event) => !deletedEventIds.includes(event.id)).sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+  const visibleEvents = createdEvents.sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
   const eventMetrics = useEventMetrics(visibleEvents.map((event) => event.id));
   const activeEvents = visibleEvents.map((event) => {
     const metrics = eventMetrics.byEvent[event.id];
@@ -86,11 +74,7 @@ export function EventsOverview() {
           return;
         }
         event = data;
-      } else {
-        event = { ...eventDetails, id: `${eventSlug(title) || "event"}-${Date.now()}`, createdAt: new Date().toISOString() };
-        const updated = [...createdEvents, event];
-        localStorage.setItem(storedEventsKey, JSON.stringify(updated));
-      }
+      } else throw new Error("Supabase ist nicht eingerichtet.");
       const updated = [...createdEvents, event];
       setCreatedEvents(updated);
       setDraft(emptyDraft);
@@ -107,8 +91,6 @@ export function EventsOverview() {
     if (!eventToDelete || deleteConfirmation.trim() !== "löschen") return;
     const isCreatedEvent = createdEvents.some((event) => event.id === eventToDelete.id);
     try {
-      const details = JSON.parse(localStorage.getItem("sponsorproof.event-details.v1") ?? "{}") as Record<string, unknown>;
-      delete details[eventToDelete.id];
       if (isCreatedEvent) {
         const updated = createdEvents.filter((event) => event.id !== eventToDelete.id);
         if (isSupabaseConfigured) {
@@ -117,16 +99,11 @@ export function EventsOverview() {
             setMessage("Das Event konnte nicht aus Supabase gelöscht werden.");
             return;
           }
-        } else {
-          localStorage.setItem(storedEventsKey, JSON.stringify(updated));
-        }
+        } else throw new Error("Supabase ist nicht eingerichtet.");
         setCreatedEvents(updated);
       } else {
-        const updated = [...new Set([...deletedEventIds, eventToDelete.id])];
-        localStorage.setItem(deletedEventsKey, JSON.stringify(updated));
-        setDeletedEventIds(updated);
+        throw new Error("Das Event ist nicht in Supabase gespeichert und kann deshalb nicht gelöscht werden.");
       }
-      localStorage.setItem("sponsorproof.event-details.v1", JSON.stringify(details));
       setEventToDelete(null);
       setDeleteConfirmation("");
       setMessage("");

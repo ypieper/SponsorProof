@@ -1,4 +1,3 @@
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export type StoredEvent = {
   id: string;
@@ -10,7 +9,6 @@ export type StoredEvent = {
   createdAt: string;
 };
 
-export const storedEventsKey = "sponsorproof.events.v1";
 
 type EventRow = {
   id: string;
@@ -32,15 +30,6 @@ function fromEventRow(row: EventRow): StoredEvent {
     responsible: row.responsible,
     createdAt: row.created_at,
   };
-}
-
-export function readStoredEvents(): StoredEvent[] {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(storedEventsKey) ?? "[]");
-    return Array.isArray(value) ? value as StoredEvent[] : [];
-  } catch {
-    return [];
-  }
 }
 
 export async function fetchStoredEventsFromDatabase() {
@@ -82,14 +71,6 @@ export async function fetchStoredEventFromDatabase(id: string) {
 }
 
 export async function updateStoredEventDetails(id: string, event: Omit<StoredEvent, "id" | "createdAt">) {
-  if (!isSupabaseConfigured) {
-    const events = readStoredEvents();
-    const updated = events.map((storedEvent) => storedEvent.id === id ? { ...storedEvent, ...event } : storedEvent);
-    if (!events.some((event) => event.id === id)) return { error: new Error("Event nicht gefunden.") };
-    localStorage.setItem(storedEventsKey, JSON.stringify(updated));
-    return { data: updated.find((event) => event.id === id) ?? null, error: null };
-  }
-
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const { data, error } = await supabase
@@ -100,14 +81,6 @@ export async function updateStoredEventDetails(id: string, event: Omit<StoredEve
     .single();
   if (error) return { data: null, error };
 
-  try {
-    const events = readStoredEvents();
-    const updatedEvent = fromEventRow(data as EventRow);
-    const updatedEvents = events.some((event) => event.id === id)
-      ? events.map((event) => event.id === id ? updatedEvent : event)
-      : [...events, updatedEvent];
-    localStorage.setItem(storedEventsKey, JSON.stringify(updatedEvents));
-  } catch { /* Die Datenbank bleibt die maßgebliche Quelle. */ }
   return { data: fromEventRow(data as EventRow), error: null };
 }
 

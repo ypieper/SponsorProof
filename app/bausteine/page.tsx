@@ -15,8 +15,6 @@ const blockIconLabels: Record<string, string> = {
   camera: "Kamera", pin: "Standort", menu: "Menü", close: "Schließen", chevron: "Pfeil rechts",
   clock: "Uhr", spark: "Social Media", file: "Dokument",
 };
-const storageKey = "sponsorproof.blocks.v1";
-const categoryStorageKey = "sponsorproof.block-categories.v1";
 const emptyDraft = { title: "", category: "Werbung", description: "", detail: "", icon: "stack" };
 const exampleBlocks: Block[] = [
   { title: "Hauptbanner am Eingang", category: "Werbung", description: "Das Logo des Sponsors wird gut sichtbar auf dem zentralen Eingangsbanner platziert. Die Gestaltung erfolgt im abgestimmten Eventdesign, sodass Besucher den Sponsor beim Betreten und Verlassen des Veranstaltungsgeländes wahrnehmen.", detail: "Eingangsbereich · Großformat", icon: "stack" },
@@ -36,11 +34,6 @@ function defaultIconForCategory(categoryName: string) {
   if (categoryName === "Social Media") return "spark";
   if (categoryName === "Hospitality") return "users";
   return "stack";
-}
-
-function withoutPrice(block: Block & { value?: string }): Block {
-  const { value: _value, ...details } = block;
-  return details;
 }
 
 export default function LibraryPage() {
@@ -81,9 +74,7 @@ export default function LibraryPage() {
 
               let rows = (existingRows ?? []) as DatabaseBlock[];
               if (rows.length === 0) {
-                const saved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as (Block & { value?: string })[];
-                const previousLocalBlocks = saved.map(withoutPrice);
-                const initialBlocks = [...previousLocalBlocks, ...exampleBlocks];
+                const initialBlocks = [...exampleBlocks];
                 const uniqueBlocks = initialBlocks.filter((block, index) => initialBlocks.findIndex((candidate) => candidate.title.trim().toLocaleLowerCase("de-DE") === block.title.trim().toLocaleLowerCase("de-DE")) === index);
                 const { data: insertedRows, error: insertError } = await supabase.from("benefit_templates")
                   .insert(uniqueBlocks.map((block) => ({ ...block, icon: block.icon ?? "stack" })))
@@ -113,13 +104,13 @@ export default function LibraryPage() {
           } finally {
             if (pendingLibraryLoad === pending) pendingLibraryLoad = null;
           }
-        } else {
-          const saved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as (Block & { id?: string; value?: string })[];
-          customItems = saved.map((block, index) => ({ ...withoutPrice(block), id: block.id ?? `custom-${index + 1}`, origin: "custom" }));
-        }
+        } else customItems = [];
         if (active) setItems(customItems);
-        const savedCategories = localStorage.getItem(categoryStorageKey);
-        if (active && savedCategories) setCategories([...new Set([...defaultCategories, ...(JSON.parse(savedCategories) as string[])])]);
+        if (isSupabaseConfigured) {
+          const { data: categoryRows, error: categoryError } = await createClient().from("organization_benefit_categories").select("name").order("name");
+          if (categoryError) throw categoryError;
+          if (active) setCategories([...new Set([...defaultCategories, ...(categoryRows ?? []).map((row) => row.name)])]);
+        }
       } catch (error) {
         if (active) {
           setLibraryError(true);
@@ -158,11 +149,6 @@ export default function LibraryPage() {
     setShowCreate(true);
   }
 
-  function persistBlocks(updatedItems: LibraryBlock[]) {
-    const customItems = updatedItems.filter((block) => block.origin === "custom").map(({ id, origin, ...block }) => ({ ...block, id }));
-    localStorage.setItem(storageKey, JSON.stringify(customItems));
-  }
-
   async function saveBlock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
@@ -179,12 +165,7 @@ export default function LibraryPage() {
         if (error || !data) throw error ?? new Error("Baustein konnte nicht gespeichert werden.");
         const saved = { ...data, icon: data.icon ?? undefined, origin: "custom" as const } as LibraryBlock;
         updatedItems = editingBlockId ? items.map((block) => block.id === editingBlockId ? saved : block) : [...items, saved];
-      } else {
-        updatedItems = editingBlockId
-          ? items.map((block) => block.id === editingBlockId ? { ...block, ...details } : block)
-          : [...items, { ...details, id: `custom-${Date.now()}`, origin: "custom" as const }];
-        persistBlocks(updatedItems);
-      }
+      } else throw new Error("Supabase ist nicht eingerichtet.");
       setItems(updatedItems);
       setCategory("Alle Bausteine");
       setDraft(emptyDraft);
@@ -210,9 +191,7 @@ export default function LibraryPage() {
       if (isSupabaseConfigured) {
         const { error } = await createClient().from("benefit_templates").delete().eq("id", deletingBlock.id);
         if (error) throw error;
-      } else {
-        persistBlocks(updatedItems);
-      }
+      } else throw new Error("Supabase ist nicht eingerichtet.");
       setItems(updatedItems);
       setMessage(`Baustein „${deletingBlock.title}“ gelöscht.`);
       setDeletingBlock(null);
@@ -221,13 +200,17 @@ export default function LibraryPage() {
     }
   }
 
-  function createCategory(event: FormEvent<HTMLFormElement>) {
+  async function createCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const label = newCategory.trim();
     if (!label || categories.some((item) => item.toLocaleLowerCase("de-DE") === label.toLocaleLowerCase("de-DE"))) return;
     const updated = [...categories, label];
     try {
-      localStorage.setItem(categoryStorageKey, JSON.stringify(updated.filter((item) => !defaultCategories.includes(item))));
+      if (!isSupabaseConfigured) throw new Error("Supabase ist nicht eingerichtet.");
+      const { data: organizationId, error: organizationError } = await createClient().rpc("current_organization_id");
+      if (organizationError || typeof organizationId !== "string") throw organizationError ?? new Error("Veranstalterbereich nicht gefunden.");
+      const { error } = await createClient().from("organization_benefit_categories").insert({ organization_id: organizationId, name: label });
+      if (error) throw error;
       setCategories(updated);
       setCategory(label);
       setDraft((current) => ({ ...current, category: label }));
@@ -251,10 +234,11 @@ export default function LibraryPage() {
         const movedBlocks = updatedItems.filter((item) => item.category === destination && items.find((previous) => previous.id === item.id)?.category === categoryName);
         const updates = await Promise.all(movedBlocks.map((item) => createClient().from("benefit_templates").update({ category: destination }).eq("id", item.id)));
         if (updates.some(({ error }) => error)) throw new Error("Die Bausteine konnten nicht verschoben werden.");
-      } else {
-        persistBlocks(updatedItems);
-      }
-      localStorage.setItem(categoryStorageKey, JSON.stringify(customCategories.filter((item) => !defaultCategories.includes(item))));
+      } else throw new Error("Supabase ist nicht eingerichtet.");
+      const { data: organizationId, error: organizationError } = await createClient().rpc("current_organization_id");
+      if (organizationError || typeof organizationId !== "string") throw organizationError ?? new Error("Veranstalterbereich nicht gefunden.");
+      const { error: deleteError } = await createClient().from("organization_benefit_categories").delete().eq("organization_id", organizationId).eq("name", categoryName);
+      if (deleteError) throw deleteError;
       setItems(updatedItems);
       setCategories(customCategories);
       setCategory((current) => current === categoryName ? "Alle Bausteine" : current);
@@ -268,7 +252,7 @@ export default function LibraryPage() {
 
   return <main className="content">
     <PageHeading eyebrow="VORLAGEN" title="Bausteinbibliothek" subtitle="Wiederverwendbare Leistungen für deine Sponsoringverträge." action={<button className="btn btn-primary" type="button" onClick={() => { setMessage(""); setEditingBlockId(null); setDraft(emptyDraft); setIconPickerOpen(false); setShowCreate(true); }}><Icon name="plus" size={16}/> Baustein erstellen</button>}/>
-    <p className="subtitle library-message" role="status" aria-live="polite">{message || (ready ? isSupabaseConfigured ? "Deine Bausteine werden sicher in deinem Konto gespeichert." : "Eigene Bausteine werden in diesem Browser gespeichert." : "Bausteine werden geladen …")}</p>
+    <p className="subtitle library-message" role="status" aria-live="polite">{message || (ready ? "Deine Bausteine werden sicher in deinem Konto gespeichert." : "Bausteine werden geladen …")}</p>
     <div className="library-filter" aria-label="Bausteine filtern"><button type="button" onClick={() => setCategory("Alle Bausteine")} aria-pressed={category === "Alle Bausteine"} className={`filter-chip ${category === "Alle Bausteine" ? "active" : ""}`}>Alle Bausteine</button>{categories.map((item) => <span className={`category-filter-chip ${category === item ? "active" : ""}`} key={item}><button type="button" onClick={() => setCategory(item)} aria-pressed={category === item} className="filter-chip">{item}</button>{!defaultCategories.includes(item) && <button type="button" className="category-remove-button" aria-label={`Kategorie ${item} entfernen`} title={`Kategorie ${item} entfernen`} onClick={() => { if (items.some((block) => block.category === item)) { setCategoryToDelete(item); setMoveToCategory(categories.find((other) => other !== item) ?? "Werbung"); } else removeCategory(item); }}>Entfernen</button>}</span>)}<button className="btn" type="button" onClick={() => { setShowCategoryForm((value) => !value); setMessage(""); }}><Icon name="plus" size={13}/> Kategorie hinzufügen</button></div>
     {showCategoryForm && <form className="category-create-form" onSubmit={createCategory}><label className="settings-field"><span>Neue Kategorie</span><input autoFocus required maxLength={35} value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="z. B. Printwerbung" /></label><button className="btn btn-primary" type="submit">Hinzufügen</button><button className="btn" type="button" onClick={() => setShowCategoryForm(false)}>Abbrechen</button></form>}
     {categoryToDelete && <div className="category-delete-form"><div><strong>Kategorie „{categoryToDelete}“ entfernen?</strong><p>Zugehörige Bausteine bleiben erhalten und werden einer anderen Kategorie zugeordnet.</p></div><label className="settings-field"><span>Zielkategorie</span><select value={moveToCategory} onChange={(event) => setMoveToCategory(event.target.value)}>{categories.filter((item) => item !== categoryToDelete).map((item) => <option key={item}>{item}</option>)}</select></label><button className="btn btn-primary" type="button" onClick={() => removeCategory(categoryToDelete)}>Bausteine verschieben und Kategorie entfernen</button><button className="btn" type="button" onClick={() => setCategoryToDelete("")}>Abbrechen</button></div>}

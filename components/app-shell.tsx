@@ -7,11 +7,10 @@ import type { ReactNode } from "react";
 import { Icon } from "@/components/ui";
 import { MobileMenu, navigation } from "@/components/mobile-menu";
 import { LogoutButton } from "@/components/logout-button";
-import { removeLegacyDemoTasks } from "@/lib/remove-legacy-demo-tasks";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-
-const organizerSettingsKey = "sponsorproof.organizer-settings.v1";
+import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
+import { migrateLegacyBrowserDataToSupabase } from "@/lib/legacy-browser-data-migration";
 
 type UserDisplay = { name: string; initials: string; organization: string };
 
@@ -31,32 +30,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const [userDisplay, setUserDisplay] = useState(defaultUserDisplay);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-
-  useEffect(() => {
-    removeLegacyDemoTasks();
-  }, []);
+  const [dataMigration, setDataMigration] = useState<"checking" | "ready" | "error">("checking");
 
   useEffect(() => {
     let active = true;
+    if (!isSupabaseConfigured) setDataMigration("ready");
     const loadOrganization = () => {
-      try {
-        const saved = localStorage.getItem(organizerSettingsKey);
-        const settings = saved ? JSON.parse(saved) as { organization?: string } : {};
-        const organization = settings.organization?.trim() || defaultUserDisplay.organization;
-        setUserDisplay((current) => ({ ...current, organization }));
-      } catch {
-        setUserDisplay((current) => ({ ...current, organization: defaultUserDisplay.organization }));
-      }
+      if (!isSupabaseConfigured) return;
+      void fetchOrganizerSettings().then(({ data }) => {
+        if (active) setUserDisplay((current) => ({ ...current, organization: data?.organization?.trim() || defaultUserDisplay.organization }));
+      }).catch(() => undefined);
     };
     const loadUser = () => {
       if (!isSupabaseConfigured) return;
-      void createClient().auth.getUser().then(({ data }) => {
-        if (!active || !data.user) return;
+      void createClient().auth.getUser().then(async ({ data }) => {
+        if (!active) return;
+        if (!data.user) { setDataMigration("ready"); return; }
         const firstName = String(data.user.user_metadata?.first_name ?? "");
         const lastName = String(data.user.user_metadata?.last_name ?? "");
         const email = data.user.email ?? "";
         setUserDisplay((current) => ({ ...current, name: userDisplayName(firstName, lastName, email), initials: userInitials(firstName, lastName, email) }));
-      }).catch(() => undefined);
+        try {
+          await migrateLegacyBrowserDataToSupabase();
+          if (active) setDataMigration("ready");
+        } catch {
+          if (active) setDataMigration("error");
+        }
+      }).catch(() => { if (active) setDataMigration("ready"); });
     };
 
     loadOrganization();
@@ -77,6 +77,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   if (path.startsWith("/login")) return <>{children}</>;
+  if (dataMigration !== "ready") return <main className="content" style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
+    <section className="panel" style={{ maxWidth: 520, padding: 28 }}>
+      <h1>{dataMigration === "checking" ? "Daten werden geprüft …" : "Datenübernahme konnte nicht abgeschlossen werden"}</h1>
+      <p className="subtitle">{dataMigration === "checking" ? "Gespeicherte Angaben werden sicher in deinen Supabase-Veranstalterbereich übertragen." : "Deine bisherigen Browserdaten bleiben erhalten. Bitte prüfe, ob die aktuelle Supabase-Datenbankmigration ausgeführt wurde, und lade die Seite danach erneut."}</p>
+      {dataMigration === "error" && <button className="btn btn-primary" type="button" onClick={() => window.location.reload()}>Erneut versuchen</button>}
+    </section>
+  </main>;
   const isMobileMode = path === "/event-modus";
   if (isMobileMode) return <>{children}</>;
   return <div className="app-frame">

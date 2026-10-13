@@ -1,5 +1,3 @@
-export const eventContractValuesKey = "sponsorproof.event-contract-values.v1";
-
 export type EventContractValues = Record<string, number>;
 
 export function parseContractValue(value: string) {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Metric } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { fetchStoredEventsFromDatabase, readStoredEvents } from "@/lib/events-storage";
+import { fetchStoredEventsFromDatabase } from "@/lib/events-storage";
 import { useEventMetrics } from "@/lib/event-metrics";
 
 export function DashboardMetrics() {
@@ -14,12 +14,10 @@ export function DashboardMetrics() {
   useEffect(() => {
     async function loadEvents() {
       try {
-        const { data, error } = isSupabaseConfigured ? await fetchStoredEventsFromDatabase() : { data: readStoredEvents(), error: null };
-        const deleted = JSON.parse(localStorage.getItem("sponsorproof.deleted-events.v1") ?? "[]") as unknown;
-        const deletedIds = Array.isArray(deleted) ? deleted.filter((id): id is string => typeof id === "string") : [];
-        setEventIds((error || !data ? readStoredEvents() : data).filter((event) => !deletedIds.includes(event.id)).map((event) => event.id));
+        const { data, error } = isSupabaseConfigured ? await fetchStoredEventsFromDatabase() : { data: [], error: null };
+        setEventIds(error || !data ? [] : data.map((event) => event.id));
       } catch {
-        setEventIds(readStoredEvents().map((event) => event.id));
+        setEventIds([]);
       } finally {
         setEventsLoading(false);
       }

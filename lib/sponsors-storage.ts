@@ -29,6 +29,7 @@ export type ContractRow = {
   sponsor_id: string;
   title: string;
   value_cents: number;
+  gross_value_cents?: number;
   status: string;
   signed_at: string | null;
 };
@@ -85,10 +86,16 @@ export function contractFromRow(row: ContractRow): SponsorContract {
     eventId: row.event_id,
     title: row.title,
     value: formatCents(Number(row.value_cents) || 0),
+    grossValue: formatCents(Number(row.gross_value_cents) || 0),
     progress: 0,
     status: displayStatus(row.status),
     signedAt: displaySignedAt(row.signed_at),
   };
+}
+
+export async function updateContractRecord(id: string, details: { netValueCents: number; grossValueCents: number; signedAt: string | null }) {
+  const { createClient } = await import("@/lib/supabase/client");
+  return createClient().from("contracts").update({ value_cents: details.netValueCents, gross_value_cents: details.grossValueCents, signed_at: details.signedAt || null, status: details.signedAt ? "In Arbeit" : "Offen" }).eq("id", id);
 }
 
 export async function fetchSponsorRecords() {

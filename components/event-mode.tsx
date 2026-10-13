@@ -4,22 +4,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TasksOverview } from "@/components/tasks-overview";
 import { EmptyState, Icon } from "@/components/ui";
-import { fetchStoredEventsFromDatabase, formatEventDate, formatEventDateRange, readStoredEvents, type StoredEvent } from "@/lib/events-storage";
+import { fetchStoredEventsFromDatabase, formatEventDate, formatEventDateRange, type StoredEvent } from "@/lib/events-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { MobileMenu } from "@/components/mobile-menu";
 
 type EventModeTab = "event" | "proofs";
-const selectedEventKey = "sponso.event-mode.selected-event.v1";
-const deletedEventsKey = "sponsorproof.deleted-events.v1";
-
-function readDeletedEvents() {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(deletedEventsKey) ?? "[]");
-    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-  } catch {
-    return [];
-  }
-}
 
 function eventDates(event: StoredEvent) {
   if (event.startDate && event.endDate) return formatEventDateRange(event.startDate, event.endDate);
@@ -51,20 +40,18 @@ export function EventMode() {
 
     async function loadEvents() {
       try {
-        let availableEvents = readStoredEvents();
+        let visibleEvents: StoredEvent[] = [];
         if (isSupabaseConfigured) {
           const result = await fetchStoredEventsFromDatabase();
-          if (result.data && !result.error) availableEvents = result.data;
+          if (result.data && !result.error) visibleEvents = result.data;
           else if (result.error) setLoadError("Events konnten gerade nicht geladen werden.");
-        }
-        const visibleEvents = availableEvents.filter((event) => !readDeletedEvents().includes(event.id));
+        } else setLoadError("Supabase ist nicht eingerichtet.");
         setEvents(visibleEvents);
         const linkedEventId = new URLSearchParams(window.location.search).get("event") ?? "";
-        const savedEventId = localStorage.getItem(selectedEventKey) ?? "";
-        const initialEventId = visibleEvents.some((event) => event.id === linkedEventId) ? linkedEventId : savedEventId;
+        const initialEventId = linkedEventId;
         setSelectedEventId(visibleEvents.some((event) => event.id === initialEventId) ? initialEventId : "");
       } catch {
-        setEvents(readStoredEvents().filter((event) => !readDeletedEvents().includes(event.id)));
+        setEvents([]);
         setLoadError("Events konnten gerade nicht geladen werden.");
       } finally {
         setReady(true);
@@ -76,7 +63,6 @@ export function EventMode() {
 
   function selectEvent(eventId: string) {
     setSelectedEventId(eventId);
-    localStorage.setItem(selectedEventKey, eventId);
     window.history.pushState({}, "", eventModeHref("event", eventId));
   }
 

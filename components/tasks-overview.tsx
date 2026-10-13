@@ -2,74 +2,21 @@
 
 import { useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
 import { EmptyState, Icon, PageHeading, Status } from "@/components/ui";
-import { removeLegacyDemoTasks } from "@/lib/remove-legacy-demo-tasks";
 import { fetchSponsorRecords } from "@/lib/sponsors-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { fetchStoredEventsFromDatabase, readStoredEvents } from "@/lib/events-storage";
-import { fetchStoredBenefits, syncLegacyBenefitsToSupabase, updateStoredBenefit } from "@/lib/benefits-storage";
+import { fetchStoredEventsFromDatabase } from "@/lib/events-storage";
+import { fetchStoredBenefits, updateStoredBenefit } from "@/lib/benefits-storage";
+import { createStoredTask, deleteStoredTask, fetchStoredTasks, updateStoredTask } from "@/lib/tasks-storage";
+import { deleteStoredEvidenceRecord, downloadStoredEvidence, fetchStoredEvidence, uploadStoredEvidence, type StoredEvidence } from "@/lib/evidence-storage";
 
 type Task = { id: string; title: string; sponsor: string; sponsorId: string; due: string; dueAt?: string; status: "Offen" | "Erledigt"; eventId: string; eventTitle: string; source: "Leistung" | "Manuell" };
-type Evidence = { taskId: string; name: string; type: string; blob: Blob };
-type ExtraBenefit = { id: string; title: string; sponsorId: string; eventId: string; status: string; evidence?: string; dueAt?: string };
-const manualStorageKey = "sponsorproof.manual-tasks.v1";
-const extraBenefitsStorageKey = "sponsorproof.additional-benefits.v1";
-const taskStatusOverridesKey = "sponsorproof.task-status-overrides.v1";
-const evidenceDatabase = "sponsorproof-evidence";
-const evidenceStore = "proofs";
+type Evidence = StoredEvidence;
 const emptyDraft = { title: "", sponsor: "", due: "", eventId: "" };
 
 function formatDue(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return value;
   return new Intl.DateTimeFormat("de-DE").format(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-}
-
-function openEvidenceDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(evidenceDatabase, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(evidenceStore, { keyPath: "taskId" });
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function readEvidence(): Promise<Evidence[]> {
-  const database = await openEvidenceDatabase();
-  return new Promise((resolve, reject) => {
-    const request = database.transaction(evidenceStore, "readonly").objectStore(evidenceStore).getAll();
-    request.onsuccess = () => { resolve(request.result as Evidence[]); database.close(); };
-    request.onerror = () => { reject(request.error); database.close(); };
-  });
-}
-
-async function storeEvidence(record: Evidence): Promise<void> {
-  const database = await openEvidenceDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(evidenceStore, "readwrite");
-    transaction.objectStore(evidenceStore).put(record);
-    transaction.oncomplete = () => { resolve(); database.close(); };
-    transaction.onerror = () => { reject(transaction.error); database.close(); };
-    transaction.onabort = () => { reject(transaction.error); database.close(); };
-  });
-}
-
-async function deleteStoredEvidence(taskId: string): Promise<void> {
-  const database = await openEvidenceDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(evidenceStore, "readwrite");
-    transaction.objectStore(evidenceStore).delete(taskId);
-    transaction.oncomplete = () => { resolve(); database.close(); };
-    transaction.onerror = () => { reject(transaction.error); database.close(); };
-    transaction.onabort = () => { reject(transaction.error); database.close(); };
-  });
-}
-
-function contractTasks(extraBenefits: ExtraBenefit[] = [], sponsorNames: Record<string, string> = {}, eventNames: Record<string, string> = {}): Task[] {
-  return extraBenefits.map((benefit) => {
-    const id = `benefit-${benefit.id}`;
-    const status = benefit.evidence && benefit.evidence !== "Noch kein Nachweis" ? "Erledigt" : "Offen";
-    return { id, title: benefit.title, sponsor: sponsorNames[benefit.sponsorId] ?? (benefit.sponsorId ? "Sponsor" : "—"), sponsorId: benefit.sponsorId, due: benefit.dueAt ? formatDue(benefit.dueAt) : "—", dueAt: benefit.dueAt, status, eventId: benefit.eventId, eventTitle: eventNames[benefit.eventId] ?? "Event nicht gefunden", source: "Leistung" };
-  });
 }
 
 function TaskProofControl({ task, evidence, disabled, onProofAdded, onProofDeleted }: { task: Task; evidence?: Evidence; disabled: boolean; onProofAdded: (task: Task, file: File) => Promise<void>; onProofDeleted: (task: Task) => Promise<void> }) {
@@ -97,9 +44,11 @@ function TaskProofControl({ task, evidence, disabled, onProofAdded, onProofDelet
     }
   }
 
-  function downloadEvidence() {
+  async function downloadEvidence() {
     if (!evidence) return;
-    const url = URL.createObjectURL(evidence.blob);
+    const { data, error } = await downloadStoredEvidence(evidence);
+    if (error || !data) { setError("Der Nachweis konnte nicht geladen werden."); return; }
+    const url = URL.createObjectURL(data);
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = evidence.name;
@@ -154,42 +103,20 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
   useEffect(() => {
     async function loadTasks() {
       try {
-        removeLegacyDemoTasks();
-        const savedManual = JSON.parse(localStorage.getItem(manualStorageKey) ?? "[]") as Task[];
-        const extraBenefits = JSON.parse(localStorage.getItem(extraBenefitsStorageKey) ?? "[]") as ExtraBenefit[];
-        if (isSupabaseConfigured) {
-          const syncResult = await syncLegacyBenefitsToSupabase(extraBenefits);
-          if (syncResult.error) throw syncResult.error;
-        }
-        const statusOverrides = JSON.parse(localStorage.getItem(taskStatusOverridesKey) ?? "{}") as Partial<Record<string, Task["status"]>>;
-        const [evidence, sponsorResult, eventResult, benefitResult] = await Promise.all([
-          readEvidence(),
-          isSupabaseConfigured ? fetchSponsorRecords().catch(() => null) : Promise.resolve(null),
-          isSupabaseConfigured ? fetchStoredEventsFromDatabase().catch(() => null) : Promise.resolve(null),
-          isSupabaseConfigured ? fetchStoredBenefits().catch(() => null) : Promise.resolve(null),
+        if (!isSupabaseConfigured) throw new Error("Supabase ist nicht eingerichtet.");
+        const [evidenceResult, sponsorResult, eventResult, benefitResult, taskResult] = await Promise.all([
+          fetchStoredEvidence(), fetchSponsorRecords(), fetchStoredEventsFromDatabase(), fetchStoredBenefits(), fetchStoredTasks(),
         ]);
-        const sponsorNameMap = Object.fromEntries((sponsorResult?.data ?? []).map(({ sponsor }) => [sponsor.id, sponsor.name]));
-        const eventNameMap = Object.fromEntries((eventResult?.data ?? readStoredEvents()).map((event) => [event.id, event.title]));
+        if (evidenceResult.error || sponsorResult.error || eventResult.error || benefitResult.error || taskResult.error) throw new Error("Supabase-Daten konnten nicht vollständig geladen werden.");
+        const sponsorNameMap = Object.fromEntries((sponsorResult.data ?? []).map(({ sponsor }) => [sponsor.id, sponsor.name]));
+        const eventNameMap = Object.fromEntries((eventResult.data ?? []).map((event) => [event.id, event.title]));
         setSponsorNames(sponsorNameMap);
         setEventNames(eventNameMap);
-        const evidenceMap = Object.fromEntries(evidence.map((entry) => [entry.taskId, entry]));
+        const evidenceMap = Object.fromEntries((evidenceResult.data ?? []).map((entry) => [entry.taskId, entry]));
         setEvidenceByTask(evidenceMap);
-        const databaseBenefits: ExtraBenefit[] = (benefitResult?.data ?? []).flatMap((benefit) => benefit.sponsorId ? [{
-          id: benefit.id,
-          title: benefit.title,
-          sponsorId: benefit.sponsorId,
-          eventId: benefit.eventId,
-          status: benefit.status,
-          evidence: benefit.evidence,
-          dueAt: benefit.dueAt,
-        }] : []);
-        const benefitKeys = new Set(databaseBenefits.map((benefit) => `${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE")}`));
-        const allBenefits = [...databaseBenefits, ...extraBenefits.filter((benefit) => !benefitKeys.has(`${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE")}`))];
-        setItems([...contractTasks(allBenefits, sponsorNameMap, eventNameMap).map((task) => ({ ...task, status: (evidenceMap[task.id] ? "Erledigt" : statusOverrides[task.id] ?? task.status) as Task["status"] })), ...savedManual.map((task) => {
-          const sponsorId = task.sponsorId ?? "";
-          const eventId = task.eventId ?? eventFilter;
-          return { ...task, sponsorId, sponsor: sponsorNameMap[sponsorId] ?? (task.sponsor === sponsorId ? "Sponsor" : task.sponsor), status: (evidenceMap[task.id] ? "Erledigt" : "Offen") as Task["status"], eventId, eventTitle: eventNameMap[eventId] ?? (eventId === "all" ? "Keinem Event zugeordnet" : task.eventTitle && task.eventTitle !== "Event" ? task.eventTitle : "Event nicht gefunden") };
-        })]);
+        const benefitTasks: Task[] = (benefitResult.data ?? []).map((benefit) => ({ id: `benefit-${benefit.id}`, title: benefit.title, sponsor: sponsorNameMap[benefit.sponsorId ?? ""] ?? "—", sponsorId: benefit.sponsorId ?? "", due: benefit.dueAt ? formatDue(benefit.dueAt) : "—", dueAt: benefit.dueAt, status: (evidenceMap[`benefit-${benefit.id}`] || benefit.status === "Erfüllt" || benefit.status === "Erledigt" ? "Erledigt" : "Offen"), eventId: benefit.eventId, eventTitle: eventNameMap[benefit.eventId] ?? "Event nicht gefunden", source: "Leistung" }));
+        const manualTasks: Task[] = (taskResult.data ?? []).filter((task) => task.source === "Manuell").map((task) => ({ id: task.id, title: task.title, sponsor: sponsorNameMap[task.sponsor_id ?? ""] ?? task.sponsor_name ?? "—", sponsorId: task.sponsor_id ?? "", due: task.due_at ? formatDue(task.due_at) : "—", dueAt: task.due_at ?? undefined, status: (evidenceMap[task.id] || task.status === "Erledigt" ? "Erledigt" : "Offen"), eventId: task.event_id ?? "", eventTitle: eventNameMap[task.event_id ?? ""] ?? "Keinem Event zugeordnet", source: "Manuell" }));
+        setItems([...benefitTasks, ...manualTasks]);
       } catch {
         setMessage("Gespeicherte Aufgaben konnten nicht geladen werden.");
       } finally {
@@ -200,57 +127,34 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
   }, []);
 
   async function addProof(task: Task, file: File) {
-    const proof = { taskId: task.id, name: file.name, type: file.type, blob: file };
-    await storeEvidence(proof);
-    if (isSupabaseConfigured && task.source === "Leistung") {
-      const benefitId = task.id.slice("benefit-".length);
-      const { error } = await updateStoredBenefit(benefitId, { status: "Erfüllt", evidence: file.name });
+    const benefitId = task.source === "Leistung" ? task.id.slice("benefit-".length) : undefined;
+    const { data, error } = await uploadStoredEvidence({ file, eventId: task.eventId || undefined, taskId: task.id, benefitId });
+    if (error || !data) throw error ?? new Error("Nachweis konnte nicht gespeichert werden.");
+    if (task.source === "Leistung") {
+      const { error } = await updateStoredBenefit(task.id.slice("benefit-".length), { status: "Erfüllt", evidence: file.name });
       if (error) throw error;
-    }
+    } else { const { error } = await updateStoredTask(task.id, { status: "Erledigt" }); if (error) throw error; }
     window.dispatchEvent(new Event("sponso:event-timeline-updated"));
-    setEvidenceByTask((current) => ({ ...current, [task.id]: proof }));
-    const statusOverrides = JSON.parse(localStorage.getItem(taskStatusOverridesKey) ?? "{}") as Partial<Record<string, Task["status"]>>;
-    delete statusOverrides[task.id];
-    localStorage.setItem(taskStatusOverridesKey, JSON.stringify(statusOverrides));
-    if (task.source === "Leistung" && task.id.startsWith("benefit-custom-")) {
-      const benefitId = task.id.slice("benefit-".length);
-      const storedBenefits = JSON.parse(localStorage.getItem(extraBenefitsStorageKey) ?? "[]") as ExtraBenefit[];
-      localStorage.setItem(extraBenefitsStorageKey, JSON.stringify(storedBenefits.map((benefit) => benefit.id === benefitId ? { ...benefit, status: "Erledigt", evidence: file.name } : benefit)));
-    }
-    setItems((current) => {
-      const updated = current.map((item) => item.id === task.id ? { ...item, status: "Erledigt" as Task["status"] } : item);
-      if (task.source === "Manuell") localStorage.setItem(manualStorageKey, JSON.stringify(updated.filter((item) => item.source === "Manuell")));
-      return updated;
-    });
+    setEvidenceByTask((current) => ({ ...current, [task.id]: data }));
+    setItems((current) => current.map((item) => item.id === task.id ? { ...item, status: "Erledigt" as Task["status"] } : item));
     setMessage(`Nachweis für „${task.title}“ gespeichert. Aufgabe abgeschlossen.`);
   }
 
   async function deleteProof(task: Task) {
-    await deleteStoredEvidence(task.id);
-    if (isSupabaseConfigured && task.source === "Leistung") {
-      const benefitId = task.id.slice("benefit-".length);
-      const { error } = await updateStoredBenefit(benefitId, { status: "Offen", evidence: "Noch kein Nachweis" });
+    const evidence = evidenceByTask[task.id];
+    if (evidence) { const { error } = await deleteStoredEvidenceRecord(evidence); if (error) throw error; }
+    const benefitId = task.source === "Leistung" ? task.id.slice("benefit-".length) : undefined;
+    if (task.source === "Leistung") {
+      const { error } = await updateStoredBenefit(task.id.slice("benefit-".length), { status: "Offen", evidence: "Noch kein Nachweis" });
       if (error) throw error;
-    }
+    } else { const { error } = await updateStoredTask(task.id, { status: "Offen" }); if (error) throw error; }
     window.dispatchEvent(new Event("sponso:event-timeline-updated"));
-    const statusOverrides = JSON.parse(localStorage.getItem(taskStatusOverridesKey) ?? "{}") as Partial<Record<string, Task["status"]>>;
-    statusOverrides[task.id] = "Offen";
-    localStorage.setItem(taskStatusOverridesKey, JSON.stringify(statusOverrides));
-    if (task.source === "Leistung" && task.id.startsWith("benefit-custom-")) {
-      const benefitId = task.id.slice("benefit-".length);
-      const storedBenefits = JSON.parse(localStorage.getItem(extraBenefitsStorageKey) ?? "[]") as ExtraBenefit[];
-      localStorage.setItem(extraBenefitsStorageKey, JSON.stringify(storedBenefits.map((benefit) => benefit.id === benefitId ? { ...benefit, status: "Offen", evidence: "Noch kein Nachweis" } : benefit)));
-    }
     setEvidenceByTask((current) => {
       const updated = { ...current };
       delete updated[task.id];
       return updated;
     });
-    setItems((current) => {
-      const updated = current.map((item) => item.id === task.id ? { ...item, status: "Offen" as const } : item);
-      if (task.source === "Manuell") localStorage.setItem(manualStorageKey, JSON.stringify(updated.filter((item) => item.source === "Manuell")));
-      return updated;
-    });
+    setItems((current) => current.map((item) => item.id === task.id ? { ...item, status: "Offen" as const } : item));
     setMessage(`Nachweis für „${task.title}“ gelöscht. Die Aufgabe ist wieder offen.`);
   }
 
@@ -258,15 +162,11 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
     try {
       if (task.source === "Leistung") {
         const benefitId = task.id.slice("benefit-".length);
-        if (isSupabaseConfigured) {
-          const { error } = await updateStoredBenefit(benefitId, { dueAt: dueAt || null });
-          if (error) throw error;
-        }
-        const savedBenefits = JSON.parse(localStorage.getItem(extraBenefitsStorageKey) ?? "[]") as ExtraBenefit[];
-        localStorage.setItem(extraBenefitsStorageKey, JSON.stringify(savedBenefits.map((benefit) => benefit.id === benefitId ? { ...benefit, dueAt: dueAt || undefined } : benefit)));
+        const { error } = await updateStoredBenefit(benefitId, { dueAt: dueAt || null });
+        if (error) throw error;
       } else {
-        const savedTasks = JSON.parse(localStorage.getItem(manualStorageKey) ?? "[]") as Task[];
-        localStorage.setItem(manualStorageKey, JSON.stringify(savedTasks.map((savedTask) => savedTask.id === task.id ? { ...savedTask, due: dueAt || "—", dueAt: dueAt || undefined } : savedTask)));
+        const { error } = await updateStoredTask(task.id, { dueAt: dueAt || null });
+        if (error) throw error;
       }
       setItems((current) => current.map((item) => item.id === task.id ? { ...item, dueAt: dueAt || undefined, due: dueAt ? formatDue(dueAt) : "—" } : item));
       setMessage(dueAt ? "Fälligkeit gespeichert." : "Fälligkeit entfernt.");
@@ -275,14 +175,13 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
     }
   }
 
-  function deleteManualTask(task: Task) {
+  async function deleteManualTask(task: Task) {
     if (task.source !== "Manuell" || !window.confirm(`Möchtest du die manuelle Aufgabe „${task.title}“ wirklich löschen?`)) return;
     try {
-      const savedTasks = JSON.parse(localStorage.getItem(manualStorageKey) ?? "[]") as Task[];
-      localStorage.setItem(manualStorageKey, JSON.stringify(savedTasks.filter((savedTask) => savedTask.id !== task.id)));
-      const statusOverrides = JSON.parse(localStorage.getItem(taskStatusOverridesKey) ?? "{}") as Partial<Record<string, Task["status"]>>;
-      delete statusOverrides[task.id];
-      localStorage.setItem(taskStatusOverridesKey, JSON.stringify(statusOverrides));
+      const proof = evidenceByTask[task.id];
+      if (proof) { const { error } = await deleteStoredEvidenceRecord(proof); if (error) throw error; }
+      const { error } = await deleteStoredTask(task.id);
+      if (error) throw error;
       setItems((current) => current.filter((item) => item.id !== task.id));
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setEvidenceByTask((current) => {
@@ -291,22 +190,23 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
         return updated;
       });
       setMessage(`Aufgabe „${task.title}“ gelöscht.`);
-      void deleteStoredEvidence(task.id).catch(() => setMessage("Die Aufgabe wurde gelöscht, der zugehörige Nachweis konnte aber nicht entfernt werden."));
     } catch {
       setMessage("Die Aufgabe konnte nicht gelöscht werden.");
     }
   }
 
-  function createTask(formEvent: FormEvent<HTMLFormElement>) {
+  async function createTask(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     const eventId = draft.eventId || (eventFilter !== "all" ? eventFilter : "");
     const selectedSponsorRecord = items.find((task) => task.sponsorId === selectedSponsor);
     const selectedEventRecord = items.find((task) => task.eventId === eventId);
-    const manualTask: Task = { id: `manual-${Date.now()}`, title: draft.title.trim(), sponsor: selectedSponsorRecord?.sponsor || sponsorName || draft.sponsor.trim() || "—", sponsorId: selectedSponsor !== "all" ? selectedSponsor : "", due: draft.due.trim() || "—", dueAt: draft.due.trim() || undefined, status: "Offen", eventId, eventTitle: eventNames[eventId] ?? selectedEventRecord?.eventTitle ?? (eventId ? "Event nicht gefunden" : "Keinem Event zugeordnet"), source: "Manuell" };
-    const updated = [...items, manualTask];
     try {
-      localStorage.setItem(manualStorageKey, JSON.stringify(updated.filter((task) => task.source === "Manuell")));
-      setItems(updated);
+      const sponsorId = selectedSponsor !== "all" ? selectedSponsor : "";
+      const sponsor = selectedSponsorRecord?.sponsor || sponsorName || draft.sponsor.trim() || "—";
+      const { data, error } = await createStoredTask({ title: draft.title.trim(), eventId: eventId && eventId !== "all" ? eventId : undefined, sponsorId, sponsorName: sponsor, dueAt: draft.due.trim() || undefined });
+      if (error || !data) throw error ?? new Error("Aufgabe konnte nicht gespeichert werden.");
+      const manualTask: Task = { id: data.id, title: data.title, sponsor, sponsorId, due: data.due_at ? formatDue(data.due_at) : "—", dueAt: data.due_at ?? undefined, status: "Offen", eventId: data.event_id ?? "", eventTitle: eventNames[data.event_id ?? ""] ?? "Keinem Event zugeordnet", source: "Manuell" };
+      setItems((current) => [...current, manualTask]);
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setDraft(emptyDraft);
       setShowCreate(false);
