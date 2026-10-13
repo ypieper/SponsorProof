@@ -31,8 +31,20 @@ type LegacySavedPdf = { document: string; filename: string; generatedAt: string 
 function readJson<T>(key: string, fallback: T): T {
   try {
     const value = localStorage.getItem(key);
-    return value ? JSON.parse(value) as T : fallback;
+    if (!value) return fallback;
+    const parsed: unknown = JSON.parse(value);
+    return parsed === null || parsed === undefined ? fallback : parsed as T;
   } catch { return fallback; }
+}
+
+function readArray<T>(key: string): T[] {
+  const value = readJson<unknown>(key, []);
+  return Array.isArray(value) ? value as T[] : [];
+}
+
+function readRecord<T>(key: string): Record<string, T> {
+  const value = readJson<unknown>(key, {});
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, T> : {};
 }
 
 function openLegacyDatabase(name: string, version: number) {
@@ -96,12 +108,12 @@ async function runLegacyBrowserDataMigration() {
   if (markerError) throw markerError;
   if (marker) return;
 
-  const rawEvents = readJson<Record<string, unknown>[]>("sponsorproof.events.v1", []);
-  const eventDetails = readJson<Record<string, Partial<Record<"title" | "startDate" | "endDate" | "location" | "responsible", string>>>>("sponsorproof.event-details.v1", {});
+  const rawEvents = readArray<Record<string, unknown>>("sponsorproof.events.v1");
+  const eventDetails = readRecord<Partial<Record<"title" | "startDate" | "endDate" | "location" | "responsible", string>>>("sponsorproof.event-details.v1");
   const eventResult = await fetchStoredEventsFromDatabase();
   if (eventResult.error) throw eventResult.error;
   const knownEventIds = new Set((eventResult.data ?? []).map((event) => event.id));
-  const deletedEventIds = new Set(readJson<string[]>("sponsorproof.deleted-events.v1", []).filter(validUuid));
+  const deletedEventIds = new Set(readArray<string>("sponsorproof.deleted-events.v1").filter(validUuid));
   for (const event of rawEvents) {
     if (!validUuid(event.id) || typeof event.title !== "string") continue;
     const details = eventDetails[event.id] ?? {};
@@ -135,13 +147,13 @@ async function runLegacyBrowserDataMigration() {
     if (error) throw error;
   }
 
-  const categoryNames = readJson<string[]>("sponsorproof.block-categories.v1", []);
+  const categoryNames = readArray<string>("sponsorproof.block-categories.v1");
   if (categoryNames.length) {
     const { error } = await supabase.from("organization_benefit_categories").upsert(categoryNames.map((name) => ({ organization_id: organizationId, name })), { onConflict: "organization_id,name", ignoreDuplicates: true });
     if (error) throw error;
   }
 
-  const templates = readJson<LegacyBlock[]>("sponsorproof.blocks.v1", []);
+  const templates = readArray<LegacyBlock>("sponsorproof.blocks.v1");
   if (templates.length) {
     const { data: existingRows, error: existingError } = await supabase.from("benefit_templates").select("title");
     if (existingError) throw existingError;
@@ -153,7 +165,7 @@ async function runLegacyBrowserDataMigration() {
     }
   }
 
-  const legacyBenefits = readJson<LegacyBenefit[]>("sponsorproof.additional-benefits.v1", []);
+  const legacyBenefits = readArray<LegacyBenefit>("sponsorproof.additional-benefits.v1");
   const benefitImport = await syncLegacyBenefitsToSupabase(legacyBenefits);
   if (benefitImport.error) throw benefitImport.error;
   const { data: benefitRows, error: benefitError } = await supabase.from("benefits").select("id, event_id, sponsor_id, title, status, evidence_summary, due_at");
@@ -174,7 +186,7 @@ async function runLegacyBrowserDataMigration() {
     }
   }
 
-  const legacyTasks = readJson<LegacyTask[]>("sponsorproof.manual-tasks.v1", []);
+  const legacyTasks = readArray<LegacyTask>("sponsorproof.manual-tasks.v1");
   const taskResult = await fetchStoredTasks();
   if (taskResult.error) throw taskResult.error;
   const taskIdMap = new Map<string, string>();
@@ -193,7 +205,7 @@ async function runLegacyBrowserDataMigration() {
       if (error) throw error;
     }
   }
-  const statusOverrides = readJson<Record<string, string>>("sponsorproof.task-status-overrides.v1", {});
+  const statusOverrides = readRecord<string>("sponsorproof.task-status-overrides.v1");
   for (const [oldTaskId, status] of Object.entries(statusOverrides)) {
     const taskId = taskIdMap.get(oldTaskId);
     if (taskId && (status === "Offen" || status === "Erledigt")) {
@@ -208,9 +220,9 @@ async function runLegacyBrowserDataMigration() {
     }
   }
 
-  const netValues = readJson<Record<string, number>>("sponsorproof.event-contract-values.v1", {});
-  const grossValues = readJson<Record<string, number>>("sponsorproof.event-contract-gross-values.v1", {});
-  const signedDates = readJson<Record<string, string>>("sponsorproof.event-contract-dates.v1", {});
+  const netValues = readRecord<number>("sponsorproof.event-contract-values.v1");
+  const grossValues = readRecord<number>("sponsorproof.event-contract-gross-values.v1");
+  const signedDates = readRecord<string>("sponsorproof.event-contract-dates.v1");
   const contractIds = new Set([...Object.keys(netValues), ...Object.keys(grossValues), ...Object.keys(signedDates)].filter(validUuid));
   for (const id of contractIds) {
     const update: Record<string, unknown> = {};
@@ -223,8 +235,8 @@ async function runLegacyBrowserDataMigration() {
     }
   }
 
-  const createdReports = readJson<Record<string, string>>("sponsorproof.created-reports.v1", {});
-  const sentReports = new Set(readJson<string[]>("sponsorproof.sent-reports.v1", []));
+  const createdReports = readRecord<string>("sponsorproof.created-reports.v1");
+  const sentReports = new Set(readArray<string>("sponsorproof.sent-reports.v1"));
   for (const id of new Set([...Object.keys(createdReports), ...sentReports])) {
     if (!validUuid(id)) continue;
     const reportState: { generatedAt?: string | null; sentAt?: string | null } = {};
@@ -273,7 +285,7 @@ async function runLegacyBrowserDataMigration() {
       if (error) throw error;
     }
   }
-  const legacyPdfs = readJson<Record<string, LegacySavedPdf>>("sponsorproof.contract-pdfs.v1", {});
+  const legacyPdfs = readRecord<LegacySavedPdf>("sponsorproof.contract-pdfs.v1");
   for (const [contractId, saved] of Object.entries(legacyPdfs)) {
     if (!validUuid(contractId) || !saved.document) continue;
     const currentDocuments = await fetchContractDocuments(contractId);

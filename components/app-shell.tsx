@@ -31,6 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [userDisplay, setUserDisplay] = useState(defaultUserDisplay);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [dataMigration, setDataMigration] = useState<"checking" | "ready" | "error">("checking");
+  const [dataMigrationError, setDataMigrationError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -53,8 +54,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         try {
           await migrateLegacyBrowserDataToSupabase();
           if (active) setDataMigration("ready");
-        } catch {
-          if (active) setDataMigration("error");
+        } catch (error) {
+          if (active) {
+            setDataMigrationError(error instanceof Error ? error.message : "Unbekannter Fehler bei der Datenübernahme.");
+            setDataMigration("error");
+          }
         }
       }).catch(() => { if (active) setDataMigration("ready"); });
     };
@@ -81,6 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <section className="panel" style={{ maxWidth: 520, padding: 28 }}>
       <h1>{dataMigration === "checking" ? "Daten werden geprüft …" : "Datenübernahme konnte nicht abgeschlossen werden"}</h1>
       <p className="subtitle">{dataMigration === "checking" ? "Gespeicherte Angaben werden sicher in deinen Supabase-Veranstalterbereich übertragen." : "Deine bisherigen Browserdaten bleiben erhalten. Bitte prüfe, ob die aktuelle Supabase-Datenbankmigration ausgeführt wurde, und lade die Seite danach erneut."}</p>
+      {dataMigration === "error" && dataMigrationError && <p className="field-message error" role="alert">Technischer Hinweis: {dataMigrationError}</p>}
       {dataMigration === "error" && <button className="btn btn-primary" type="button" onClick={() => window.location.reload()}>Erneut versuchen</button>}
     </section>
   </main>;
