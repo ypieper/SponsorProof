@@ -1133,7 +1133,25 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
 .sidebar { z-index: 40; }
 .mobile-menu-layer { z-index: 1000; background: transparent !important; }
 .mobile-menu-backdrop { z-index: 0; background: rgba(8, 18, 28, .68) !important; }
-.mobile-drawer { z-index: 1; }
+.mobile-drawer {
+  position: fixed !important;
+  inset: auto !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: min(320px, calc(100vw - 48px)) !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 100vh;
+  display: flex !important;
+  flex-direction: column !important;
+  z-index: 1;
+}
+.mobile-drawer-head { flex: 0 0 auto; }
+.mobile-drawer .nav-label { flex: 0 0 auto; margin-top: 8px; }
+.mobile-drawer .nav-list { display: grid !important; flex: 0 0 auto; gap: 6px; }
+.mobile-drawer .nav-link { min-height: 48px; }
 .sidebar .nav-link,
 .mobile-drawer .nav-link { color: #d5dfe8 !important; }
 .sidebar .nav-link.active,
