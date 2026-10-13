@@ -142,7 +142,7 @@ set search_path = ''
 as $$
 declare
   organization uuid := public.current_organization_id();
-  token text := encode(gen_random_bytes(32), 'hex');
+  token text := encode(extensions.gen_random_bytes(32), 'hex');
 begin
   if not public.is_organization_owner(organization) then
     raise exception 'Only the workspace owner can invite members';
@@ -155,7 +155,7 @@ begin
   end if;
 
   insert into public.organization_invitations (organization_id, email, token_hash, invited_by)
-  values (organization, lower(trim(invited_email)), encode(digest(token, 'sha256'), 'hex'), (select auth.uid()));
+  values (organization, lower(trim(invited_email)), encode(extensions.digest(token, 'sha256'), 'hex'), (select auth.uid()));
   return token;
 end;
 $$;
@@ -178,7 +178,7 @@ begin
 
   select * into invitation
   from public.organization_invitations i
-  where i.token_hash = encode(digest(invitation_token, 'sha256'), 'hex')
+  where i.token_hash = encode(extensions.digest(invitation_token, 'sha256'), 'hex')
     and i.accepted_at is null and i.expires_at > now()
     and lower(i.email) = current_email
   for update;
