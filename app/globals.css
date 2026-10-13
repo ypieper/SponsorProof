@@ -1015,8 +1015,105 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
 .auth-heading p { color: #7c8997; font-size: 12px; }
 .auth-mode-switch { color: #ce4e36; }
 
+/* High-contrast navigation and a more distinctive product frame. */
+.sidebar {
+  background: #142a3e;
+  border-right-color: #203c53;
+  box-shadow: 8px 0 28px rgba(14, 31, 47, .08);
+}
+.sidebar .brand { color: #fff; }
+.sidebar .brand-mark { background: linear-gradient(145deg, #ff9378, #ec6246); }
+.sidebar .nav-label { color: #91a6b9; }
+.sidebar .nav-link { color: #c5d1dc; }
+.sidebar .nav-link:hover { border-color: #28465d; background: #1b374e; color: #fff; }
+.sidebar .nav-link.active {
+  border-color: #f1785c;
+  background: linear-gradient(100deg, #f1785c, #e55c40);
+  color: #fff;
+  box-shadow: 0 7px 17px rgba(10, 22, 34, .2);
+}
+.sidebar .nav-link.active::before { display: none; }
+.sidebar .help-card {
+  border-color: #29445a;
+  background: linear-gradient(145deg, #1c3a51, #183247);
+}
+.sidebar .help-card strong { color: #f7f9fb; }
+.sidebar .help-card p { color: #b6c4d0; }
+.sidebar .help-card a { color: #ff9b80; }
+.sidebar .profile { border-top-color: #2b465c; }
+.sidebar .profile:hover { background: #1b374e; }
+.sidebar .profile b { color: #f5f7fa; }
+.sidebar .profile small { color: #9fb1c1; }
+.sidebar .profile > span:last-child { color: #9fb1c1 !important; }
+.sidebar .avatar { color: #8f3929; background: #ffe5dc; }
+
+.mobile-menu-layer { isolation: isolate; background: rgba(11, 23, 35, .58); }
+.mobile-menu-backdrop { background: transparent; }
+.mobile-drawer {
+  background-color: #142a3e;
+  color: #f5f7fa;
+  border-right: 1px solid #28465d;
+  box-shadow: 14px 0 44px rgba(8, 19, 30, .34);
+  opacity: 1;
+}
+.mobile-drawer .brand { color: #fff; }
+.mobile-drawer .nav-label { color: #91a6b9; }
+.mobile-drawer .nav-link { color: #c5d1dc; }
+.mobile-drawer .nav-link:hover { border-color: #28465d; background: #1b374e; color: #fff; }
+.mobile-drawer .nav-link.active {
+  border-color: #f1785c;
+  background: linear-gradient(100deg, #f1785c, #e55c40);
+  color: #fff;
+  box-shadow: 0 7px 17px rgba(10, 22, 34, .2);
+}
+.mobile-drawer .nav-link.active::before { display: none; }
+.mobile-drawer .icon-button { border-color: #36536a; background: #1b374e; color: #eaf0f5; }
+.mobile-drawer .icon-button:hover { border-color: #f1785c; color: #fff; }
+
+.main-area { background: linear-gradient(180deg, #f8fafc 0, #f3f6f9 100%); }
+.topbar { background: rgba(255, 255, 255, .96); }
+.content { padding-top: 38px; }
+.page-heading { align-items: center; margin-bottom: 32px; }
+.page-heading h1 { font-size: 32px; }
+.page-heading .subtitle { max-width: 62ch; }
+.metric-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 122px;
+  border-radius: 16px;
+  box-shadow: 0 5px 18px rgba(24, 42, 60, .065);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.metric-card::after {
+  position: absolute;
+  right: -24px;
+  bottom: -45px;
+  width: 104px;
+  height: 104px;
+  border: 1px solid rgba(241, 107, 80, .11);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+.metric-card:hover { transform: translateY(-2px); box-shadow: 0 11px 28px rgba(24, 42, 60, .1); }
+.panel, .event-card, .table-panel { box-shadow: 0 6px 22px rgba(24, 42, 60, .06); }
+.panel-heading { margin-bottom: 19px; }
+.panel-heading h2 { font-size: 16px; }
+.dashboard-grid { gap: 20px; }
+.dashboard-grid > .panel { min-height: 100%; }
+.dashboard-event-row { border-radius: 14px; }
+.event-overview-row { border-radius: 14px; }
+.table-panel { border-radius: 15px; }
+.table th { padding-top: 12px; padding-bottom: 12px; }
+.table td { padding-top: 15px; padding-bottom: 15px; }
+.btn-primary { font-weight: 700; }
+.event-mode-fab { border-color: transparent; }
+
 @media (max-width: 700px) {
   h1 { font-size: 25px; }
+  .content { padding-top: 27px; }
+  .page-heading { align-items: flex-start; margin-bottom: 25px; }
+  .page-heading h1 { font-size: 27px; }
   .panel { border-radius: 14px; }
   .metric-card { border-radius: 13px; }
   .topbar { background: rgba(255, 255, 255, .94); backdrop-filter: blur(14px); }
