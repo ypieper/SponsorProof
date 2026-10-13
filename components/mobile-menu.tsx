@@ -14,7 +14,7 @@ export const navigation = [
   { label: "Einstellungen", href: "/einstellungen", icon: "settings" },
 ];
 
-export function MobileMenu() {
+export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: boolean }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -78,7 +78,7 @@ export function MobileMenu() {
           const route = item.href.split("?")[0];
           const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
           return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
-        })}</nav>
+        })}{isPlatformAdmin && <a href="/admin" className={`nav-link ${path.startsWith("/admin") ? "active" : ""}`} aria-current={path.startsWith("/admin") ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name="users" size={17}/></span>Administration</a>}</nav>
       </div>
     </div>}
   </>;

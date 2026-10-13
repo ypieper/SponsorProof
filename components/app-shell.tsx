@@ -30,6 +30,7 @@ function userInitials(firstName: string, lastName: string, email: string) {
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const [userDisplay, setUserDisplay] = useState(defaultUserDisplay);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
   useEffect(() => {
     removeLegacyDemoTasks();
@@ -60,6 +61,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     loadOrganization();
     loadUser();
+    if (isSupabaseConfigured) {
+      void fetch("/api/admin/access").then((response) => response.ok ? response.json() : null)
+        .then((result) => { if (active) setIsPlatformAdmin(Boolean(result?.isAdmin)); })
+        .catch(() => undefined);
+    }
     window.addEventListener("sponsorproof:organizer-settings-updated", loadOrganization);
     window.addEventListener("sponsorproof:user-account-updated", loadUser);
 
@@ -81,14 +87,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         const route = item.href.split("?")[0];
         const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
         return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
-      })}</nav>
+      })}{isPlatformAdmin && <a href="/admin" className={`nav-link ${path.startsWith("/admin") ? "active" : ""}`} aria-current={path.startsWith("/admin") ? "page" : undefined}><span className="nav-icon"><Icon name="users" size={17}/></span>Administration</a>}</nav>
       <div className="sidebar-bottom">
         <div className="help-card"><span className="metric-icon"><Icon name="spark" size={15}/></span><strong>Gut vorbereitet?</strong><p>Behalte alle Sponsoringleistungen an einem Ort im Blick.</p><Link href="/event-modus">Event-Modus öffnen →</Link></div>
         <Link className="profile" href="/einstellungen?tab=profile" aria-label="Einstellungen und Meine Daten öffnen" title="Meine Daten bearbeiten"><span className="avatar">{userDisplay.initials}</span><div><b title={userDisplay.name}>{userDisplay.name}</b><small title={userDisplay.organization}>{userDisplay.organization}</small></div><span style={{marginLeft:"auto",color:"#8a94a0"}}><Icon name="chevron" size={16}/></span></Link>
       </div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><MobileMenu/><div className="crumb">Workspace <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path === "/" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Bausteine" : path.includes("einstellungen") ? "Einstellungen" : "Workspace"}</b></div><div className="top-actions"><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link><LogoutButton/></div></header>
+      <header className="topbar"><MobileMenu isPlatformAdmin={isPlatformAdmin}/><div className="crumb">Workspace <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? "Administration" : path === "/" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Bausteine" : path.includes("einstellungen") ? "Einstellungen" : "Workspace"}</b></div><div className="top-actions"><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link><LogoutButton/></div></header>
       {children}
     </div>
     <Link className="event-mode-fab" href="/event-modus"><Icon name="camera" size={17}/> Nachweis-Modus</Link>
