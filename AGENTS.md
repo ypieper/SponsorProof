@@ -1,8 +1,8 @@
-# SponsorProof – Projektleitlinien
+# sponso – Projektleitlinien
 
 ## Produkt
 
-SponsorProof ist eine einfache Sponsoring-Management-Web-App für kleine und mittelgroße Veranstalter. Sie soll den bislang über Excel, Word, E-Mail und Handyfotos verteilten Ablauf an einem Ort unterstützen.
+sponso ist eine einfache Sponsoring-Management-Web-App für kleine und mittelgroße Veranstalter. Sie soll den bislang über Excel, Word, E-Mail und Handyfotos verteilten Ablauf an einem Ort unterstützen.
 
 Das Kernziel umfasst:
 

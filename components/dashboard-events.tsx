@@ -2,18 +2,32 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { events } from "@/lib/demo-data";
-import { formatEventDateRange, readStoredEvents, type StoredEvent } from "@/lib/events-storage";
-import { Icon, Progress } from "@/components/ui";
+import { fetchStoredEventsFromDatabase, formatEventDateRange, readStoredEvents, type StoredEvent } from "@/lib/events-storage";
+import { EmptyState, Icon, Progress } from "@/components/ui";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { useEventMetrics } from "@/lib/event-metrics";
 
 const deletedEventsKey = "sponsorproof.deleted-events.v1";
 
 export function DashboardEvents() {
   const [createdEvents, setCreatedEvents] = useState<StoredEvent[]>([]);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setCreatedEvents(readStoredEvents());
+    async function loadEvents() {
+      try {
+        if (isSupabaseConfigured) {
+          const { data, error } = await fetchStoredEventsFromDatabase();
+          setCreatedEvents(!error && data ? data : readStoredEvents());
+        } else {
+          setCreatedEvents(readStoredEvents());
+        }
+      } finally {
+        setReady(true);
+      }
+    }
+    void loadEvents();
     try {
       const storedIds: unknown = JSON.parse(localStorage.getItem(deletedEventsKey) ?? "[]");
       if (Array.isArray(storedIds)) setDeletedIds(storedIds.filter((id): id is string => typeof id === "string"));
@@ -22,38 +36,31 @@ export function DashboardEvents() {
     }
   }, []);
 
-  const featuredEvents = [
-    ...events.map((event) => ({
-      id: event.id,
-      title: event.title,
-      date: event.date,
-      location: event.location,
-      status: event.status,
-      sponsorship: event.sponsorship,
-      sponsors: event.sponsors,
-      completed: event.completed,
-      benefits: event.benefits,
-    })),
-    ...createdEvents.map((event) => ({
+  const visibleEvents = createdEvents.filter((event) => !deletedIds.includes(event.id)).slice(0, 3);
+  const eventMetrics = useEventMetrics(visibleEvents.map((event) => event.id));
+  const featuredEvents = visibleEvents.map((event) => {
+    const metrics = eventMetrics.byEvent[event.id];
+    return ({
       id: event.id,
       title: event.title,
       date: formatEventDateRange(event.startDate, event.endDate),
       location: event.location,
       status: "In Vorbereitung",
-      sponsorship: 0,
-      sponsors: 0,
-      completed: 0,
-      benefits: 0,
-    })),
-  ].filter((event) => !deletedIds.includes(event.id)).slice(0, 3);
+      sponsorship: metrics?.sponsorship ?? 0,
+      sponsors: metrics?.sponsors ?? 0,
+      completed: metrics?.completed ?? 0,
+      benefits: metrics?.benefits ?? 0,
+      loading: eventMetrics.loading || eventMetrics.error,
+    });
+  });
 
   return <>
     <div className="dashboard-event-list">
       {featuredEvents.map((event) => <Link href={`/events/${event.id}`} className="dashboard-event-row" key={event.id}>
         <div className="dashboard-event-primary"><span className="dashboard-event-date">{event.date}</span><h3>{event.title}</h3><span className="event-location"><Icon name="pin" size={13}/>{event.location}</span></div>
-        <div className="dashboard-event-facts"><div className="dashboard-event-fact"><small>Sponsoringvolumen</small><b>{event.sponsorship.toLocaleString("de-DE")} €</b></div><div className="dashboard-event-fact"><small>Sponsoren</small><b>{event.sponsors}</b></div><div className="dashboard-event-fact"><small>Status</small><span className="status status-progress">{event.status}</span></div><div className="dashboard-event-progress"><span>{event.completed} von {event.benefits} Leistungen erledigt</span><Progress value={event.benefits ? Math.round(event.completed / event.benefits * 100) : 0}/></div></div>
+        <div className="dashboard-event-facts"><div className="dashboard-event-fact"><small>Sponsoringvolumen netto</small><b>{event.loading ? "—" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(event.sponsorship)}</b></div><div className="dashboard-event-fact"><small>Sponsoren</small><b>{event.loading ? "—" : event.sponsors}</b></div><div className="dashboard-event-fact"><small>Leistungen</small><b>{event.loading ? "—" : event.benefits}</b></div><div className="dashboard-event-fact"><small>Erledigt</small><b>{event.loading ? "—" : `${event.benefits ? Math.round(event.completed / event.benefits * 100) : 0} %`}</b></div><div className="dashboard-event-progress"><span>Leistungsfortschritt</span><Progress value={event.benefits ? Math.round(event.completed / event.benefits * 100) : 0}/></div></div>
       </Link>)}
-      {featuredEvents.length === 0 && <div className="dashboard-event-empty">Noch keine Events angelegt.</div>}
+      {ready && featuredEvents.length === 0 && <EmptyState title="Noch keine Events" description="Lege ein Event an, um Sponsoren und Leistungen zu verwalten." action={<Link className="btn btn-primary" href="/events"><Icon name="plus" size={14}/> Event erstellen</Link>} />}
     </div>
     <Link className="btn btn-primary dashboard-section-link" href="/events">Alle Events ansehen <Icon name="arrow" size={14}/></Link>
   </>;

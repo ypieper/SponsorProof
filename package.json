@@ -1,5 +1,5 @@
 {
-  "name": "sponsorproof",
+  "name": "sponso",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,7 +9,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.3",
+    "docx-preview": "^0.4.1",
+    "docxtemplater": "^3.71.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "next": "15.5.9",
+    "pizzip": "^3.3.0",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },

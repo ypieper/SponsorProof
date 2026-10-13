@@ -1,32 +1,85 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
-import type { Sponsor, SponsorContract } from "@/lib/demo-data";
-import { Icon, Progress, Status } from "@/components/ui";
+import type { Sponsor, SponsorContract } from "@/lib/sponsor-types";
+import { EmptyState, Icon, Progress, Status } from "@/components/ui";
 import { contractDateForInput, eventContractDatesKey } from "@/lib/event-contract-dates";
 import { contractPdfStorageKey, type SavedContractPdf, type SavedContractPdfs } from "@/lib/contract-pdf-storage";
 import { eventContractValuesKey, formatContractValue, parseContractValue, parseContractValueInput, type EventContractValues } from "@/lib/event-contract-values";
+import { contractFilename, fillContractTemplate } from "@/lib/render-contract-template";
+import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
-type Block = { title: string; category: string; description: string; detail: string; value: string };
-type EventBenefit = { id?: string; title: string; category: string; description: string; status: string; evidence: string; sponsorId: string; eventId: string };
+type Block = { title: string; category: string; description: string; detail: string };
+type BenefitTemplate = Pick<Block, "title" | "category" | "description" | "detail">;
+type EventBenefit = { id?: string; title: string; category: string; description: string; status: string; evidence: string; sponsorId: string; eventId: string; dueAt?: string };
 const storageKey = "sponsorproof.additional-benefits.v1";
+const grossContractValuesKey = "sponsorproof.event-contract-gross-values.v1";
 const blocksStorageKey = "sponsorproof.blocks.v1";
+const editedBlocksStorageKey = "sponsorproof.block-edits.v1";
+const deletedBlocksStorageKey = "sponsorproof.block-deletions.v1";
 const manualTasksKey = "sponsorproof.manual-tasks.v1";
 const evidenceDatabase = "sponsorproof-evidence";
 const evidenceStore = "proofs";
 const contractFileDatabase = "sponsorproof-contract-files";
 const contractFileStore = "signed-contracts";
+const generatedContractStore = "generated-contracts";
 
 type ManualTask = { id: string; sponsor: string; sponsorId?: string; eventId?: string };
 type StoredSignedContract = { contractId: string; file: Blob; name: string; mimeType: string; uploadedAt: string };
+type GeneratedContractFile = { file: Blob; filename: string; mimeType: string; generatedAt: string };
+type StoredGeneratedContracts = { contractId: string; pdf?: GeneratedContractFile; docx?: GeneratedContractFile };
+type AssignedTemplate = { name: string; storagePath: string; file: Blob };
+
+function grossValueFromNet(netValue: number) {
+  return Math.round((netValue * 1.19 + Number.EPSILON) * 100) / 100;
+}
+
+function normalizeBenefitTitle(title: string) {
+  return title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+}
 
 function openContractFileDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(contractFileDatabase, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(contractFileStore, { keyPath: "contractId" });
+    const request = indexedDB.open(contractFileDatabase, 2);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(contractFileStore)) database.createObjectStore(contractFileStore, { keyPath: "contractId" });
+      if (!database.objectStoreNames.contains(generatedContractStore)) database.createObjectStore(generatedContractStore, { keyPath: "contractId" });
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
+  });
+}
+
+async function readGeneratedContracts(contractId: string) {
+  const database = await openContractFileDatabase();
+  return new Promise<StoredGeneratedContracts | null>((resolve, reject) => {
+    const request = database.transaction(generatedContractStore, "readonly").objectStore(generatedContractStore).get(contractId);
+    request.onsuccess = () => { resolve((request.result as StoredGeneratedContracts | undefined) ?? null); database.close(); };
+    request.onerror = () => { reject(request.error); database.close(); };
+  });
+}
+
+async function saveGeneratedContract(contractId: string, format: "pdf" | "docx", file: Blob, filename: string) {
+  const database = await openContractFileDatabase();
+  return new Promise<StoredGeneratedContracts>((resolve, reject) => {
+    const transaction = database.transaction(generatedContractStore, "readwrite");
+    const store = transaction.objectStore(generatedContractStore);
+    let saved: StoredGeneratedContracts = { contractId };
+    const request = store.get(contractId);
+    request.onsuccess = () => {
+      saved = {
+        ...((request.result as StoredGeneratedContracts | undefined) ?? { contractId }),
+        [format]: { file, filename, mimeType: file.type, generatedAt: new Date().toISOString() },
+      };
+      store.put(saved);
+    };
+    request.onerror = () => transaction.abort();
+    transaction.oncomplete = () => { resolve(saved); database.close(); };
+    transaction.onerror = () => { reject(transaction.error); database.close(); };
+    transaction.onabort = () => { reject(transaction.error); database.close(); };
   });
 }
 
@@ -146,7 +199,7 @@ function buildContractPdf(lines: { text: string; size?: number; bold?: boolean; 
   });
   objects[1] = `<< /Type /Pages /Kids [${pageRefs.join(" ")}] /Count ${pages.length} >>`;
 
-  let document = "%PDF-1.4\n% SponsorProof\n";
+  let document = "%PDF-1.4\n% sponso\n";
   const offsets = [0];
   objects.forEach((object, index) => {
     offsets.push(document.length);
@@ -159,9 +212,13 @@ function buildContractPdf(lines: { text: string; size?: number; bold?: boolean; 
   return new Blob([document], { type: "application/pdf" });
 }
 
-export function EventSponsorDetail({ eventId, eventTitle, sponsor, contract, baseBenefits, blocks }: {
+export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventEndDate, eventLocation, eventResponsible, sponsor, contract, baseBenefits, blocks }: {
   eventId: string;
   eventTitle: string;
+  eventStartDate: string;
+  eventEndDate: string;
+  eventLocation: string;
+  eventResponsible: string;
   sponsor: Sponsor;
   contract: SponsorContract;
   baseBenefits: EventBenefit[];
@@ -169,34 +226,97 @@ export function EventSponsorDetail({ eventId, eventTitle, sponsor, contract, bas
 }) {
   const [addedBenefits, setAddedBenefits] = useState<EventBenefit[]>([]);
   const [availableBlocks, setAvailableBlocks] = useState(blocks);
+  const [blocksLoading, setBlocksLoading] = useState(isSupabaseConfigured);
+  const [blocksLoadError, setBlocksLoadError] = useState("");
   const [adding, setAdding] = useState(false);
   const [selectedBlocks, setSelectedBlocks] = useState<string[]>([]);
+  const [benefitDueDates, setBenefitDueDates] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [signedOn, setSignedOn] = useState(() => contractDateForInput(contract.signedAt));
   const [evidenceTaskIds, setEvidenceTaskIds] = useState<string[]>([]);
   const [manualTasks, setManualTasks] = useState<ManualTask[]>([]);
   const [savedContractPdf, setSavedContractPdf] = useState<SavedContractPdf | null>(null);
+  const [generatedContracts, setGeneratedContracts] = useState<StoredGeneratedContracts | null>(null);
   const [contractAmountInput, setContractAmountInput] = useState(() => String(parseContractValue(contract.value)));
   const [contractAmountFocused, setContractAmountFocused] = useState(false);
+  const [grossContractAmountInput, setGrossContractAmountInput] = useState("");
+  const [grossContractAmountFocused, setGrossContractAmountFocused] = useState(false);
+  const [grossContractAmountManuallyEdited, setGrossContractAmountManuallyEdited] = useState(false);
   const [signedContractFile, setSignedContractFile] = useState<StoredSignedContract | null>(null);
+  const [showContractOutput, setShowContractOutput] = useState(false);
+  const [contractTemplate, setContractTemplate] = useState<AssignedTemplate | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateLoadMessage, setTemplateLoadMessage] = useState("");
+  const [creatingContract, setCreatingContract] = useState<"pdf" | "docx" | null>(null);
+  const [printReady, setPrintReady] = useState(false);
+  const printPreviewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as EventBenefit[];
       setAddedBenefits(saved.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id));
       const savedBlocks = JSON.parse(localStorage.getItem(blocksStorageKey) ?? "[]") as Block[];
-      setAvailableBlocks([...blocks, ...savedBlocks]);
+      const editedStarters = JSON.parse(localStorage.getItem(editedBlocksStorageKey) ?? "{}") as Record<string, Partial<Block>>;
+      const deletedStarterIds = JSON.parse(localStorage.getItem(deletedBlocksStorageKey) ?? "[]") as string[];
+      const updatedStarterBlocks = blocks.flatMap((block, index) => {
+        const id = `starter-${index + 1}`;
+        return deletedStarterIds.includes(id) ? [] : [{ ...block, ...editedStarters[id] }];
+      });
+      if (!isSupabaseConfigured) setAvailableBlocks([...updatedStarterBlocks, ...savedBlocks]);
       const savedPdfs = JSON.parse(localStorage.getItem(contractPdfStorageKey) ?? "{}") as SavedContractPdfs;
       setSavedContractPdf(savedPdfs[contract.id] ?? null);
       const savedAmounts = JSON.parse(localStorage.getItem(eventContractValuesKey) ?? "{}") as EventContractValues;
       const savedAmount = savedAmounts[contract.id];
+      const netAmount = typeof savedAmount === "number" && Number.isFinite(savedAmount) ? savedAmount : parseContractValue(contract.value);
       if (typeof savedAmount === "number" && Number.isFinite(savedAmount)) {
         setContractAmountInput(String(savedAmount));
       }
+      const savedGrossAmounts = JSON.parse(localStorage.getItem(grossContractValuesKey) ?? "{}") as EventContractValues;
+      const savedGrossAmount = savedGrossAmounts[contract.id];
+      const calculatedGrossAmount = grossValueFromNet(netAmount);
+      const hasSavedGrossAmount = typeof savedGrossAmount === "number" && Number.isFinite(savedGrossAmount);
+      setGrossContractAmountInput(String(hasSavedGrossAmount ? savedGrossAmount : calculatedGrossAmount));
+      setGrossContractAmountManuallyEdited(hasSavedGrossAmount && savedGrossAmount !== calculatedGrossAmount);
     } catch {
       setMessage("Gespeicherte zusätzliche Leistungen konnten nicht geladen werden.");
     }
+    readGeneratedContracts(contract.id).then(setGeneratedContracts).catch(() => {
+      setMessage("Erstellte Vertragsdateien konnten nicht geladen werden.");
+    });
   }, [contract.id, eventId, sponsor.id]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setBlocksLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    async function loadBenefitTemplates() {
+      try {
+        const { data, error } = await createClient()
+          .from("benefit_templates")
+          .select("title, category, description, detail")
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        if (!cancelled) {
+          const templates = (data ?? []) as BenefitTemplate[];
+          setAvailableBlocks(templates.length > 0 ? templates : blocks);
+          setBlocksLoadError("");
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableBlocks(blocks);
+          setBlocksLoadError("Die Bausteine konnten nicht aus deiner Bibliothek geladen werden.");
+        }
+      } finally {
+        if (!cancelled) setBlocksLoading(false);
+      }
+    }
+
+    void loadBenefitTemplates();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,29 +341,65 @@ export function EventSponsorDetail({ eventId, eventTitle, sponsor, contract, bas
   }, [contract.id]);
 
   const benefits = useMemo(() => [...baseBenefits, ...addedBenefits], [baseBenefits, addedBenefits]);
+  const existingBenefitTitles = new Set(benefits.map((benefit) => normalizeBenefitTitle(benefit.title)));
   const taskIds = [...benefits.map((benefit) => benefitTaskId(eventId, benefit)), ...manualTasks.map((task) => task.id)];
   const completedTasks = taskIds.filter((taskId) => evidenceTaskIds.includes(taskId) || benefits.some((benefit) => benefitTaskId(eventId, benefit) === taskId && Boolean(benefit.evidence && benefit.evidence !== "Noch kein Nachweis"))).length;
   const taskProgress = taskIds.length ? Math.round(completedTasks / taskIds.length * 100) : 0;
   const contractStatus = !signedOn ? "Offen" : taskIds.length > 0 && completedTasks === taskIds.length ? "Erledigt" : "In Arbeit";
 
+  function updateNetContractValue(value: string) {
+    setContractAmountInput(value);
+    const netAmount = parseContractValueInput(value);
+    if (!grossContractAmountManuallyEdited && Number.isFinite(netAmount) && netAmount >= 0) {
+      setGrossContractAmountInput(String(grossValueFromNet(netAmount)));
+    }
+  }
+
+  function updateGrossContractValue(value: string) {
+    setGrossContractAmountInput(value);
+    setGrossContractAmountManuallyEdited(true);
+  }
+
+  function finishGrossContractValueEdit() {
+    const amount = parseContractValueInput(grossContractAmountInput);
+    const netAmount = parseContractValueInput(contractAmountInput);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setGrossContractAmountInput(String(grossValueFromNet(Number.isFinite(netAmount) && netAmount >= 0 ? netAmount : 0)));
+      setGrossContractAmountManuallyEdited(false);
+    } else {
+      setGrossContractAmountInput(String(amount));
+      setGrossContractAmountManuallyEdited(amount !== grossValueFromNet(netAmount));
+    }
+    setGrossContractAmountFocused(false);
+  }
+
   function saveContractDetails() {
     const amount = parseContractValueInput(contractAmountInput);
+    const grossAmount = grossContractAmountInput.trim() ? parseContractValueInput(grossContractAmountInput) : grossValueFromNet(amount);
     if (!Number.isFinite(amount) || amount < 0) {
-      setMessage("Bitte gib ein gültiges Vertragsvolumen ein.");
+      setMessage("Bitte gib einen gültigen Vertragswert netto ein.");
+      return;
+    }
+    if (!Number.isFinite(grossAmount) || grossAmount < 0) {
+      setMessage("Bitte gib einen gültigen Bruttovertragswert ein.");
       return;
     }
     try {
       const savedAmounts = JSON.parse(localStorage.getItem(eventContractValuesKey) ?? "{}") as EventContractValues;
+      const savedGrossAmounts = JSON.parse(localStorage.getItem(grossContractValuesKey) ?? "{}") as EventContractValues;
       const savedDates = JSON.parse(localStorage.getItem(eventContractDatesKey) ?? "{}") as Record<string, string>;
       savedAmounts[contract.id] = amount;
+      savedGrossAmounts[contract.id] = grossAmount;
       localStorage.setItem(eventContractValuesKey, JSON.stringify(savedAmounts));
+      localStorage.setItem(grossContractValuesKey, JSON.stringify(savedGrossAmounts));
       savedDates[contract.id] = signedOn;
       localStorage.setItem(eventContractDatesKey, JSON.stringify(savedDates));
+      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setContractAmountInput(String(amount));
       setContractAmountFocused(false);
-      setMessage(savedContractPdf ? "Vertragsvolumen und Vertragsdatum gespeichert. Erstelle den Vertrag erneut, damit das PDF die Änderungen enthält." : "Vertragsvolumen und Vertragsdatum gespeichert.");
+      setMessage(savedContractPdf || generatedContracts?.pdf ? "Vertragswerte und Vertragsdatum gespeichert. Erstelle den Vertrag erneut, damit die PDF-Datei die Änderungen enthält." : "Vertragswerte und Vertragsdatum gespeichert.");
     } catch {
-      setMessage("Vertragsvolumen und Vertragsdatum konnten nicht gespeichert werden.");
+      setMessage("Vertragswerte und Vertragsdatum konnten nicht gespeichert werden.");
     }
   }
 
@@ -254,6 +410,7 @@ export function EventSponsorDetail({ eventId, eventTitle, sponsor, contract, bas
       const savedFile = { contractId: contract.id, file, name: file.name, mimeType: file.type || "application/octet-stream", uploadedAt: new Date().toISOString() };
       await saveSignedContract(savedFile);
       setSignedContractFile(savedFile);
+      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setMessage("Die gezeichnete Vertragsfassung wurde hochgeladen.");
     } catch {
       setMessage("Die gezeichnete Vertragsfassung konnte nicht gespeichert werden.");
@@ -276,32 +433,72 @@ export function EventSponsorDetail({ eventId, eventTitle, sponsor, contract, bas
     try {
       await deleteSignedContract(contract.id);
       setSignedContractFile(null);
+      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setMessage("Die gezeichnete Fassung wurde gelöscht. Du kannst eine neue Datei hochladen.");
     } catch {
       setMessage("Die gezeichnete Fassung konnte nicht gelöscht werden.");
     }
   }
 
+  function openAddBenefits() {
+    setSelectedBlocks([]);
+    setBenefitDueDates({});
+    setAdding(true);
+  }
+
+  function closeAddBenefits() {
+    setAdding(false);
+    setSelectedBlocks([]);
+    setBenefitDueDates({});
+  }
+
   function addSelectedBlocks() {
-    const additions = availableBlocks.filter((block) => selectedBlocks.includes(block.title)).map((block, index): EventBenefit => ({
-      id: `custom-${Date.now()}-${index}`,
-      title: block.title,
-      category: block.category,
-      description: block.description,
-      status: "Offen",
-      evidence: "Noch kein Nachweis",
-      sponsorId: sponsor.id,
-      eventId,
-    }));
-    if (additions.length === 0) return;
     try {
       const allSaved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as EventBenefit[];
+      const savedForThisContract = allSaved.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id);
+      const alreadyAdded = new Set([...benefits, ...savedForThisContract].map((benefit) => normalizeBenefitTitle(benefit.title)));
+      const requested = availableBlocks.filter((block) => selectedBlocks.includes(block.title));
+      const seen = new Set(alreadyAdded);
+      const eligible = requested.filter((block) => {
+        const key = normalizeBenefitTitle(block.title);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (eligible.length < requested.length) {
+        setMessage("Ein oder mehrere Bausteine wurden diesem Sponsor im Event bereits hinzugefügt und übersprungen.");
+      }
+      const additions = eligible.map((block, index): EventBenefit => ({
+        id: `custom-${Date.now()}-${index}`,
+        title: block.title,
+        category: block.category,
+        description: block.description,
+        status: "Offen",
+        evidence: "Noch kein Nachweis",
+        sponsorId: sponsor.id,
+        eventId,
+        dueAt: benefitDueDates[block.title] || eventEndDate || undefined,
+      }));
+      if (additions.length === 0) {
+        if (requested.length === 0) setMessage("Wähle zuerst mindestens einen Baustein aus.");
+        else {
+          setSelectedBlocks([]);
+          setBenefitDueDates({});
+          setAdding(false);
+          setMessage("Diese Bausteine wurden diesem Sponsor im Event bereits hinzugefügt.");
+        }
+        return;
+      }
       const updated = [...allSaved, ...additions];
       localStorage.setItem(storageKey, JSON.stringify(updated));
       setAddedBenefits((current) => [...current, ...additions]);
+      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setSelectedBlocks([]);
+      setBenefitDueDates({});
       setAdding(false);
-      setMessage(`${additions.length} ${additions.length === 1 ? "Leistung hinzugefügt" : "Leistungen hinzugefügt"}.`);
+      setMessage(eligible.length < requested.length
+        ? `${additions.length} ${additions.length === 1 ? "Leistung hinzugefügt" : "Leistungen hinzugefügt"}. Bereits vorhandene Bausteine wurden übersprungen.`
+        : `${additions.length} ${additions.length === 1 ? "Leistung hinzugefügt" : "Leistungen hinzugefügt"}.`);
     } catch {
       setMessage("Die Leistungen konnten nicht gespeichert werden.");
     }
@@ -317,10 +514,64 @@ export function EventSponsorDetail({ eventId, eventTitle, sponsor, contract, bas
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function createContractPdf() {
+  function downloadGeneratedContract(format: "pdf" | "docx") {
+    const generated = generatedContracts?.[format];
+    if (!generated) return;
+    downloadDocument(generated.file, generated.filename);
+  }
+
+  async function renderContractTemplatePdf(documentBlob: Blob, preview: HTMLDivElement) {
+    const { renderAsync } = await import("docx-preview");
+    preview.replaceChildren();
+    await renderAsync(documentBlob, preview, undefined, { breakPages: true, renderHeaders: true, renderFooters: true });
+    await document.fonts.ready;
+    const pages = Array.from(preview.querySelectorAll<HTMLElement>(".docx"));
+    if (!pages.length) throw new Error("Die Word-Vorlage enthält keine darstellbaren Seiten.");
+
+    const html2canvas = (await import("html2canvas")).default;
+    const { jsPDF } = await import("jspdf");
+    let pdf: InstanceType<typeof jsPDF> | null = null;
+    for (const [index, page] of pages.entries()) {
+      const bounds = page.getBoundingClientRect();
+      const width = page.offsetWidth || bounds.width;
+      const height = page.offsetHeight || bounds.height;
+      if (!width || !height) throw new Error("Eine Seite der Word-Vorlage konnte nicht dargestellt werden.");
+      const canvas = await html2canvas(page, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        onclone: (clonedDocument) => {
+          const clonedPreview = clonedDocument.querySelector(".contract-print-preview") as HTMLElement | null;
+          if (clonedPreview) {
+            clonedPreview.style.position = "absolute";
+            clonedPreview.style.left = "0";
+            clonedPreview.style.top = "0";
+            clonedPreview.style.zIndex = "1";
+            clonedPreview.style.width = `${width}px`;
+            clonedPreview.style.visibility = "visible";
+          }
+        },
+      });
+      const pageWidth = width * 0.75;
+      const pageHeight = height * 0.75;
+      const orientation = pageWidth > pageHeight ? "landscape" : "portrait";
+      if (!pdf) pdf = new jsPDF({ orientation, unit: "pt", format: [pageWidth, pageHeight], compress: true });
+      else pdf.addPage([pageWidth, pageHeight], orientation);
+      pdf.addImage(canvas, "JPEG", 0, 0, pageWidth, pageHeight, `contract-page-${index}`, "FAST");
+    }
+    if (!pdf) throw new Error("Das PDF konnte nicht erstellt werden.");
+    return pdf.output("blob");
+  }
+
+  async function createDefaultContractPdf() {
     const amount = parseContractValueInput(contractAmountInput);
+    const grossAmount = grossContractAmountInput.trim() ? parseContractValueInput(grossContractAmountInput) : grossValueFromNet(amount);
     if (!Number.isFinite(amount) || amount < 0) {
-      setMessage("Bitte gib ein gültiges Vertragsvolumen ein.");
+      setMessage("Bitte gib einen gültigen Vertragswert netto ein.");
+      return;
+    }
+    if (!Number.isFinite(grossAmount) || grossAmount < 0) {
+      setMessage("Bitte gib einen gültigen Bruttovertragswert ein.");
       return;
     }
     const lines = [
@@ -328,11 +579,13 @@ export function EventSponsorDetail({ eventId, eventTitle, sponsor, contract, bas
       { text: "Vereinbarte Leistungen", size: 14, bold: true, gap: 20 },
       { text: `Event: ${eventTitle}`, size: 11, bold: true },
       { text: `Sponsor: ${sponsor.name}` },
-      { text: `Vertragsvolumen: ${formatContractValue(amount)}`, gap: 18 },
+      { text: `Vertragswert netto: ${formatContractValue(amount)}`, gap: 18 },
+      { text: `Vertragswert brutto: ${formatContractValue(grossAmount)}`, gap: 18 },
       { text: "LEISTUNGSÜBERSICHT", size: 11, bold: true, gap: 10 },
       ...(benefits.length ? benefits.flatMap((benefit, index) => [
         { text: `${index + 1}. ${benefit.title} · ${benefit.category}`, size: 11, bold: true, gap: 4 },
         { text: benefit.description || "Keine Leistungsbeschreibung hinterlegt.", gap: 12 },
+        ...(benefit.dueAt ? [{ text: `Fällig bis: ${new Intl.DateTimeFormat("de-DE").format(new Date(`${benefit.dueAt}T00:00:00`))}`, gap: 12 }] : []),
       ]) : [{ text: "Für diesen Vertrag sind noch keine einzelnen Leistungen erfasst." }]),
     ];
     const blob = buildContractPdf(lines);
@@ -346,23 +599,179 @@ export function EventSponsorDetail({ eventId, eventTitle, sponsor, contract, bas
     try {
       const savedPdfs = JSON.parse(localStorage.getItem(contractPdfStorageKey) ?? "{}") as SavedContractPdfs;
       const savedAmounts = JSON.parse(localStorage.getItem(eventContractValuesKey) ?? "{}") as EventContractValues;
+      const savedGrossAmounts = JSON.parse(localStorage.getItem(grossContractValuesKey) ?? "{}") as EventContractValues;
       const savedPdf = { document: await blob.text(), filename, generatedAt: new Date().toISOString() };
       savedPdfs[contract.id] = savedPdf;
       savedAmounts[contract.id] = amount;
+      savedGrossAmounts[contract.id] = grossAmount;
       localStorage.setItem(eventContractValuesKey, JSON.stringify(savedAmounts));
+      localStorage.setItem(grossContractValuesKey, JSON.stringify(savedGrossAmounts));
       localStorage.setItem(contractPdfStorageKey, JSON.stringify(savedPdfs));
       setSavedContractPdf(savedPdf);
-      setMessage("Der Vertrag wurde als PDF heruntergeladen und im Vertragsreiter des Sponsors gespeichert.");
+    } catch {}
+    try {
+      const generated = await saveGeneratedContract(contract.id, "pdf", blob, filename);
+      setGeneratedContracts(generated);
+      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
+      setMessage("Der Vertrag wurde heruntergeladen und steht im Vertragsreiter erneut zum Download bereit.");
     } catch {
-      setMessage("Der Vertrag wurde als PDF heruntergeladen, konnte aber nicht im Vertragsreiter gespeichert werden.");
+      setMessage("Der Vertrag wurde heruntergeladen, konnte aber nicht für einen späteren Download gespeichert werden.");
     }
   }
 
-  return <section className="panel sponsor-event-detail"><div className="panel-heading"><div><Link className="text-link" href={`/events/${eventId}?tab=sponsoren`}>← Alle Sponsoren</Link><div className="eyebrow" style={{ marginTop: 12 }}>SPONSOR IM EVENT</div><div className="sponsor-event-name-row"><h2>{sponsor.name}</h2><Link className="text-link sponsor-event-customer-link" href={`/sponsors/${sponsor.id}`}>Kundenkartei →</Link></div></div><Status value={contractStatus}/></div>
-    <section className="panel sponsor-contract-data"><div className="table-head"><div><h2>Vertragsdaten</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Volumen, Vertragsdatum und Fortschritt für diesen Eventvertrag.</p></div></div><div className="sponsor-contract-detail-grid"><div className="contract-volume-field"><label><span>Vertragsvolumen</span><input aria-label="Vertragsvolumen in Euro" inputMode="decimal" type="text" value={contractAmountFocused ? contractAmountInput : Number.isFinite(parseContractValueInput(contractAmountInput)) ? formatContractValue(parseContractValueInput(contractAmountInput)) : contractAmountInput} onFocus={() => setContractAmountFocused(true)} onChange={(event) => setContractAmountInput(event.target.value)} onBlur={() => setContractAmountFocused(false)} /></label></div><div><span>Vereinbarte Leistungen</span><b>{benefits.length}</b></div><div><span>Leistungsfortschritt</span><Progress value={taskProgress}/></div><div className="event-contract-date"><label><span>Datum der Vertragsunterzeichnung</span><input aria-label="Datum der Vertragsunterzeichnung" type="date" value={signedOn} onChange={(event) => setSignedOn(event.target.value)} /></label></div></div><div className="contract-details-save"><button className="btn btn-primary" type="button" onClick={saveContractDetails}>Speichern</button></div></section>
-    <section className="panel sponsor-contract-files"><div className="table-head"><div><h2>Vertrag</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Erstelle und lade die aktuelle Vertragsfassung herunter oder füge eine gezeichnete Fassung hinzu.</p></div></div><div className="contract-file-actions"><button className="btn btn-primary" type="button" onClick={createContractPdf}><Icon name="file" size={15}/> Vertrag erstellen</button>{savedContractPdf && <button className="btn" type="button" onClick={downloadSavedContractPdf}><Icon name="file" size={15}/> Aktuelle Fassung herunterladen</button>}<label className="btn contract-upload-button"><Icon name="file" size={15}/> Gezeichnete Fassung hochladen<input type="file" accept=".pdf,application/pdf,image/*" onChange={(event) => { void uploadSignedContractFile(event); }} /></label></div>{signedContractFile && <div className="signed-contract-file"><div><b>{signedContractFile.name}</b><span>Hochgeladen am {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(signedContractFile.uploadedAt))}</span></div><div className="signed-contract-actions"><button className="btn" type="button" onClick={downloadSignedContractFile}><Icon name="file" size={14}/> Gezeichnete Fassung herunterladen</button><button className="btn signed-contract-delete" type="button" onClick={() => { void removeSignedContractFile(); }}>Datei löschen</button></div></div>}</section>
-    <div className="panel table-panel sponsor-contract-benefits"><div className="table-head"><div><h2>Vereinbarte Leistungen</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Einzelleistungen und Nachweisstatus für diesen Eventvertrag.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); setAdding(true); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button></div>{benefits.length ? <table className="table"><thead><tr><th>LEISTUNG</th><th>KATEGORIE</th><th>NACHWEIS</th><th>STATUS</th></tr></thead><tbody>{benefits.map((benefit) => <tr key={benefit.id ?? benefit.title}><td><b style={{ color: "#3d4c5b" }}>{benefit.title}</b><div className="task-caption">{benefit.description}</div></td><td>{benefit.category}</td><td>{benefit.evidence}</td><td><Status value={benefit.evidence && benefit.evidence !== "Noch kein Nachweis" ? "Erledigt" : "Offen"}/></td></tr>)}</tbody></table> : <p className="sponsor-event-empty">Für diesen Sponsor sind noch keine einzelnen Leistungen im Eventvertrag erfasst.</p>}</div>
+  async function openContractOutput() {
+    setShowContractOutput(true);
+    setContractTemplate(null);
+    setTemplateLoadMessage("");
+    setTemplateLoading(true);
+    try {
+      const supabase = createClient();
+      const { data: assignment, error: assignmentError } = await supabase
+        .from("event_contract_templates")
+        .select("template_id")
+        .eq("event_id", eventId)
+        .maybeSingle();
+      if (assignmentError) throw assignmentError;
+      if (!assignment) return;
+      const { data: template, error: templateError } = await supabase
+        .from("contract_templates")
+        .select("name, storage_path")
+        .eq("id", assignment.template_id)
+        .single();
+      if (templateError) throw templateError;
+      const { data: file, error: fileError } = await supabase.storage.from("sponsorproof-files").download(template.storage_path);
+      if (fileError) throw fileError;
+      setContractTemplate({ name: template.name, storagePath: template.storage_path, file });
+    } catch {
+      setTemplateLoadMessage("Die Vertragsvorlage konnte nicht geladen werden. Prüfe bitte, ob die Supabase-Migration ausgeführt wurde.");
+    } finally {
+      setTemplateLoading(false);
+    }
+  }
+
+  function downloadDocument(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function createTemplatedDocument(format: "docx" | "pdf") {
+    if (creatingContract) return;
+    if (!contractTemplate) {
+      if (format === "docx") return;
+      setShowContractOutput(false);
+      setCreatingContract("pdf");
+      try {
+        await createDefaultContractPdf();
+      } finally {
+        setCreatingContract(null);
+      }
+      return;
+    }
+    const amount = parseContractValueInput(contractAmountInput);
+    const grossAmount = grossContractAmountInput.trim() ? parseContractValueInput(grossContractAmountInput) : grossValueFromNet(amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setMessage("Bitte gib einen gültigen Vertragswert netto ein.");
+      setShowContractOutput(false);
+      return;
+    }
+    if (!Number.isFinite(grossAmount) || grossAmount < 0) {
+      setMessage("Bitte gib einen gültigen Bruttovertragswert ein.");
+      setShowContractOutput(false);
+      return;
+    }
+    setCreatingContract(format);
+    try {
+      const savedOrganizer = JSON.parse(localStorage.getItem("sponsorproof.organizer-settings.v1") ?? "{}") as Record<string, string>;
+      const contractForTemplate = { ...contract, value: formatContractValue(amount), signedAt: signedOn };
+      const blob = await fillContractTemplate(contractTemplate.file, {
+        organizer: savedOrganizer,
+        sponsor,
+        contract: contractForTemplate,
+        grossValue: grossAmount,
+        event: { id: eventId, title: eventTitle, startDate: eventStartDate, endDate: eventEndDate, location: eventLocation, responsible: eventResponsible, createdAt: "" },
+        benefits,
+      });
+      if (format === "docx") {
+        const filename = contractFilename(sponsor.name, eventTitle, "docx");
+        downloadDocument(blob, filename);
+        setShowContractOutput(false);
+        try {
+          const generated = await saveGeneratedContract(contract.id, "docx", blob, filename);
+          setGeneratedContracts(generated);
+          window.dispatchEvent(new Event("sponso:event-timeline-updated"));
+          setMessage("Der Word-Vertrag wurde heruntergeladen und steht im Vertragsreiter erneut zum Download bereit.");
+        } catch {
+          setMessage("Der Word-Vertrag wurde heruntergeladen, konnte aber nicht für einen späteren Download gespeichert werden.");
+        }
+        return;
+      }
+      if (!printPreviewRef.current) throw new Error("Die PDF-Datei konnte nicht erstellt werden.");
+      setPrintReady(true);
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      const pdfBlob = await renderContractTemplatePdf(blob, printPreviewRef.current);
+      const filename = contractFilename(sponsor.name, eventTitle, "pdf");
+      downloadDocument(pdfBlob, filename);
+      setShowContractOutput(false);
+      setPrintReady(false);
+      try {
+        const generated = await saveGeneratedContract(contract.id, "pdf", pdfBlob, filename);
+        setGeneratedContracts(generated);
+        window.dispatchEvent(new Event("sponso:event-timeline-updated"));
+        setMessage("Der PDF-Vertrag wurde heruntergeladen und steht im Vertragsreiter erneut zum Download bereit.");
+      } catch {
+        setMessage("Der PDF-Vertrag wurde heruntergeladen, konnte aber nicht für einen späteren Download gespeichert werden.");
+      }
+    } catch (error) {
+      setPrintReady(false);
+      setMessage(error instanceof Error ? `Der Vertrag konnte nicht erstellt werden: ${error.message}` : "Der Vertrag konnte nicht erstellt werden.");
+    } finally {
+      setCreatingContract(null);
+    }
+  }
+
+  return <section className="panel sponsor-event-detail"><div className="panel-heading"><div><div className="eyebrow">SPONSOR IM EVENT</div><div className="sponsor-event-name-row"><h2>{sponsor.name}</h2><Link className="text-link sponsor-event-customer-link" href={`/sponsors/${sponsor.id}`}>Kundenkartei →</Link></div></div><div className="sponsor-event-heading-actions"><Status value={contractStatus}/><Link className="btn" href={`/events/${eventId}?tab=sponsoren`}>← Alle Sponsoren</Link></div></div>
+    <section className="panel sponsor-contract-data"><div className="table-head"><div><h2>Vertragsdaten</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Nettowert, Bruttowert, Vertragsdatum und Fortschritt für diesen Eventvertrag.</p></div></div><div className="sponsor-contract-detail-grid"><div className="contract-volume-field"><label><span>Vertragswert netto</span><input aria-label="Vertragswert netto in Euro" inputMode="decimal" type="text" value={contractAmountFocused ? contractAmountInput : Number.isFinite(parseContractValueInput(contractAmountInput)) ? formatContractValue(parseContractValueInput(contractAmountInput)) : contractAmountInput} onFocus={() => setContractAmountFocused(true)} onChange={(event) => updateNetContractValue(event.target.value)} onBlur={() => setContractAmountFocused(false)} /></label></div><div className="contract-volume-field"><label><span>Vertragswert brutto</span><input aria-label="Vertragswert brutto in Euro" inputMode="decimal" type="text" value={grossContractAmountFocused ? grossContractAmountInput : grossContractAmountInput && Number.isFinite(parseContractValueInput(grossContractAmountInput)) ? formatContractValue(parseContractValueInput(grossContractAmountInput)) : grossContractAmountInput} onFocus={() => setGrossContractAmountFocused(true)} onChange={(event) => updateGrossContractValue(event.target.value)} onBlur={finishGrossContractValueEdit} /></label></div><div><span>Vereinbarte Leistungen</span><b>{benefits.length}</b></div><div><span>Leistungsfortschritt</span><Progress value={taskProgress}/></div><div className="event-contract-date"><label><span>Datum der Vertragsunterzeichnung</span><input aria-label="Datum der Vertragsunterzeichnung" type="date" value={signedOn} onChange={(event) => setSignedOn(event.target.value)} /></label></div></div><div className="contract-details-save"><button className="btn btn-primary" type="button" onClick={saveContractDetails}>Speichern</button></div></section>
+    <section className="panel sponsor-contract-files"><div className="table-head"><div><h2>Vertrag</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Erstelle eine Vertragsfassung oder füge eine gezeichnete Fassung hinzu.</p></div></div><div className="contract-file-actions"><button className="btn btn-primary" type="button" onClick={() => { void openContractOutput(); }}><Icon name="file" size={15}/> Vertrag erstellen</button>{generatedContracts?.pdf ? <button className="btn" type="button" onClick={() => downloadGeneratedContract("pdf")}><Icon name="file" size={15}/> PDF erneut herunterladen</button> : savedContractPdf && <button className="btn" type="button" onClick={downloadSavedContractPdf}><Icon name="file" size={15}/> Aktuelle Fassung herunterladen</button>}{generatedContracts?.docx && <button className="btn" type="button" onClick={() => downloadGeneratedContract("docx")}><Icon name="file" size={15}/> Word erneut herunterladen</button>}<label className="btn contract-upload-button"><Icon name="file" size={15}/> Gezeichnete Fassung hochladen<input type="file" accept=".pdf,application/pdf,image/*" onChange={(event) => { void uploadSignedContractFile(event); }} /></label></div>{signedContractFile && <div className="signed-contract-file"><div><b>{signedContractFile.name}</b><span>Hochgeladen am {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(signedContractFile.uploadedAt))}</span></div><div className="signed-contract-actions"><button className="btn" type="button" onClick={downloadSignedContractFile}><Icon name="file" size={14}/> Gezeichnete Fassung herunterladen</button><button className="btn signed-contract-delete" type="button" onClick={() => { void removeSignedContractFile(); }}>Datei löschen</button></div></div>}</section>
+    <div className="panel table-panel sponsor-contract-benefits"><div className="table-head"><div><h2>Vereinbarte Leistungen</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Einzelleistungen und Nachweisstatus für diesen Eventvertrag.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); openAddBenefits(); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button></div>{benefits.length ? <table className="table"><thead><tr><th>LEISTUNG</th><th>KATEGORIE</th><th>FÄLLIG</th><th>NACHWEIS</th><th>STATUS</th></tr></thead><tbody>{benefits.map((benefit) => <tr key={benefit.id ?? benefit.title}><td><b style={{ color: "#3d4c5b" }}>{benefit.title}</b><div className="task-caption">{benefit.description}</div></td><td>{benefit.category}</td><td>{benefit.dueAt ? new Intl.DateTimeFormat("de-DE").format(new Date(`${benefit.dueAt}T00:00:00`)) : "—"}</td><td>{benefit.evidence}</td><td><Status value={benefit.evidence && benefit.evidence !== "Noch kein Nachweis" ? "Erledigt" : "Offen"}/></td></tr>)}</tbody></table> : <EmptyState className="empty-state-compact" title="Noch keine Leistungen" description="Füge Leistungen aus der Bausteinbibliothek zu diesem Vertrag hinzu." action={<button className="btn btn-primary" type="button" onClick={() => { setMessage(""); openAddBenefits(); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button>} />}</div>
     {message && <p className="task-feedback" role="status">{message}</p>}
-    {adding && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setAdding(false); }}><section className="create-modal add-benefit-modal" role="dialog" aria-modal="true" aria-labelledby="add-benefit-title"><div className="create-modal-head"><div><h2 id="add-benefit-title">Leistungen aus Bausteinen hinzufügen</h2><p>Wähle die Bausteine, die du diesem Eventvertrag zuordnen möchtest.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => setAdding(false)}><Icon name="close" size={16}/></button></div><div className="add-benefit-options">{availableBlocks.map((block, index) => <label className="add-benefit-option" key={`${block.title}-${index}`}><input type="checkbox" checked={selectedBlocks.includes(block.title)} onChange={(event) => setSelectedBlocks((current) => event.target.checked ? [...current, block.title] : current.filter((title) => title !== block.title))}/><span><b>{block.title}</b><small>{block.category} · {block.value}</small><span>{block.description}</span></span></label>)}</div><div className="create-modal-actions"><button className="btn" type="button" onClick={() => setAdding(false)}>Abbrechen</button><button className="btn btn-primary" type="button" onClick={addSelectedBlocks} disabled={selectedBlocks.length === 0}>Auswahl hinzufügen</button></div></section></div>}
+    {adding && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAddBenefits(); }}>
+      <section className="create-modal add-benefit-modal" role="dialog" aria-modal="true" aria-labelledby="add-benefit-title">
+        <div className="create-modal-head"><div><h2 id="add-benefit-title">Leistungen hinzufügen</h2><p>Wähle die vereinbarten Leistungen. Für jede kannst du eine eigene Fälligkeit festlegen.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={closeAddBenefits}><Icon name="close" size={16}/></button></div>
+        <div className="add-benefit-options">{blocksLoading ? <p className="task-empty">Bausteine werden geladen …</p> : blocksLoadError ? <EmptyState title="Bausteine nicht verfügbar" description={blocksLoadError} action={<Link className="btn btn-primary" href="/bausteine">Zur Bausteinbibliothek</Link>} /> : availableBlocks.length ? availableBlocks.map((block, index) => {
+          const alreadyAdded = existingBenefitTitles.has(normalizeBenefitTitle(block.title));
+          return <div className={`add-benefit-item ${selectedBlocks.includes(block.title) ? "selected" : ""} ${alreadyAdded ? "already-added" : ""}`} key={`${block.title}-${index}`}>
+          <label className="add-benefit-option"><input type="checkbox" checked={alreadyAdded || selectedBlocks.includes(block.title)} disabled={alreadyAdded} onChange={(event) => {
+            if (event.target.checked) {
+              setSelectedBlocks((current) => current.includes(block.title) ? current : [...current, block.title]);
+              setBenefitDueDates((current) => ({ ...current, [block.title]: current[block.title] || eventEndDate }));
+            } else {
+              setSelectedBlocks((current) => current.filter((title) => title !== block.title));
+            }
+          }}/><span><b>{block.title}</b><small>{block.category}{block.detail ? ` · ${block.detail}` : ""}</small>{alreadyAdded && <small className="add-benefit-already-added">Bereits hinzugefügt</small>}<span>{block.description}</span></span></label>
+          {selectedBlocks.includes(block.title) && !alreadyAdded && <label className="settings-field add-benefit-due"><span>Fällig am</span><input type="date" value={benefitDueDates[block.title] ?? eventEndDate} onChange={(event) => setBenefitDueDates((current) => ({ ...current, [block.title]: event.target.value }))}/></label>}
+        </div>;
+        }) : <EmptyState title="Noch keine Bausteine" description="Erstelle zuerst wiederverwendbare Leistungen in der Bausteinbibliothek." action={<Link className="btn btn-primary" href="/bausteine">Zur Bausteinbibliothek</Link>} />}</div>
+        <div className="create-modal-actions"><button className="btn" type="button" onClick={closeAddBenefits}>Abbrechen</button><button className="btn btn-primary" type="button" onClick={addSelectedBlocks} disabled={selectedBlocks.length === 0}>Auswahl hinzufügen</button></div>
+      </section>
+    </div>}
+    {showContractOutput && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowContractOutput(false); }}>
+      <section className="create-modal contract-output-modal" role="dialog" aria-modal="true" aria-labelledby="contract-output-title">
+        <div className="create-modal-head"><div><h2 id="contract-output-title">Vertrag erstellen</h2><p>Wähle das gewünschte Dateiformat für {sponsor.name}.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => setShowContractOutput(false)}><Icon name="close" size={16}/></button></div>
+        {templateLoading ? <p className="task-empty">Zugeordnete Vorlage wird geladen …</p> : <>
+          <p className="contract-output-note">{contractTemplate ? `Verwendete Vorlage: ${contractTemplate.name}` : templateLoadMessage || "Diesem Event ist keine Word-Vorlage zugeordnet. Die PDF-Datei wird im Standardlayout erstellt."}</p>
+          {creatingContract && <p className="contract-output-note" role="status">{creatingContract === "pdf" ? "PDF wird erstellt und gleich heruntergeladen …" : "Word-Datei wird erstellt …"}</p>}
+          <div className="contract-output-options">
+            <button className="contract-output-option" type="button" disabled={creatingContract !== null} onClick={() => { void createTemplatedDocument("pdf"); }}><Icon name="file" size={23}/><span>PDF-Datei erstellen</span></button>
+            <button className="contract-output-option" type="button" disabled={!contractTemplate || creatingContract !== null} onClick={() => { void createTemplatedDocument("docx"); }}><Icon name="file" size={23}/><span>Word-Datei erstellen</span></button>
+          </div>
+          {contractTemplate && <p className="contract-output-note">Die PDF-Datei wird aus der Vorlage erstellt und direkt heruntergeladen.</p>}
+        </>}
+      </section>
+    </div>}
+    <div ref={printPreviewRef} className={`contract-print-preview ${printReady ? "active" : ""}`} aria-hidden={!printReady}/>
   </section>;
 }

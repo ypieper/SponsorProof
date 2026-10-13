@@ -3,7 +3,7 @@ import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
-  title: "SponsorProof – Sponsoring einfach im Blick",
+  title: "sponso – Sponsoring einfach im Blick",
   description: "Sponsoren, Leistungen und Nachweise für deine Veranstaltung an einem Ort.",
 };
 

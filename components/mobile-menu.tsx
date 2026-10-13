@@ -70,7 +70,7 @@ export function MobileMenu() {
       <div className="mobile-menu-backdrop" aria-hidden="true" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}/>
       <div className="mobile-drawer" id="mobile-primary-navigation" role="dialog" aria-modal="true" aria-label="Hauptmenü" ref={dialogRef}>
         <div className="mobile-drawer-head">
-          <Link href="/" className="brand"><span className="brand-mark"><Icon name="check" size={19}/></span><span>SponsorProof</span></Link>
+          <Link href="/" className="brand"><span className="brand-mark"><Icon name="check" size={19}/></span><span>sponso</span></Link>
           <button ref={closeRef} className="icon-button" type="button" aria-label="Menü schließen" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}><Icon name="close" size={17}/></button>
         </div>
         <div className="nav-label">Workspace</div>

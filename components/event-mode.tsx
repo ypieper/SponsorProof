@@ -1,0 +1,85 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { TasksOverview } from "@/components/tasks-overview";
+import { EmptyState, Icon } from "@/components/ui";
+import { fetchStoredEventsFromDatabase, formatEventDate, formatEventDateRange, readStoredEvents, type StoredEvent } from "@/lib/events-storage";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { MobileMenu } from "@/components/mobile-menu";
+
+type EventModeTab = "event" | "proofs";
+const selectedEventKey = "sponso.event-mode.selected-event.v1";
+const deletedEventsKey = "sponsorproof.deleted-events.v1";
+
+function readDeletedEvents() {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(deletedEventsKey) ?? "[]");
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function eventDates(event: StoredEvent) {
+  if (event.startDate && event.endDate) return formatEventDateRange(event.startDate, event.endDate);
+  return formatEventDate(event.startDate || event.endDate, { day: "2-digit", month: "long", year: "numeric" });
+}
+
+export function EventMode() {
+  const [events, setEvents] = useState<StoredEvent[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const [activeTab, setActiveTab] = useState<EventModeTab>("proofs");
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    async function loadEvents() {
+      try {
+        let availableEvents = readStoredEvents();
+        if (isSupabaseConfigured) {
+          const result = await fetchStoredEventsFromDatabase();
+          if (result.data && !result.error) availableEvents = result.data;
+          else if (result.error) setLoadError("Events konnten gerade nicht geladen werden.");
+        }
+        const visibleEvents = availableEvents.filter((event) => !readDeletedEvents().includes(event.id));
+        setEvents(visibleEvents);
+        const savedEventId = localStorage.getItem(selectedEventKey) ?? "";
+        setSelectedEventId(visibleEvents.some((event) => event.id === savedEventId) ? savedEventId : "");
+      } catch {
+        setEvents(readStoredEvents().filter((event) => !readDeletedEvents().includes(event.id)));
+        setLoadError("Events konnten gerade nicht geladen werden.");
+      } finally {
+        setReady(true);
+      }
+    }
+    void loadEvents();
+  }, []);
+
+  function selectEvent(eventId: string) {
+    setSelectedEventId(eventId);
+    localStorage.setItem(selectedEventKey, eventId);
+  }
+
+  const selectedEvent = events.find((event) => event.id === selectedEventId);
+
+  return <div className="mobile-shell mobile-event-mode">
+    <header className="mobile-header"><Link href="/" className="brand"><span className="brand-mark"><Icon name="check" size={17}/></span>sponso</Link><div className="mobile-header-actions"><MobileMenu/><Link href="/events" className="icon-button" aria-label="Zur Eventübersicht"><Icon name="chevron" size={16}/></Link></div></header>
+    <main className="mobile-content">
+      <span className="live-pill"><span className="live-dot"/> NACHWEIS-MODUS</span>
+      <h1>{activeTab === "event" ? "Event auswählen" : "Nachweise vor Ort"}</h1>
+      <p className="mobile-sub">{activeTab === "event" ? "Wähle das Event, für das du Nachweise erfassen möchtest." : selectedEvent ? selectedEvent.title : "Wähle zuerst ein Event aus, um die offenen Aufgaben und Nachweise zu sehen."}</p>
+      {loadError && <p className="field-message error" role="alert">{loadError}</p>}
+      {activeTab === "event" && <section className="mobile-event-selection" aria-label="Event auswählen">
+        {!ready ? <p className="task-empty">Events werden geladen …</p> : events.length === 0 ? <EmptyState title="Noch keine Events" description="Lege zuerst ein Event an. Danach kannst du hier die passenden Nachweise erfassen." action={<Link href="/events" className="btn btn-primary"><Icon name="calendar" size={14}/> Events öffnen</Link>} /> : <div className="mobile-event-list">{events.map((event) => <button key={event.id} type="button" className={`mobile-event-option ${event.id === selectedEventId ? "selected" : ""}`} aria-pressed={event.id === selectedEventId} onClick={() => selectEvent(event.id)}><span className="mobile-event-option-icon"><Icon name="calendar" size={17}/></span><span className="mobile-event-option-copy"><strong>{event.title}</strong>{(event.startDate || event.endDate) && <small>{eventDates(event)}</small>}{event.location && <small>{event.location}</small>}</span><span className="mobile-event-option-check">{event.id === selectedEventId ? <Icon name="check" size={16}/> : <Icon name="chevron" size={16}/>}</span></button>)}</div>}
+        {selectedEvent && <button className="btn btn-primary mobile-event-continue" type="button" onClick={() => setActiveTab("proofs")}><Icon name="camera" size={15}/> Nachweise für {selectedEvent.title}</button>}
+      </section>}
+
+      {activeTab === "proofs" && (selectedEvent ? <TasksOverview eventFilter={selectedEvent.id} embedded mobileMode /> : <EmptyState title="Kein Event ausgewählt" description="Wähle im Reiter „Event“ zuerst eine Veranstaltung aus. Danach erscheinen hier alle Aufgaben und Nachweise." action={<button className="btn btn-primary" type="button" onClick={() => setActiveTab("event")}><Icon name="calendar" size={14}/> Event auswählen</button>} />)}
+    </main>
+    <nav className="mobile-nav" aria-label="Nachweis-Modus">
+      <button type="button" className={activeTab === "event" ? "active" : ""} aria-current={activeTab === "event" ? "page" : undefined} onClick={() => setActiveTab("event")}><Icon name="calendar" size={17}/>Event</button>
+      <button type="button" className={activeTab === "proofs" ? "active" : ""} aria-current={activeTab === "proofs" ? "page" : undefined} onClick={() => setActiveTab("proofs")}><Icon name="camera" size={17}/>Nachweise</button>
+    </nav>
+  </div>;
+}
