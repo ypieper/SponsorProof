@@ -110,7 +110,9 @@ export function TeamSettings() {
       await loadTeam();
     } catch (cause) {
       const errorMessage = cause && typeof cause === "object" && "message" in cause ? String(cause.message) : "";
-      setMessage(errorMessage.includes("At least one workspace owner")
+      setMessage(errorMessage.includes("schema cache") || errorMessage.includes("Could not find the function")
+        ? "Die Teamverwaltung ist in der Datenbank noch nicht aktualisiert. Bitte die Supabase-Migrationen anwenden und es erneut versuchen."
+        : errorMessage.includes("At least one workspace owner")
         ? "Im Veranstalterbereich muss mindestens ein Inhaber bleiben."
         : errorMessage ? `Die Rolle konnte nicht geändert werden: ${errorMessage}` : "Die Rolle konnte nicht geändert werden.");
     } finally {
