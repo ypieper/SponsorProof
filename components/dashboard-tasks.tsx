@@ -6,6 +6,7 @@ import { EmptyState, Icon } from "@/components/ui";
 import { fetchStoredEventsFromDatabase, formatEventDate, readStoredEvents } from "@/lib/events-storage";
 import { fetchSponsorRecords } from "@/lib/sponsors-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { fetchStoredBenefits, syncLegacyBenefitsToSupabase } from "@/lib/benefits-storage";
 
 type Benefit = { id?: string; title: string; sponsorId?: string; eventId?: string; dueAt?: string; evidence?: string; status?: string };
 type ManualTask = { id: string; title: string; sponsor?: string; sponsorId?: string; eventId?: string; eventTitle?: string; dueAt?: string; due?: string; status?: string };
@@ -58,12 +59,18 @@ export function DashboardTasks() {
     async function loadTasks() {
       try {
         const benefits = readStoredValue<Benefit[]>(benefitsKey, []);
+        if (isSupabaseConfigured) {
+          const legacyBenefits = benefits.filter((benefit): benefit is Benefit & { eventId: string; sponsorId: string } => Boolean(benefit.eventId && benefit.sponsorId));
+          const syncResult = await syncLegacyBenefitsToSupabase(legacyBenefits);
+          if (syncResult.error) throw syncResult.error;
+        }
         const manualTasks = readStoredValue<ManualTask[]>(manualTasksKey, []);
         const statusOverrides = readStoredValue<Record<string, string>>(statusOverridesKey, {});
-        const [evidenceIds, eventResult, sponsorResult] = await Promise.all([
+        const [evidenceIds, eventResult, sponsorResult, benefitResult] = await Promise.all([
           readEvidenceIds(),
           isSupabaseConfigured ? fetchStoredEventsFromDatabase().catch(() => null) : Promise.resolve(null),
           isSupabaseConfigured ? fetchSponsorRecords().catch(() => null) : Promise.resolve(null),
+          isSupabaseConfigured ? fetchStoredBenefits().catch(() => null) : Promise.resolve(null),
         ]);
         if (cancelled) return;
 
@@ -72,7 +79,18 @@ export function DashboardTasks() {
         const sponsorNames = Object.fromEntries((sponsorResult?.data ?? []).map(({ sponsor }) => [sponsor.id, sponsor.name]));
         const openTasks: DashboardTask[] = [];
 
-        benefits.forEach((benefit, index) => {
+        const databaseBenefits: Benefit[] = (benefitResult?.data ?? []).flatMap((benefit) => benefit.sponsorId ? [{
+          id: benefit.id,
+          title: benefit.title,
+          sponsorId: benefit.sponsorId,
+          eventId: benefit.eventId,
+          dueAt: benefit.dueAt,
+          evidence: benefit.evidence,
+          status: benefit.status,
+        }] : []);
+        const databaseBenefitKeys = new Set(databaseBenefits.map((benefit) => `${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().toLocaleLowerCase("de-DE")}`));
+        const allBenefits = [...databaseBenefits, ...benefits.filter((benefit) => !databaseBenefitKeys.has(`${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().toLocaleLowerCase("de-DE")}`))];
+        allBenefits.forEach((benefit, index) => {
           const taskId = benefit.id
             ? `benefit-${benefit.id}`
             : `benefit-${benefit.eventId}-${benefit.title.toLocaleLowerCase("de-DE").replace(/[^a-z0-9]+/g, "-")}`;

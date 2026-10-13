@@ -9,6 +9,7 @@ import { eventContractValuesKey, formatContractValue, parseContractValue, parseC
 import { addExistingSponsorToEventRecord, createSponsorRecord, fetchSponsorRecords, fetchSponsorRecordsForEvent, removeSponsorFromEventRecord, type SponsorRecord } from "@/lib/sponsors-storage";
 import { CurrencyField } from "@/components/currency-field";
 import { emptySponsorMasterData, SponsorMasterDataFields, type PostalCodeStatus, type SponsorMasterData } from "@/components/sponsor-master-data-fields";
+import { fetchStoredBenefits, syncLegacyBenefitsToSupabase } from "@/lib/benefits-storage";
 
 type Benefit = { id?: string; title: string; sponsorId: string; eventId: string; evidence?: string };
 type ManualTask = { id: string; title: string; sponsor: string; sponsorId?: string; eventId?: string };
@@ -198,6 +199,15 @@ export function EventSponsorsOverview({ eventId, sponsors, contracts, benefits, 
       try {
         const evidence = new Set((await readEvidence()).map((item) => item.taskId));
         const extraBenefits = JSON.parse(localStorage.getItem(additionalBenefitsKey) ?? "[]") as Benefit[];
+        if (databaseBacked) {
+          const syncResult = await syncLegacyBenefitsToSupabase(extraBenefits.filter((benefit) => benefit.eventId === eventId));
+          if (syncResult.error) throw syncResult.error;
+        }
+        const storedBenefitResult = databaseBacked ? await fetchStoredBenefits(eventId) : null;
+        if (storedBenefitResult?.error) throw storedBenefitResult.error;
+        const databaseBenefits: Benefit[] = (storedBenefitResult?.data ?? []).flatMap((benefit) => benefit.sponsorId ? [{ id: benefit.id, title: benefit.title, sponsorId: benefit.sponsorId, eventId: benefit.eventId, evidence: benefit.evidence }] : []);
+        const databaseBenefitKeys = new Set(databaseBenefits.map((benefit) => `${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE")}`));
+        const allExtraBenefits = [...databaseBenefits, ...extraBenefits.filter((benefit) => !databaseBenefitKeys.has(`${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE")}`))];
         const manualTasks = JSON.parse(localStorage.getItem(manualTasksKey) ?? "[]") as ManualTask[];
         const savedDates = JSON.parse(localStorage.getItem(eventContractDatesKey) ?? "{}") as Record<string, string>;
         const savedAmounts = JSON.parse(localStorage.getItem(eventContractValuesKey) ?? "{}") as EventContractValues;
@@ -208,7 +218,7 @@ export function EventSponsorsOverview({ eventId, sponsors, contracts, benefits, 
             next[contract.id] = { status: "Offen", progress: 0 };
             continue;
           }
-          const contractBenefits = [...benefits, ...extraBenefits].filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === contract.sponsorId);
+          const contractBenefits = [...benefits, ...allExtraBenefits].filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === contract.sponsorId);
           const sponsor = displaySponsors.find((item) => item.id === contract.sponsorId);
           const contractTasks = manualTasks.filter((task) => task.eventId === eventId && (task.sponsorId === contract.sponsorId || (!task.sponsorId && task.sponsor === sponsor?.name)));
           const taskIds = [

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import type { Sponsor, SponsorContract } from "@/lib/sponsor-types";
 import { EmptyState, Icon, Metric, Progress, Status } from "@/components/ui";
 import { eventContractValuesKey, formatContractValue, parseContractValue, type EventContractValues } from "@/lib/event-contract-values";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { fetchStoredBenefits, syncLegacyBenefitsToSupabase } from "@/lib/benefits-storage";
 
 type TaskProof = { taskId: string; name: string; type: string; blob: Blob };
 type ManualTask = { id: string; title: string; sponsor: string; sponsorId?: string; eventId?: string; eventTitle?: string };
@@ -56,6 +58,15 @@ export function EventReports({ eventId, eventTitle, sponsors, contracts, benefit
         const evidence = await readAllEvidence();
         const evidenceById = new Map(evidence.map((item) => [item.taskId, item]));
         const extraBenefits = JSON.parse(localStorage.getItem(additionalBenefitsKey) ?? "[]") as ExtraBenefit[];
+        if (isSupabaseConfigured) {
+          const syncResult = await syncLegacyBenefitsToSupabase(extraBenefits.filter((benefit) => benefit.eventId === eventId));
+          if (syncResult.error) throw syncResult.error;
+        }
+        const storedBenefitResult = isSupabaseConfigured ? await fetchStoredBenefits(eventId) : null;
+        if (storedBenefitResult?.error) throw storedBenefitResult.error;
+        const databaseBenefits: ExtraBenefit[] = (storedBenefitResult?.data ?? []).flatMap((benefit) => benefit.sponsorId ? [{ id: benefit.id, title: benefit.title, sponsorId: benefit.sponsorId, eventId: benefit.eventId, evidence: benefit.evidence }] : []);
+        const databaseBenefitKeys = new Set(databaseBenefits.map((benefit) => `${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE")}`));
+        const allExtraBenefits = [...databaseBenefits, ...extraBenefits.filter((benefit) => !databaseBenefitKeys.has(`${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE")}`))];
         const manualTasks = JSON.parse(localStorage.getItem(manualStorageKey) ?? "[]") as ManualTask[];
         const sentReportIds = JSON.parse(localStorage.getItem(sentReportsKey) ?? "[]") as string[];
         const contractAmounts = JSON.parse(localStorage.getItem(eventContractValuesKey) ?? "{}") as EventContractValues;
@@ -65,7 +76,7 @@ export function EventReports({ eventId, eventTitle, sponsors, contracts, benefit
           if (!sponsor) return [];
           const contractedBenefits = [
             ...benefits.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id),
-            ...extraBenefits.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id),
+            ...allExtraBenefits.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id),
           ];
           const benefitTasks: ReportTask[] = contractedBenefits.map((benefit) => {
             const id = taskIdForBenefit(eventId, benefit);

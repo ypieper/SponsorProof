@@ -6,6 +6,7 @@ import { removeLegacyDemoTasks } from "@/lib/remove-legacy-demo-tasks";
 import { fetchSponsorRecords } from "@/lib/sponsors-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { fetchStoredEventsFromDatabase, readStoredEvents } from "@/lib/events-storage";
+import { fetchStoredBenefits, syncLegacyBenefitsToSupabase, updateStoredBenefit } from "@/lib/benefits-storage";
 
 type Task = { id: string; title: string; sponsor: string; sponsorId: string; due: string; dueAt?: string; status: "Offen" | "Erledigt"; eventId: string; eventTitle: string; source: "Leistung" | "Manuell" };
 type Evidence = { taskId: string; name: string; type: string; blob: Blob };
@@ -156,11 +157,16 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
         removeLegacyDemoTasks();
         const savedManual = JSON.parse(localStorage.getItem(manualStorageKey) ?? "[]") as Task[];
         const extraBenefits = JSON.parse(localStorage.getItem(extraBenefitsStorageKey) ?? "[]") as ExtraBenefit[];
+        if (isSupabaseConfigured) {
+          const syncResult = await syncLegacyBenefitsToSupabase(extraBenefits);
+          if (syncResult.error) throw syncResult.error;
+        }
         const statusOverrides = JSON.parse(localStorage.getItem(taskStatusOverridesKey) ?? "{}") as Partial<Record<string, Task["status"]>>;
-        const [evidence, sponsorResult, eventResult] = await Promise.all([
+        const [evidence, sponsorResult, eventResult, benefitResult] = await Promise.all([
           readEvidence(),
           isSupabaseConfigured ? fetchSponsorRecords().catch(() => null) : Promise.resolve(null),
           isSupabaseConfigured ? fetchStoredEventsFromDatabase().catch(() => null) : Promise.resolve(null),
+          isSupabaseConfigured ? fetchStoredBenefits().catch(() => null) : Promise.resolve(null),
         ]);
         const sponsorNameMap = Object.fromEntries((sponsorResult?.data ?? []).map(({ sponsor }) => [sponsor.id, sponsor.name]));
         const eventNameMap = Object.fromEntries((eventResult?.data ?? readStoredEvents()).map((event) => [event.id, event.title]));
@@ -168,7 +174,18 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
         setEventNames(eventNameMap);
         const evidenceMap = Object.fromEntries(evidence.map((entry) => [entry.taskId, entry]));
         setEvidenceByTask(evidenceMap);
-        setItems([...contractTasks(extraBenefits, sponsorNameMap, eventNameMap).map((task) => ({ ...task, status: (evidenceMap[task.id] ? "Erledigt" : statusOverrides[task.id] ?? task.status) as Task["status"] })), ...savedManual.map((task) => {
+        const databaseBenefits: ExtraBenefit[] = (benefitResult?.data ?? []).flatMap((benefit) => benefit.sponsorId ? [{
+          id: benefit.id,
+          title: benefit.title,
+          sponsorId: benefit.sponsorId,
+          eventId: benefit.eventId,
+          status: benefit.status,
+          evidence: benefit.evidence,
+          dueAt: benefit.dueAt,
+        }] : []);
+        const benefitKeys = new Set(databaseBenefits.map((benefit) => `${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE")}`));
+        const allBenefits = [...databaseBenefits, ...extraBenefits.filter((benefit) => !benefitKeys.has(`${benefit.eventId}:${benefit.sponsorId}:${benefit.title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE")}`))];
+        setItems([...contractTasks(allBenefits, sponsorNameMap, eventNameMap).map((task) => ({ ...task, status: (evidenceMap[task.id] ? "Erledigt" : statusOverrides[task.id] ?? task.status) as Task["status"] })), ...savedManual.map((task) => {
           const sponsorId = task.sponsorId ?? "";
           const eventId = task.eventId ?? eventFilter;
           return { ...task, sponsorId, sponsor: sponsorNameMap[sponsorId] ?? (task.sponsor === sponsorId ? "Sponsor" : task.sponsor), status: (evidenceMap[task.id] ? "Erledigt" : "Offen") as Task["status"], eventId, eventTitle: eventNameMap[eventId] ?? (eventId === "all" ? "Keinem Event zugeordnet" : task.eventTitle && task.eventTitle !== "Event" ? task.eventTitle : "Event nicht gefunden") };
@@ -185,6 +202,11 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
   async function addProof(task: Task, file: File) {
     const proof = { taskId: task.id, name: file.name, type: file.type, blob: file };
     await storeEvidence(proof);
+    if (isSupabaseConfigured && task.source === "Leistung") {
+      const benefitId = task.id.slice("benefit-".length);
+      const { error } = await updateStoredBenefit(benefitId, { status: "Erfüllt", evidence: file.name });
+      if (error) throw error;
+    }
     window.dispatchEvent(new Event("sponso:event-timeline-updated"));
     setEvidenceByTask((current) => ({ ...current, [task.id]: proof }));
     const statusOverrides = JSON.parse(localStorage.getItem(taskStatusOverridesKey) ?? "{}") as Partial<Record<string, Task["status"]>>;
@@ -205,6 +227,11 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
 
   async function deleteProof(task: Task) {
     await deleteStoredEvidence(task.id);
+    if (isSupabaseConfigured && task.source === "Leistung") {
+      const benefitId = task.id.slice("benefit-".length);
+      const { error } = await updateStoredBenefit(benefitId, { status: "Offen", evidence: "Noch kein Nachweis" });
+      if (error) throw error;
+    }
     window.dispatchEvent(new Event("sponso:event-timeline-updated"));
     const statusOverrides = JSON.parse(localStorage.getItem(taskStatusOverridesKey) ?? "{}") as Partial<Record<string, Task["status"]>>;
     statusOverrides[task.id] = "Offen";
@@ -227,10 +254,14 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
     setMessage(`Nachweis für „${task.title}“ gelöscht. Die Aufgabe ist wieder offen.`);
   }
 
-  function updateTaskDueDate(task: Task, dueAt: string) {
+  async function updateTaskDueDate(task: Task, dueAt: string) {
     try {
       if (task.source === "Leistung") {
         const benefitId = task.id.slice("benefit-".length);
+        if (isSupabaseConfigured) {
+          const { error } = await updateStoredBenefit(benefitId, { dueAt: dueAt || null });
+          if (error) throw error;
+        }
         const savedBenefits = JSON.parse(localStorage.getItem(extraBenefitsStorageKey) ?? "[]") as ExtraBenefit[];
         localStorage.setItem(extraBenefitsStorageKey, JSON.stringify(savedBenefits.map((benefit) => benefit.id === benefitId ? { ...benefit, dueAt: dueAt || undefined } : benefit)));
       } else {

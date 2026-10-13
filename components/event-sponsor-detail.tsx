@@ -10,10 +10,11 @@ import { eventContractValuesKey, formatContractValue, parseContractValue, parseC
 import { contractFilename, fillContractTemplate } from "@/lib/render-contract-template";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createStoredBenefits, fetchStoredBenefits, syncLegacyBenefitsToSupabase, type StoredBenefit } from "@/lib/benefits-storage";
 
 type Block = { title: string; category: string; description: string; detail: string };
 type BenefitTemplate = Pick<Block, "title" | "category" | "description" | "detail">;
-type EventBenefit = { id?: string; title: string; category: string; description: string; status: string; evidence: string; sponsorId: string; eventId: string; dueAt?: string };
+type EventBenefit = { id?: string; title: string; category: string; description: string; detail?: string; status: string; evidence: string; sponsorId: string; eventId: string; dueAt?: string };
 const storageKey = "sponsorproof.additional-benefits.v1";
 const grossContractValuesKey = "sponsorproof.event-contract-gross-values.v1";
 const blocksStorageKey = "sponsorproof.blocks.v1";
@@ -38,6 +39,10 @@ function grossValueFromNet(netValue: number) {
 
 function normalizeBenefitTitle(title: string) {
   return title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+}
+
+function storedBenefitToEventBenefit(benefit: StoredBenefit): EventBenefit {
+  return { id: benefit.id, title: benefit.title, category: benefit.category, description: benefit.description, detail: benefit.detail, status: benefit.status, evidence: benefit.evidence, sponsorId: benefit.sponsorId ?? "", eventId: benefit.eventId, dueAt: benefit.dueAt };
 }
 
 function openContractFileDatabase() {
@@ -252,9 +257,34 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   const printPreviewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as EventBenefit[];
-      setAddedBenefits(saved.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id));
+      const savedForSponsor = saved.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id);
+      if (!isSupabaseConfigured) {
+        setAddedBenefits(savedForSponsor);
+      } else {
+        void (async () => {
+          try {
+            const synced = await syncLegacyBenefitsToSupabase(savedForSponsor.map((benefit) => ({ ...benefit, contractId: contract.id })));
+            if (synced.error) throw synced.error;
+            const databaseResult = await fetchStoredBenefits(eventId);
+            if (databaseResult.error) throw databaseResult.error;
+            const allBenefits = databaseResult.data.filter((benefit) => benefit.sponsorId === sponsor.id);
+            if (cancelled) return;
+            const mapped = allBenefits.map(storedBenefitToEventBenefit);
+            setAddedBenefits(mapped);
+            const otherBenefits = saved.filter((benefit) => benefit.eventId !== eventId || benefit.sponsorId !== sponsor.id);
+            localStorage.setItem(storageKey, JSON.stringify([...otherBenefits, ...mapped]));
+            if (synced.imported) setMessage(`${synced.imported} lokal gespeicherte ${synced.imported === 1 ? "Leistung wurde" : "Leistungen wurden"} mit Supabase synchronisiert.`);
+          } catch {
+            if (!cancelled) {
+              setAddedBenefits(savedForSponsor);
+              setMessage("Die Leistungen konnten nicht mit Supabase synchronisiert werden. Bitte prüfe die Verbindung und lade die Seite erneut.");
+            }
+          }
+        })();
+      }
       const savedBlocks = JSON.parse(localStorage.getItem(blocksStorageKey) ?? "[]") as Block[];
       const editedStarters = JSON.parse(localStorage.getItem(editedBlocksStorageKey) ?? "{}") as Record<string, Partial<Block>>;
       const deletedStarterIds = JSON.parse(localStorage.getItem(deletedBlocksStorageKey) ?? "[]") as string[];
@@ -283,6 +313,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     readGeneratedContracts(contract.id).then(setGeneratedContracts).catch(() => {
       setMessage("Erstellte Vertragsdateien konnten nicht geladen werden.");
     });
+    return () => { cancelled = true; };
   }, [contract.id, eventId, sponsor.id]);
 
   useEffect(() => {
@@ -452,7 +483,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     setBenefitDueDates({});
   }
 
-  function addSelectedBlocks() {
+  async function addSelectedBlocks() {
     try {
       const allSaved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as EventBenefit[];
       const savedForThisContract = allSaved.filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id);
@@ -489,9 +520,26 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
         }
         return;
       }
-      const updated = [...allSaved, ...additions];
+      let savedAdditions = additions;
+      if (isSupabaseConfigured) {
+        const result = await createStoredBenefits(additions.map((benefit) => ({
+          eventId: benefit.eventId,
+          sponsorId: benefit.sponsorId,
+          contractId: contract.id,
+          title: benefit.title,
+          category: benefit.category,
+          description: benefit.description,
+          detail: "",
+          status: benefit.status,
+          evidence: benefit.evidence,
+          dueAt: benefit.dueAt,
+        })));
+        if (result.error) throw result.error;
+        savedAdditions = result.data.map(storedBenefitToEventBenefit);
+      }
+      const updated = [...allSaved.filter((benefit) => !(benefit.eventId === eventId && benefit.sponsorId === sponsor.id)), ...addedBenefits, ...savedAdditions];
       localStorage.setItem(storageKey, JSON.stringify(updated));
-      setAddedBenefits((current) => [...current, ...additions]);
+      setAddedBenefits((current) => [...current, ...savedAdditions]);
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setSelectedBlocks([]);
       setBenefitDueDates({});

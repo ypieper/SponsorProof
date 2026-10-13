@@ -19,8 +19,8 @@ export type EventMetricValues = {
 };
 type Assignment = { event_id: string; sponsor_id: string };
 type Contract = { id: string; event_id: string; sponsor_id: string; value_cents: number };
-type Benefit = { id: string; event_id: string; sponsor_id: string | null; contract_id: string | null; status: string; evidence_summary: string | null };
-type LocalBenefit = { id?: string; eventId: string; sponsorId: string; status?: string; evidence?: string };
+type Benefit = { id: string; event_id: string; sponsor_id: string | null; contract_id: string | null; title: string; status: string; evidence_summary: string | null };
+type LocalBenefit = { id?: string; eventId: string; sponsorId: string; title?: string; status?: string; evidence?: string };
 type ManualTask = { id: string; eventId?: string };
 type ContractFileRecord = { contractId: string };
 
@@ -100,7 +100,7 @@ export async function fetchEventMetrics(eventIds: string[]) {
     const [assignmentResult, contractResult, benefitResult] = await Promise.all([
       supabase.from("event_sponsors").select("event_id, sponsor_id").in("event_id", ids),
       supabase.from("contracts").select("id, event_id, sponsor_id, value_cents").in("event_id", ids),
-      supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, status, evidence_summary").in("event_id", ids),
+      supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, status, evidence_summary").in("event_id", ids),
     ]);
     if (assignmentResult.error) throw assignmentResult.error;
     if (contractResult.error) throw contractResult.error;
@@ -141,9 +141,10 @@ export async function fetchEventMetrics(eventIds: string[]) {
   const localBenefits = readLocalValue<LocalBenefit[]>(localBenefitsKey, []);
   const manualTasks = readLocalValue<ManualTask[]>(manualTasksKey, []);
   const counted = new Set<string>();
-  const addBenefit = (eventId: string, sponsorId: string, id: string, complete: boolean) => {
+  const addBenefit = (eventId: string, sponsorId: string, id: string, title: string, complete: boolean) => {
     if (!result[eventId] || !assignmentKeys.has(`${eventId}:${sponsorId}`)) return;
-    const key = `${eventId}:${sponsorId}:${id}`;
+    const normalizedTitle = title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+    const key = `${eventId}:${sponsorId}:${normalizedTitle || id}`;
     if (counted.has(key)) return;
     counted.add(key);
     result[eventId].benefits += 1;
@@ -159,7 +160,7 @@ export async function fetchEventMetrics(eventIds: string[]) {
     const completed = benefit.status === "Erfüllt" || benefit.status === "Erledigt"
       || Boolean(benefit.evidence_summary && benefit.evidence_summary !== "Noch kein Nachweis")
       || evidenceIds.has(`benefit-${benefit.id}`);
-    addBenefit(benefit.event_id, sponsorId, benefit.id, completed);
+    addBenefit(benefit.event_id, sponsorId, benefit.id, benefit.title, completed);
   });
 
   localBenefits.forEach((benefit, index) => {
@@ -167,7 +168,7 @@ export async function fetchEventMetrics(eventIds: string[]) {
     const completed = benefit.status === "Erfüllt" || benefit.status === "Erledigt"
       || Boolean(benefit.evidence && benefit.evidence !== "Noch kein Nachweis")
       || evidenceIds.has(`benefit-${id}`);
-    addBenefit(benefit.eventId, benefit.sponsorId, id, completed);
+    addBenefit(benefit.eventId, benefit.sponsorId, id, benefit.title ?? id, completed);
   });
   manualTasks.forEach((task) => {
     if (!task.eventId || !result[task.eventId]) return;
