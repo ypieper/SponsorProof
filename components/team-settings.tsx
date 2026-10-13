@@ -15,8 +15,10 @@ export function TeamSettings() {
   const [inviteLink, setInviteLink] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [memberActionId, setMemberActionId] = useState("");
   const [message, setMessage] = useState("");
   const [isOwner, setIsOwner] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState("");
 
   const loadTeam = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -36,6 +38,7 @@ export function TeamSettings() {
       ]);
       if (memberResult.error) throw memberResult.error;
       setMembers((memberResult.data ?? []) as Member[]);
+      setCurrentUserId(userResult.user.id);
       setIsOwner((memberResult.data ?? []).some((member) => member.user_id === userResult.user.id && member.role === "owner"));
       setInvitations(invitationResult.error ? [] : (invitationResult.data ?? []) as Invitation[]);
     } catch {
@@ -88,6 +91,53 @@ export function TeamSettings() {
     }
   }
 
+  async function changeMemberRole(member: Member, role: Member["role"]) {
+    if (memberActionId) return;
+    const explanation = role === "owner"
+      ? `${member.email} erhält Inhaberrechte und kann künftig ebenfalls Mitglieder verwalten. Möchtest du fortfahren?`
+      : `${member.email} verliert die Inhaberrechte. Möchtest du fortfahren?`;
+    if (!window.confirm(explanation)) return;
+
+    setMemberActionId(member.user_id);
+    setMessage("");
+    try {
+      const { error } = await createClient().rpc("set_organization_member_role", {
+        target_user_id: member.user_id,
+        new_role: role,
+      });
+      if (error) throw error;
+      setMessage(role === "owner" ? `${member.email} ist jetzt Inhaber.` : `${member.email} ist jetzt Mitglied.`);
+      await loadTeam();
+    } catch (cause) {
+      const errorMessage = cause && typeof cause === "object" && "message" in cause ? String(cause.message) : "";
+      setMessage(errorMessage.includes("At least one workspace owner")
+        ? "Im Veranstalterbereich muss mindestens ein Inhaber bleiben."
+        : errorMessage ? `Die Rolle konnte nicht geändert werden: ${errorMessage}` : "Die Rolle konnte nicht geändert werden.");
+    } finally {
+      setMemberActionId("");
+    }
+  }
+
+  async function removeMember(member: Member) {
+    if (memberActionId || !window.confirm(`${member.email} aus dem gemeinsamen Veranstalterbereich entfernen? Die Person verliert dadurch den Zugriff auf gemeinsame Events und Sponsoren.`)) return;
+
+    setMemberActionId(member.user_id);
+    setMessage("");
+    try {
+      const { error } = await createClient().rpc("remove_organization_member", { target_user_id: member.user_id });
+      if (error) throw error;
+      setMessage(`${member.email} wurde aus dem Veranstalterbereich entfernt.`);
+      await loadTeam();
+    } catch (cause) {
+      const errorMessage = cause && typeof cause === "object" && "message" in cause ? String(cause.message) : "";
+      setMessage(errorMessage.includes("At least one workspace owner")
+        ? "Der letzte Inhaber kann nicht entfernt werden. Ernenn zuerst eine weitere Person zum Inhaber."
+        : errorMessage ? `Das Mitglied konnte nicht entfernt werden: ${errorMessage}` : "Das Mitglied konnte nicht entfernt werden.");
+    } finally {
+      setMemberActionId("");
+    }
+  }
+
   return <section className="settings-panel-content team-settings" aria-labelledby="team-settings-title">
     <div className="settings-section">
       <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="users" size={16}/></span><div><h2 id="team-settings-title">Gemeinsamer Veranstalterbereich</h2><p>Jede Person nutzt ein eigenes Login und arbeitet mit denselben Events und Sponsoren.</p></div></div>
@@ -97,7 +147,7 @@ export function TeamSettings() {
           <button className="btn btn-primary" type="submit" disabled={saving || loading}><Icon name="plus" size={15}/>{saving ? "Wird erstellt …" : "Einladungslink erstellen"}</button>
         </form>}
         {inviteLink && <div className="team-invite-link"><label className="settings-field"><span>Einladungslink</span><input readOnly value={inviteLink} onFocus={(event) => event.currentTarget.select()} /></label><button className="btn" type="button" onClick={() => { void copyInviteLink(); }}><Icon name="file" size={14}/>Link kopieren</button><p>Der Link ist 7 Tage gültig. Die eingeladene Person meldet sich mit genau dieser E-Mail-Adresse an.</p></div>}
-        <div className="team-members-list"><h3>Mitglieder</h3>{loading ? <p className="subtitle">Mitglieder werden geladen …</p> : members.map((member) => <div className="team-member-row" key={member.email}><span className="avatar">{member.email.slice(0, 2).toUpperCase() || "SP"}</span><div><b>{member.email}</b><small>{member.role === "owner" ? "Inhaber" : "Mitglied"}</small></div></div>)}</div>
+        <div className="team-members-list"><h3>Mitglieder</h3><p className="team-members-note">Zugänge zum Veranstalterbereich verwalten. Das persönliche Login bleibt beim Entfernen bestehen.</p>{loading ? <p className="subtitle">Mitglieder werden geladen …</p> : members.map((member) => <div className="team-member-row" key={member.user_id}><span className="avatar">{member.email.slice(0, 2).toUpperCase() || "SP"}</span><div className="team-member-identity"><b>{member.email}</b><small>{member.role === "owner" ? "Inhaber" : "Mitglied"}{member.user_id === currentUserId ? " · Du" : ""}</small></div>{isOwner && member.user_id !== currentUserId && <div className="team-member-actions"><button className="btn" type="button" disabled={Boolean(memberActionId)} onClick={() => { void changeMemberRole(member, member.role === "owner" ? "member" : "owner"); }}>{memberActionId === member.user_id ? "Wird gespeichert …" : member.role === "owner" ? "Zum Mitglied machen" : "Zum Inhaber ernennen"}</button><button className="btn btn-danger" type="button" disabled={Boolean(memberActionId)} onClick={() => { void removeMember(member); }}>Zugang entfernen</button></div>}</div>)}</div>
         {isOwner && invitations.length > 0 && <div className="team-members-list"><h3>Offene Einladungen</h3>{invitations.map((invitation) => <div className="team-invitation-row" key={`${invitation.email}-${invitation.created_at}`}><span>{invitation.email}</span><small>Gültig bis {new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "long" }).format(new Date(invitation.expires_at))}</small></div>)}</div>}
       </>}
       {message && <p className="team-feedback" role="status" aria-live="polite">{message}</p>}
