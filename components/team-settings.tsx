@@ -5,7 +5,7 @@ import { Icon } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
-type Member = { email: string; role: "owner" | "member"; joined_at: string };
+type Member = { user_id: string; email: string; role: "owner" | "member"; joined_at: string };
 type Invitation = { email: string; expires_at: string; created_at: string };
 
 export function TeamSettings() {
@@ -25,15 +25,18 @@ export function TeamSettings() {
     }
     try {
       const supabase = createClient();
-      const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
-      if (organizationError || typeof organizationId !== "string") throw new Error("workspace");
+      const [{ data: userResult, error: userError }, { data: organizationId, error: organizationError }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.rpc("current_organization_id"),
+      ]);
+      if (userError || !userResult.user || organizationError || typeof organizationId !== "string") throw new Error("workspace");
       const [memberResult, invitationResult] = await Promise.all([
-        supabase.from("organization_members").select("email, role, joined_at").eq("organization_id", organizationId).order("joined_at"),
+        supabase.from("organization_members").select("user_id, email, role, joined_at").eq("organization_id", organizationId).order("joined_at"),
         supabase.from("organization_invitations").select("email, expires_at, created_at").eq("organization_id", organizationId).is("accepted_at", null).order("created_at", { ascending: false }),
       ]);
       if (memberResult.error) throw memberResult.error;
       setMembers((memberResult.data ?? []) as Member[]);
-      setIsOwner((memberResult.data ?? []).some((member) => member.role === "owner"));
+      setIsOwner((memberResult.data ?? []).some((member) => member.user_id === userResult.user.id && member.role === "owner"));
       setInvitations(invitationResult.error ? [] : (invitationResult.data ?? []) as Invitation[]);
     } catch {
       setMessage("Der gemeinsame Veranstalterbereich konnte nicht geladen werden. Bitte prüfe, ob die Datenbankmigration bereits ausgeführt wurde.");
@@ -59,8 +62,17 @@ export function TeamSettings() {
       setMessage("Einladungslink erstellt. Teile ihn mit der eingeladenen Person.");
       setEmail("");
       await loadTeam();
-    } catch {
-      setMessage("Die Einladung konnte nicht erstellt werden. Vielleicht gehört diese E-Mail-Adresse bereits zum Veranstalterbereich.");
+    } catch (cause) {
+      const errorMessage = cause && typeof cause === "object" && "message" in cause ? String(cause.message) : "";
+      if (errorMessage.includes("already belongs")) {
+        setMessage("Diese E-Mail-Adresse gehört bereits zum Veranstalterbereich.");
+      } else if (errorMessage.includes("Only the workspace owner")) {
+        setMessage("Nur die Inhaberin oder der Inhaber des Veranstalterbereichs kann Einladungen erstellen.");
+      } else if (errorMessage.includes("valid email")) {
+        setMessage("Bitte gib eine gültige E-Mail-Adresse ein.");
+      } else {
+        setMessage(errorMessage ? `Einladung konnte nicht erstellt werden: ${errorMessage}` : "Einladung konnte nicht erstellt werden. Bitte versuche es erneut.");
+      }
     } finally {
       setSaving(false);
     }

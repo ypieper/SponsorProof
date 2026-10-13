@@ -80,7 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <nav className="nav-list">{navigation.map((item) => {
         const route = item.href.split("?")[0];
         const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
-        return <Link href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</Link>;
+        return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
       })}</nav>
       <div className="sidebar-bottom">
         <div className="help-card"><span className="metric-icon"><Icon name="spark" size={15}/></span><strong>Gut vorbereitet?</strong><p>Behalte alle Sponsoringleistungen an einem Ort im Blick.</p><Link href="/event-modus">Event-Modus öffnen →</Link></div>
