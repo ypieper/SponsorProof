@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { EmptyState, Icon, Metric } from "@/components/ui";
 import { createSponsorRecord, fetchSponsorRecords, type SponsorRecord } from "@/lib/sponsors-storage";
-import { fetchStoredEventsFromDatabase, type StoredEvent } from "@/lib/events-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { emptySponsorMasterData, SponsorMasterDataFields, type PostalCodeStatus, type SponsorMasterData } from "@/components/sponsor-master-data-fields";
 
@@ -18,7 +17,6 @@ const exampleSponsors = [
 
 export default function SponsorsPage() {
   const [records, setRecords] = useState<SponsorRecord[]>([]);
-  const [events, setEvents] = useState<StoredEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -35,7 +33,7 @@ export default function SponsorsPage() {
     }
     setLoading(true);
     try {
-      const [sponsorResult, eventResult] = await Promise.all([fetchSponsorRecords(), fetchStoredEventsFromDatabase()]);
+      const sponsorResult = await fetchSponsorRecords();
       if (sponsorResult.error) setMessage(`Sponsoren konnten nicht geladen werden: ${sponsorResult.error.message}`);
       else {
         let loadedRecords = sponsorResult.data ?? [];
@@ -54,10 +52,8 @@ export default function SponsorsPage() {
         }
         setRecords(loadedRecords);
       }
-      if (eventResult.error) setMessage(`Events konnten nicht geladen werden: ${eventResult.error.message}`);
-      else setEvents(eventResult.data ?? []);
     } catch {
-      setMessage("Sponsoren und Events konnten nicht aus Supabase geladen werden. Bitte prüfe die Verbindung.");
+      setMessage("Sponsoren konnten nicht aus Supabase geladen werden. Bitte prüfe die Verbindung.");
     } finally {
       setLoading(false);
     }
@@ -107,11 +103,10 @@ export default function SponsorsPage() {
     </section>
     <section className="panel table-panel sponsor-directory">
       <div className="table-head"><div><h2>Alle Sponsoren</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Event-Zuordnung und Vertragswert werden im Event gepflegt.</p></div></div>
-      {loading ? <p className="task-empty">Sponsoren werden geladen …</p> : records.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Sponsoren" description="Lege die Stammdaten eines Sponsors an. Event und Vertragswert ergänzt du später im Event." action={<button className="btn btn-primary" type="button" onClick={() => setCreating(true)}><Icon name="plus" size={14}/> Sponsor hinzufügen</button>} /> : <table className="table"><thead><tr><th>SPONSOR</th><th>EVENTS</th><th>ANSPRECHPERSON</th><th>E-MAIL</th><th>VERTRAGSVOLUMEN</th><th></th></tr></thead><tbody>{records.map(({ sponsor, contracts }) => {
+      {loading ? <p className="task-empty">Sponsoren werden geladen …</p> : records.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Sponsoren" description="Lege die Stammdaten eines Sponsors an. Event und Vertragswert ergänzt du später im Event." action={<button className="btn btn-primary" type="button" onClick={() => setCreating(true)}><Icon name="plus" size={14}/> Sponsor hinzufügen</button>} /> : <table className="table"><thead><tr><th>SPONSOR</th><th>ANSPRECHPERSON</th><th>E-MAIL</th><th>VERTRAGSVOLUMEN</th><th></th></tr></thead><tbody>{records.map(({ sponsor, contracts }) => {
         const amount = contracts.reduce((sum, contract) => sum + Math.round(Number(contract.value.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".")) * 100), 0);
-        const assignedEvents = sponsor.eventIds.map((eventId) => events.find((item) => item.id === eventId)?.title).filter(Boolean);
         const contact = [sponsor.contactFirstName, sponsor.contactLastName].filter(Boolean).join(" ");
-        return <tr key={sponsor.id}><td><Link href={`/sponsors/${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={sponsor.color ? { background: sponsor.color, color: "white" } : undefined}>{sponsor.initials}</span>{sponsor.name}</Link></td><td>{assignedEvents.length ? assignedEvents.join(", ") : <span className="directory-missing">Noch nicht zugeordnet</span>}</td><td>{contact || <span className="directory-missing">Noch nicht hinterlegt</span>}</td><td>{sponsor.email || <span className="directory-missing">Noch nicht hinterlegt</span>}</td><td>{contracts.length ? `${(amount / 100).toLocaleString("de-DE")} €` : <span className="directory-missing">Im Event erfassen</span>}</td><td><Link className="sponsor-open-link" href={`/sponsors/${sponsor.id}`} aria-label={`${sponsor.name} öffnen`}><Icon name="arrow" size={15}/></Link></td></tr>;
+        return <tr key={sponsor.id}><td><Link href={`/sponsors/${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={sponsor.color ? { background: sponsor.color, color: "white" } : undefined}>{sponsor.initials}</span>{sponsor.name}</Link></td><td>{contact || <span className="directory-missing">Noch nicht hinterlegt</span>}</td><td>{sponsor.email || <span className="directory-missing">Noch nicht hinterlegt</span>}</td><td>{contracts.length ? `${(amount / 100).toLocaleString("de-DE")} €` : <span className="directory-missing">Im Event erfassen</span>}</td><td><Link className="sponsor-open-link" href={`/sponsors/${sponsor.id}`} aria-label={`${sponsor.name} öffnen`}><Icon name="arrow" size={15}/></Link></td></tr>;
       })}</tbody></table>}
     </section>
     {creating && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setCreating(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-sponsor-title"><div className="create-modal-head"><div><h2 id="create-sponsor-title">Sponsor hinzufügen</h2><p>Vollständige Stammdaten und Ansprechperson werden direkt angelegt.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setCreating(false)}><Icon name="close" size={16}/></button></div><form onSubmit={saveSponsor}><div className="sponsor-edit-sections"><SponsorMasterDataFields value={masterData} onChange={setMasterData} onPostalCodeStatusChange={setPostalCodeStatus} /></div>{formError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{formError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setCreating(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={saving || postalCodeStatus !== "valid"}>{saving ? "Wird gespeichert …" : "Sponsor speichern"}</button></div></form></section></div>}
