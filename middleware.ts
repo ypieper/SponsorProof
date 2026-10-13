@@ -24,6 +24,10 @@ export async function middleware(request: NextRequest) {
   if (!user && !isLoginPage && !isAuthCallback) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    if (request.nextUrl.pathname === "/team/join") {
+      const token = request.nextUrl.searchParams.get("token") ?? "";
+      url.search = new URLSearchParams({ mode: "signup", next: `/team/join?token=${token}` }).toString();
+    }
     return NextResponse.redirect(url);
   }
 

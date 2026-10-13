@@ -27,7 +27,7 @@ export function JoinWorkspace({ token }: { token: string }) {
       const { data: { user }, error: userError } = await createClient().auth.getUser();
       if (userError || !user) {
         const next = `/team/join?token=${encodeURIComponent(token)}`;
-        router.replace(`/login?next=${encodeURIComponent(next)}`);
+        router.replace(`/login?mode=signup&next=${encodeURIComponent(next)}`);
         return;
       }
       const { error } = await createClient().rpc("accept_organization_invitation", { invitation_token: token });
