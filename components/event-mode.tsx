@@ -26,6 +26,12 @@ function eventDates(event: StoredEvent) {
   return formatEventDate(event.startDate || event.endDate, { day: "2-digit", month: "long", year: "numeric" });
 }
 
+function eventModeHref(tab: EventModeTab, eventId: string) {
+  const params = new URLSearchParams({ tab: tab === "event" ? "event" : "nachweise" });
+  if (eventId) params.set("event", eventId);
+  return `/event-modus?${params.toString()}`;
+}
+
 export function EventMode() {
   const [events, setEvents] = useState<StoredEvent[]>([]);
   const [selectedEventId, setSelectedEventId] = useState("");
@@ -34,6 +40,15 @@ export function EventMode() {
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
+    const syncTabFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      setActiveTab(params.get("tab") === "event" ? "event" : "proofs");
+      const eventId = params.get("event");
+      if (eventId) setSelectedEventId(eventId);
+    };
+    syncTabFromUrl();
+    window.addEventListener("popstate", syncTabFromUrl);
+
     async function loadEvents() {
       try {
         let availableEvents = readStoredEvents();
@@ -44,8 +59,10 @@ export function EventMode() {
         }
         const visibleEvents = availableEvents.filter((event) => !readDeletedEvents().includes(event.id));
         setEvents(visibleEvents);
+        const linkedEventId = new URLSearchParams(window.location.search).get("event") ?? "";
         const savedEventId = localStorage.getItem(selectedEventKey) ?? "";
-        setSelectedEventId(visibleEvents.some((event) => event.id === savedEventId) ? savedEventId : "");
+        const initialEventId = visibleEvents.some((event) => event.id === linkedEventId) ? linkedEventId : savedEventId;
+        setSelectedEventId(visibleEvents.some((event) => event.id === initialEventId) ? initialEventId : "");
       } catch {
         setEvents(readStoredEvents().filter((event) => !readDeletedEvents().includes(event.id)));
         setLoadError("Events konnten gerade nicht geladen werden.");
@@ -54,11 +71,18 @@ export function EventMode() {
       }
     }
     void loadEvents();
+    return () => window.removeEventListener("popstate", syncTabFromUrl);
   }, []);
 
   function selectEvent(eventId: string) {
     setSelectedEventId(eventId);
     localStorage.setItem(selectedEventKey, eventId);
+    window.history.pushState({}, "", eventModeHref("event", eventId));
+  }
+
+  function selectModeTab(tab: EventModeTab) {
+    setActiveTab(tab);
+    window.history.pushState({}, "", eventModeHref(tab, selectedEventId));
   }
 
   const selectedEvent = events.find((event) => event.id === selectedEventId);
@@ -72,14 +96,14 @@ export function EventMode() {
       {loadError && <p className="field-message error" role="alert">{loadError}</p>}
       {activeTab === "event" && <section className="mobile-event-selection" aria-label="Event auswählen">
         {!ready ? <p className="task-empty">Events werden geladen …</p> : events.length === 0 ? <EmptyState title="Noch keine Events" description="Lege zuerst ein Event an. Danach kannst du hier die passenden Nachweise erfassen." action={<Link href="/events" className="btn btn-primary"><Icon name="calendar" size={14}/> Events öffnen</Link>} /> : <div className="mobile-event-list">{events.map((event) => <button key={event.id} type="button" className={`mobile-event-option ${event.id === selectedEventId ? "selected" : ""}`} aria-pressed={event.id === selectedEventId} onClick={() => selectEvent(event.id)}><span className="mobile-event-option-icon"><Icon name="calendar" size={17}/></span><span className="mobile-event-option-copy"><strong>{event.title}</strong>{(event.startDate || event.endDate) && <small>{eventDates(event)}</small>}{event.location && <small>{event.location}</small>}</span><span className="mobile-event-option-check">{event.id === selectedEventId ? <Icon name="check" size={16}/> : <Icon name="chevron" size={16}/>}</span></button>)}</div>}
-        {selectedEvent && <button className="btn btn-primary mobile-event-continue" type="button" onClick={() => setActiveTab("proofs")}><Icon name="camera" size={15}/> Nachweise für {selectedEvent.title}</button>}
+        {selectedEvent && <button className="btn btn-primary mobile-event-continue" type="button" onClick={() => selectModeTab("proofs")}><Icon name="camera" size={15}/> Nachweise für {selectedEvent.title}</button>}
       </section>}
 
-      {activeTab === "proofs" && (selectedEvent ? <TasksOverview eventFilter={selectedEvent.id} embedded mobileMode /> : <EmptyState title="Kein Event ausgewählt" description="Wähle im Reiter „Event“ zuerst eine Veranstaltung aus. Danach erscheinen hier alle Aufgaben und Nachweise." action={<button className="btn btn-primary" type="button" onClick={() => setActiveTab("event")}><Icon name="calendar" size={14}/> Event auswählen</button>} />)}
+      {activeTab === "proofs" && (selectedEvent ? <TasksOverview eventFilter={selectedEvent.id} embedded mobileMode /> : <EmptyState title="Kein Event ausgewählt" description="Wähle im Reiter „Event“ zuerst eine Veranstaltung aus. Danach erscheinen hier alle Aufgaben und Nachweise." action={<button className="btn btn-primary" type="button" onClick={() => selectModeTab("event")}><Icon name="calendar" size={14}/> Event auswählen</button>} />)}
     </main>
     <nav className="mobile-nav" aria-label="Nachweis-Modus">
-      <button type="button" className={activeTab === "event" ? "active" : ""} aria-current={activeTab === "event" ? "page" : undefined} onClick={() => setActiveTab("event")}><Icon name="calendar" size={17}/>Event</button>
-      <button type="button" className={activeTab === "proofs" ? "active" : ""} aria-current={activeTab === "proofs" ? "page" : undefined} onClick={() => setActiveTab("proofs")}><Icon name="camera" size={17}/>Nachweise</button>
+      <a href={eventModeHref("event", selectedEventId)} className={activeTab === "event" ? "active" : ""} aria-current={activeTab === "event" ? "page" : undefined} onClick={(event) => { event.preventDefault(); selectModeTab("event"); }}><Icon name="calendar" size={17}/>Event</a>
+      <a href={eventModeHref("proofs", selectedEventId)} className={activeTab === "proofs" ? "active" : ""} aria-current={activeTab === "proofs" ? "page" : undefined} onClick={(event) => { event.preventDefault(); selectModeTab("proofs"); }}><Icon name="camera" size={17}/>Nachweise</a>
     </nav>
   </div>;
 }

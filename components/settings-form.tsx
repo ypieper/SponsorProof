@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { Icon } from "@/components/ui";
 import { AccountSettings } from "@/components/account-settings";
 import { TeamSettings } from "@/components/team-settings";
@@ -73,8 +73,36 @@ export function SettingsForm() {
   const ibanStatus = validateIban(settings.iban);
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "profile") setActiveTab("Meine Daten");
+    const selectTabFromUrl = () => {
+      const selected = new URLSearchParams(window.location.search).get("tab");
+      const tabByUrl: Record<string, TabName> = {
+        stammdaten: "Stammdaten",
+        ansprechperson: "Ansprechperson",
+        vertragsvorlage: "Vertragsvorlage",
+        profile: "Meine Daten",
+        "meine-daten": "Meine Daten",
+        team: "Team",
+      };
+      setActiveTab(tabByUrl[selected ?? ""] ?? "Stammdaten");
+    };
+    selectTabFromUrl();
+    window.addEventListener("popstate", selectTabFromUrl);
+    return () => window.removeEventListener("popstate", selectTabFromUrl);
   }, []);
+
+  function openSettingsTab(tab: TabName, event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    const tabParam: Record<TabName, string> = {
+      Stammdaten: "stammdaten",
+      Ansprechperson: "ansprechperson",
+      Vertragsvorlage: "vertragsvorlage",
+      "Meine Daten": "profile",
+      Team: "team",
+    };
+    const href = `/einstellungen?tab=${tabParam[tab]}`;
+    window.history.pushState({}, "", href);
+    setActiveTab(tab);
+  }
 
   useEffect(() => {
     const postalCode = settings.postalCode;
@@ -223,7 +251,8 @@ export function SettingsForm() {
       {(["Stammdaten", "Ansprechperson", "Vertragsvorlage", "Meine Daten", "Team"] as const).map((tab) => {
         const tabId = tab === "Meine Daten" ? "meine-daten" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab;
         const panelId = `settings-panel-${tabId}`;
-        return <button key={tab} type="button" role="tab" id={`settings-tab-${tabId}`} aria-selected={activeTab === tab} aria-controls={panelId} className={`settings-tab ${activeTab === tab ? "active" : ""}`} onClick={(event) => { event.preventDefault(); setActiveTab(tab); }}>{tab}</button>;
+        const tabParam = tab === "Meine Daten" ? "profile" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Ansprechperson" ? "ansprechperson" : "stammdaten";
+        return <a key={tab} href={`/einstellungen?tab=${tabParam}`} role="tab" id={`settings-tab-${tabId}`} aria-selected={activeTab === tab} aria-controls={panelId} aria-current={activeTab === tab ? "page" : undefined} className={`settings-tab ${activeTab === tab ? "active" : ""}`} onClick={(event) => openSettingsTab(tab, event)}>{tab}</a>;
       })}
     </div>
 
