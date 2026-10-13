@@ -10,7 +10,6 @@ import { LogoutButton } from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
-import { migrateLegacyBrowserDataToSupabase } from "@/lib/legacy-browser-data-migration";
 
 type UserDisplay = { name: string; initials: string; organization: string };
 
@@ -26,28 +25,13 @@ function userInitials(firstName: string, lastName: string, email: string) {
   return (initials || email.slice(0, 2) || "SP").toLocaleUpperCase("de-DE");
 }
 
-function migrationErrorText(error: unknown) {
-  if (error instanceof Error) return error.message;
-  if (error && typeof error === "object") {
-    const detail = error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
-    const parts = [detail.message, detail.code ? `Code ${String(detail.code)}` : null, detail.details, detail.hint]
-      .filter((part): part is string => typeof part === "string" && Boolean(part.trim()));
-    if (parts.length) return parts.join(" · ");
-  }
-  if (typeof error === "string" && error.trim()) return error;
-  return "Unbekannter Fehler bei der Datenübernahme.";
-}
-
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const [userDisplay, setUserDisplay] = useState(defaultUserDisplay);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-  const [dataMigration, setDataMigration] = useState<"checking" | "ready" | "error">("checking");
-  const [dataMigrationError, setDataMigrationError] = useState("");
 
   useEffect(() => {
     let active = true;
-    if (!isSupabaseConfigured) setDataMigration("ready");
     const loadOrganization = () => {
       if (!isSupabaseConfigured) return;
       void fetchOrganizerSettings().then(({ data }) => {
@@ -56,23 +40,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
     const loadUser = () => {
       if (!isSupabaseConfigured) return;
-      void createClient().auth.getUser().then(async ({ data }) => {
+      void createClient().auth.getUser().then(({ data }) => {
         if (!active) return;
-        if (!data.user) { setDataMigration("ready"); return; }
+        if (!data.user) return;
         const firstName = String(data.user.user_metadata?.first_name ?? "");
         const lastName = String(data.user.user_metadata?.last_name ?? "");
         const email = data.user.email ?? "";
         setUserDisplay((current) => ({ ...current, name: userDisplayName(firstName, lastName, email), initials: userInitials(firstName, lastName, email) }));
-        try {
-          await migrateLegacyBrowserDataToSupabase();
-          if (active) setDataMigration("ready");
-        } catch (error) {
-          if (active) {
-            setDataMigrationError(migrationErrorText(error));
-            setDataMigration("error");
-          }
-        }
-      }).catch(() => { if (active) setDataMigration("ready"); });
+      }).catch(() => undefined);
     };
 
     loadOrganization();
@@ -93,14 +68,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   if (path.startsWith("/login")) return <>{children}</>;
-  if (dataMigration !== "ready") return <main className="content" style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
-    <section className="panel" style={{ maxWidth: 520, padding: 28 }}>
-      <h1>{dataMigration === "checking" ? "Daten werden geprüft …" : "Datenübernahme konnte nicht abgeschlossen werden"}</h1>
-      <p className="subtitle">{dataMigration === "checking" ? "Gespeicherte Angaben werden sicher in deinen Supabase-Veranstalterbereich übertragen." : "Deine bisherigen Browserdaten bleiben erhalten. Bitte prüfe, ob die aktuelle Supabase-Datenbankmigration ausgeführt wurde, und lade die Seite danach erneut."}</p>
-      {dataMigration === "error" && dataMigrationError && <p className="field-message error" role="alert">Technischer Hinweis: {dataMigrationError}</p>}
-      {dataMigration === "error" && <button className="btn btn-primary" type="button" onClick={() => window.location.reload()}>Erneut versuchen</button>}
-    </section>
-  </main>;
   const isMobileMode = path === "/event-modus";
   if (isMobileMode) return <>{children}</>;
   return <div className="app-frame">
