@@ -1,21 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export function LogoutButton() {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
   if (!isSupabaseConfigured) return null;
 
   async function logout() {
     setBusy(true);
-    await createClient().auth.signOut();
-    router.replace("/login");
-    router.refresh();
+    setMessage("");
+    try {
+      const { error } = await createClient().auth.signOut();
+      if (error) throw error;
+      window.location.assign("/login");
+    } catch {
+      setMessage("Abmeldung fehlgeschlagen. Bitte versuche es erneut.");
+      setBusy(false);
+    }
   }
 
-  return <button className="btn logout-button" type="button" disabled={busy} onClick={() => { void logout(); }}>{busy ? "Abmelden …" : "Abmelden"}</button>;
+  return <>{message && <span className="logout-error" role="status">{message}</span>}<button className="btn logout-button" type="button" disabled={busy} onClick={() => { void logout(); }}>{busy ? "Abmelden …" : "Abmelden"}</button></>;
 }

@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export function AuthForm() {
-  const router = useRouter();
   const [mode, setMode] = useState<"login" | "signup" | "recovery">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,8 +45,7 @@ export function AuthForm() {
         setBusy(false);
         return;
       }
-      router.replace(postAuthPath());
-      router.refresh();
+      window.location.assign(postAuthPath());
       return;
     }
 
@@ -60,8 +57,7 @@ export function AuthForm() {
     if (error) {
       setMessage("Das Konto konnte nicht erstellt werden. Prüfe die Angaben oder versuche es später erneut.");
     } else if (data.session) {
-      router.replace(postAuthPath());
-      router.refresh();
+      window.location.assign(postAuthPath());
       return;
     } else {
       setMessage("Fast geschafft: Bitte bestätige deine E-Mail-Adresse über den Link, den Supabase dir geschickt hat.");
