@@ -1131,7 +1131,13 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
   -webkit-backdrop-filter: none !important;
 }
 .sidebar { z-index: 40; }
-.mobile-menu-layer { z-index: 1000; background: transparent !important; }
+.mobile-menu-layer {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  isolation: isolate;
+  background: transparent !important;
+}
 .mobile-menu-backdrop { z-index: 0; background: rgba(8, 18, 28, .68) !important; }
 .mobile-drawer {
   position: fixed !important;

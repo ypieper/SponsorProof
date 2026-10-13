@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/components/ui";
 
 export const navigation = [
@@ -66,7 +67,7 @@ export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
       aria-controls="mobile-primary-navigation"
       onClick={() => setOpen((value) => !value)}
     ><Icon name="menu" size={18}/></button>
-    {open && <div className="mobile-menu-layer">
+    {open && createPortal(<div className="mobile-menu-layer">
       <div className="mobile-menu-backdrop" aria-hidden="true" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}/>
       <div className="mobile-drawer" id="mobile-primary-navigation" role="dialog" aria-modal="true" aria-label="Hauptmenü" ref={dialogRef}>
         <div className="mobile-drawer-head">
@@ -80,6 +81,6 @@ export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
           return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
         })}{isPlatformAdmin && <a href="/admin" className={`nav-link ${path.startsWith("/admin") ? "active" : ""}`} aria-current={path.startsWith("/admin") ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name="users" size={17}/></span>Administration</a>}</nav>
       </div>
-    </div>}
+    </div>, document.body)}
   </>;
 }
