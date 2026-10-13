@@ -1120,3 +1120,44 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
   .event-overview-row { padding-right: 12px; }
   .event-mode-fab { box-shadow: 0 8px 24px rgba(190, 65, 44, .3); }
 }
+
+/* Keep every navigation surface opaque and above the page content. */
+.sidebar,
+.mobile-drawer {
+  background: #142a3e !important;
+  background-color: #142a3e !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.sidebar { z-index: 40; }
+.mobile-menu-layer { z-index: 1000; background: transparent !important; }
+.mobile-menu-backdrop { z-index: 0; background: rgba(8, 18, 28, .68) !important; }
+.mobile-drawer { z-index: 1; }
+.sidebar .nav-link,
+.mobile-drawer .nav-link { color: #d5dfe8 !important; }
+.sidebar .nav-link.active,
+.mobile-drawer .nav-link.active {
+  background: #ed694e !important;
+  border-color: #ed694e !important;
+  color: #fff !important;
+}
+.sidebar .nav-link:hover,
+.mobile-drawer .nav-link:hover { background: #1d3a52 !important; color: #fff !important; }
+.sidebar .nav-link.active:hover,
+.mobile-drawer .nav-link.active:hover { background: #ed694e !important; }
+.mobile-drawer .brand,
+.sidebar .brand { color: #fff !important; }
+.mobile-drawer .nav-label,
+.sidebar .nav-label { color: #afc0ce !important; }
+.mobile-drawer .icon-button { background: #1d3a52 !important; color: #fff !important; }
+.mobile-nav {
+  background: #fff !important;
+  background-color: #fff !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 0 -5px 18px rgba(20, 42, 62, .09);
+}
+.mobile-nav a, .mobile-nav button { color: #53677a; }
+.mobile-nav a.active, .mobile-nav button.active { color: #c84932; }
