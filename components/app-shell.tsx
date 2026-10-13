@@ -10,6 +10,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
+import { clearLegacyBrowserData } from "@/lib/clear-legacy-browser-data";
 
 type UserDisplay = { name: string; initials: string; organization: string };
 
@@ -32,6 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    clearLegacyBrowserData();
     const loadOrganization = () => {
       if (!isSupabaseConfigured) return;
       void fetchOrganizerSettings().then(({ data }) => {
