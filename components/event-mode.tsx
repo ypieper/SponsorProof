@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TasksOverview } from "@/components/tasks-overview";
-import { EmptyState, Icon } from "@/components/ui";
+import { EmptyState, Icon, SponsoLogo } from "@/components/ui";
 import { fetchStoredEventsFromDatabase, formatEventDate, formatEventDateRange, type StoredEvent } from "@/lib/events-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { MobileMenu } from "@/components/mobile-menu";
@@ -74,7 +74,7 @@ export function EventMode() {
   const selectedEvent = events.find((event) => event.id === selectedEventId);
 
   return <div className="mobile-shell mobile-event-mode">
-    <header className="mobile-header"><Link href="/" className="brand"><span className="brand-mark"><Icon name="check" size={17}/></span>sponso</Link><div className="mobile-header-actions"><MobileMenu/><Link href="/events" className="icon-button" aria-label="Zur Eventübersicht"><Icon name="chevron" size={16}/></Link></div></header>
+    <header className="mobile-header"><Link href="/" className="brand" aria-label="sponso Startseite"><SponsoLogo markSize={29} /></Link><div className="mobile-header-actions"><MobileMenu/><Link href="/events" className="icon-button" aria-label="Zur Eventübersicht"><Icon name="chevron" size={16}/></Link></div></header>
     <main className="mobile-content">
       <span className="live-pill"><span className="live-dot"/> NACHWEIS-MODUS</span>
       <h1>{activeTab === "event" ? "Event auswählen" : "Nachweise vor Ort"}</h1>

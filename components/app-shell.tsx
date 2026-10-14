@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Icon } from "@/components/ui";
+import { Icon, SponsoLogo } from "@/components/ui";
 import { MobileMenu, navigation } from "@/components/mobile-menu";
 import { LogoutButton } from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/client";
@@ -74,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (isMobileMode) return <>{children}</>;
   return <div className="app-frame">
     <aside className="sidebar">
-      <Link href="/" className="brand"><span className="brand-mark"><Icon name="check" size={19}/></span><span>sponso</span></Link>
+      <Link href="/" className="brand" aria-label="sponso Startseite"><SponsoLogo /></Link>
       <div className="nav-label">Workspace</div>
       <nav className="nav-list">{navigation.map((item) => {
         const route = item.href.split("?")[0];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Icon } from "@/components/ui";
+import { SponsoLogo } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -68,7 +68,7 @@ export function AuthForm({ initialMode = "login", invitation = false }: { initia
   }
 
   return <section className="auth-card">
-    <div className="auth-brand"><span className="brand-mark"><Icon name="check" size={19}/></span><span>sponso</span></div>
+    <div className="auth-brand" aria-label="sponso"><SponsoLogo /></div>
     <div className="auth-heading"><h1>{mode === "login" ? invitation ? "Einladung annehmen" : "Willkommen zurück" : mode === "signup" ? invitation ? "Konto für die Einladung erstellen" : "Konto erstellen" : "Passwort zurücksetzen"}</h1><p>{mode === "login" ? invitation ? "Melde dich mit der eingeladenen E-Mail-Adresse an, um dem Veranstalterbereich beizutreten." : "Melde dich an, um deine Events zu verwalten." : mode === "signup" ? invitation ? "Lege mit der eingeladenen E-Mail-Adresse ein eigenes Konto an. Danach erhältst du Zugriff auf den gemeinsamen Veranstalterbereich." : "Erstelle dein Veranstalterkonto für sponso." : "Wir senden dir einen Link an deine E-Mail-Adresse."}</p></div>
     {!isSupabaseConfigured ? <div className="auth-setup-message"><b>Supabase-Verbindung noch unvollständig</b><p>Ergänze Projekt-URL und Publishable Key in der lokalen Datei <code>.env.local</code>. Danach den Entwicklungsserver neu starten.</p></div> : <form className="auth-form" onSubmit={submit}>
       <label className="settings-field"><span>E-Mail-Adresse</span><input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@veranstalter.de" /></label>
