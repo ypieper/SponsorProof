@@ -3,6 +3,9 @@ import { SponsorDetail } from "@/components/sponsor-detail";
 import { createClient } from "@/lib/supabase/server";
 import { formatEventDateRange } from "@/lib/events-storage";
 import { contractFromRow, sponsorFromRow, type ContractRow, type SponsorRow } from "@/lib/sponsors-storage";
+import { privatePageMetadata } from "@/lib/seo";
+
+export const metadata = privatePageMetadata("Sponsorprofil", "Verwalte die Vereinbarungen, Leistungen und Nachweise eines Sponsors.");
 
 type EventRow = { id: string; title: string; start_date: string | null; end_date: string | null; location: string };
 

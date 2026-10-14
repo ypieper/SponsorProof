@@ -1,4 +1,7 @@
 import { LegalPage } from "@/components/public-page-frame";
+import { privatePageMetadata } from "@/lib/seo";
+
+export const metadata = privatePageMetadata("Datenschutzerklärung", "Informationen zur Verarbeitung personenbezogener Daten in sponso.");
 
 export default function PrivacyPage() {
   return <LegalPage title="Datenschutzerklärung" intro="Vorschlag zu den Daten, die bei der Nutzung von sponso verarbeitet werden. Angaben zu Dienstleistern, Speicherorten, Fristen und Datenschutzkontakt müssen vor Veröffentlichung geprüft und ergänzt werden." sections={[

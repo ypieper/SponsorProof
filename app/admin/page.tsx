@@ -1,8 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 import AdminDashboard from "@/components/admin-dashboard";
 import { getAuthorizedPlatformAdmin } from "@/lib/supabase/admin";
+import { privatePageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+export const metadata = privatePageMetadata("Administration", "Verwalte sponso-Plattformzugänge und Freischaltcodes.");
 
 export default async function AdminPage() {
   const auth = await getAuthorizedPlatformAdmin();

@@ -1,4 +1,7 @@
 import { AuthForm } from "@/components/auth-form";
+import { privatePageMetadata } from "@/lib/seo";
+
+export const metadata = privatePageMetadata("Anmelden", "Melde dich bei sponso an, um Sponsoren, Events und Nachweise zu verwalten.");
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ mode?: string; next?: string }> }) {
   const params = await searchParams;

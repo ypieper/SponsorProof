@@ -1,6 +1,9 @@
 import { PublicContactForm } from "@/components/public-contact-form";
 import { PublicPageFrame } from "@/components/public-page-frame";
 import { EVENT_PRO_UPGRADE_SURCHARGE_CENTS } from "@/lib/pricing";
+import { privatePageMetadata } from "@/lib/seo";
+
+export const metadata = privatePageMetadata("Kontakt", "Kontaktiere das sponso-Team bei Fragen oder zu einem Tarifwechsel.");
 
 export default async function ContactPage({ searchParams }: { searchParams: Promise<{ anliegen?: string; event?: string; eventName?: string }> }) {
   const params = await searchParams;

@@ -1,4 +1,7 @@
 import { LegalPage } from "@/components/public-page-frame";
+import { privatePageMetadata } from "@/lib/seo";
+
+export const metadata = privatePageMetadata("Allgemeine Geschäftsbedingungen", "Entwurf der Nutzungsbedingungen für sponso.");
 
 export default function TermsPage() {
   return <LegalPage title="Allgemeine Geschäftsbedingungen" intro="Vorschlag für die Nutzung von sponso durch Veranstalter und ihre Teammitglieder." sections={[

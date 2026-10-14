@@ -4,6 +4,9 @@ import { DashboardEvents } from "@/components/dashboard-events";
 import { DashboardTasks } from "@/components/dashboard-tasks";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
 import { DashboardOnboarding } from "@/components/dashboard-onboarding";
+import { privatePageMetadata } from "@/lib/seo";
+
+export const metadata = privatePageMetadata("Übersicht", "Behalte die nächsten Sponsoring-Aufgaben und alle Veranstaltungen im Blick.");
 
 export default function DashboardPage() {
   return <main className="content">

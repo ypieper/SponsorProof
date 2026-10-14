@@ -1,8 +1,10 @@
 import { PublicPageFrame } from "@/components/public-page-frame";
 import { SponsorUploadPortal } from "@/components/sponsor-upload-portal";
 import { findActiveSponsorUploadLink, sponsorUploadBucket } from "@/lib/sponsor-upload-server";
+import { privatePageMetadata } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+export const metadata = { ...privatePageMetadata("Dateien sicher übermitteln", "Übermittle Vertragsunterlagen, Logos und weitere Dateien sicher an den Veranstalter."), robots: { index: false, follow: false, googleBot: { index: false, follow: false } } };
 
 export default async function SponsorUploadPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

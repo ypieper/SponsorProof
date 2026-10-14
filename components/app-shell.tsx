@@ -69,6 +69,29 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    const title = path === "/" ? "Übersicht"
+      : path === "/events" ? "Events"
+      : path.startsWith("/events/") ? "Eventdetails"
+      : path === "/aufgaben" ? "Aufgaben"
+      : path === "/bausteine" ? "Bausteine"
+      : path === "/sponsors" ? "Sponsoren"
+      : path.startsWith("/sponsors/") ? "Sponsorprofil"
+      : path.startsWith("/einstellungen") ? "Einstellungen"
+      : path === "/event-modus" ? "Nachweise vor Ort"
+      : path.startsWith("/sponsor-upload/") ? "Dateien sicher übermitteln"
+      : path === "/login" ? "Anmelden"
+      : path === "/passwort-zuruecksetzen" ? "Passwort zurücksetzen"
+      : path === "/agb" ? "Allgemeine Geschäftsbedingungen"
+      : path === "/impressum" ? "Impressum"
+      : path === "/datenschutz" ? "Datenschutzerklärung"
+      : path === "/kontakt" ? "Kontakt"
+      : path.startsWith("/team/join") ? "Team beitreten"
+      : path.startsWith("/admin") ? "Administration"
+      : "Sponsoring verwalten";
+    document.title = `${title} | sponso`;
+  }, [path]);
+
   if (path.startsWith("/login")) return <>{children}</>;
   if (["/agb", "/impressum", "/datenschutz", "/kontakt"].includes(path) || path.startsWith("/sponsor-upload/")) return <>{children}</>;
   const isMobileMode = path === "/event-modus";
