@@ -148,7 +148,7 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
     const result = await createSponsorContractRecord(eventId, contractSponsor.id, Math.round(amount * 100));
     if (result.error || !result.data) {
       if (result.error?.message.includes("EVENT_FEATURE_REQUIRED")) requestUpgrade(eventId, eventTitle, "Verträge erstellen und verwalten");
-      setDatabaseError("Der Vertrag konnte nicht angelegt werden. Prüfe den Event-Tarif und versuche es erneut.");
+      setDatabaseError("Der Vertrag konnte nicht angelegt werden. Prüfe den Basic-Tarif und versuche es erneut.");
     } else {
       setDatabaseRecords((current) => current.map((record) => record.sponsor.id === contractSponsor.id ? { ...record, contracts: [...record.contracts, result.data!] } : record));
       setContractSponsor(null);

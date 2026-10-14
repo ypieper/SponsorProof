@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { createStoredEventInDatabase, deleteStoredEventFromDatabase, fetchStoredEventsFromDatabase, formatEventDateRange, type StoredEvent } from "@/lib/events-storage";
 import { EmptyState, Icon } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { eventPlanLabel } from "@/lib/event-plan-labels";
 import { eventLifecycleStage, useEventMetrics } from "@/lib/event-metrics";
 import { useEventEntitlements } from "@/components/event-entitlements";
 
@@ -127,7 +128,7 @@ export function EventsOverview() {
       <div className="event-overview-list">
         {displayedEvents.map((event) => <article className="event-overview-row" key={event.id}>
           <Link href={`/events/${event.id}`} className="event-overview-row-link">
-            <div className="event-overview-identity"><div className="event-overview-title"><h3>{event.title}</h3><span className={`event-plan-badge event-plan-${event.bookedPlanCode}`}>Tarif: {event.bookedPlanCode === "event_pro" ? "Event Pro" : event.bookedPlanCode === "event" ? "Event" : event.planCode === "enterprise" ? "Enterprise" : "Free"}</span></div><div className="event-overview-meta"><span>{event.date}</span><span className="event-location"><Icon name="pin" size={13} />{event.location}</span></div></div>
+            <div className="event-overview-identity"><div className="event-overview-title"><h3>{event.title}</h3><span className={`event-plan-badge event-plan-${event.bookedPlanCode}`}>Tarif: {eventPlanLabel(event.bookedPlanCode === "event_pro" ? "event_pro" : event.bookedPlanCode === "event" ? "event" : event.planCode === "enterprise" ? "enterprise" : "free")}</span></div><div className="event-overview-meta"><span>{event.date}</span><span className="event-location"><Icon name="pin" size={13} />{event.location}</span></div></div>
             <div className="event-overview-metrics"><div><small>Vertragsvolumen netto</small><b>{event.metricsLoading ? "—" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(event.sponsorship)}</b></div><div><small>Sponsoren</small><b>{event.metricsLoading ? "—" : event.sponsors}</b></div><div><small>Leistungen</small><b>{event.metricsLoading ? "—" : event.benefits}</b></div><div><small>Erledigt</small><b>{event.metricsLoading ? "—" : `${event.benefits ? Math.round(event.completed / event.benefits * 100) : 0} %`}</b></div></div>
             <span className={`event-lifecycle-status event-lifecycle-${event.stage.color}`}>{eventMetrics.loading ? "Status wird geladen …" : eventMetrics.error ? "Status nicht verfügbar" : event.stage.label}</span>
             <div className="event-overview-progress"><div><small>Leistungsfortschritt</small><span>{event.metricsLoading ? "Wird geladen …" : `${event.completed} von ${event.benefits} Leistungen erledigt`}</span></div><div className="event-overview-progress-bar"><div className="progress-track"><div className="progress-fill" style={{ width: `${event.benefits ? Math.round(event.completed / event.benefits * 100) : 0}%` }} /></div><b>{event.metricsLoading ? "—" : `${event.benefits ? Math.round(event.completed / event.benefits * 100) : 0} %`}</b></div></div>

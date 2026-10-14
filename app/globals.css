@@ -919,6 +919,7 @@ h1 { margin: 0; font-size: 27px; letter-spacing: -.8px; line-height: 1.15; color
 .event-plan-event_pro { border-color:#ddd5f2; background:#f3effb; color:#69539f; }
 .event-plan-free { border-color:#e9e5d9; background:#faf7ed; color:#887447; }
 .event-plan-enterprise { border-color:#d8d4ed; background:#f4f2fb; color:#64539a; }
+.event-overview-title .event-plan-enterprise { border-color:#f0c4df; background:#fff0f8; color:#ae347b; }
 .event-overview-title h3 { margin:0; }
 .entitlement-backdrop { z-index:100100; }
 .entitlement-modal { width:min(760px,100%); }

@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { EVENT_PRO_UPGRADE_SURCHARGE_CENTS } from "@/lib/pricing";
+import { eventPlanLabel } from "@/lib/event-plan-labels";
 import { Icon } from "@/components/ui";
 
 export type EventPlanCode = "free" | "event" | "event_pro" | "enterprise";
@@ -62,7 +63,7 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
       ]);
       if (plansError) throw plansError;
       if (eventError) throw eventError;
-      if (catalog) setPlans(catalog as EventPlan[]);
+      if (catalog) setPlans((catalog as EventPlan[]).map((plan) => ({ ...plan, name: eventPlanLabel(plan.code) })));
       if (entitlementError) throw entitlementError;
       if (event?.organization_id) {
         const { data: organizationEntitlement, error: organizationEntitlementError } = await supabase
@@ -102,7 +103,7 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
     void loadEntitlement(eventId);
     const supabase = createClient();
     void supabase.from("event_plans").select("code, name, price_cents, max_events, max_sponsors, features").order("price_cents")
-      .then(({ data }) => { if (data) setPlans(data as EventPlan[]); });
+      .then(({ data }) => { if (data) setPlans((data as EventPlan[]).map((plan) => ({ ...plan, name: eventPlanLabel(plan.code) }))); });
   }, [loadEntitlement]);
 
   const ensureFeature = useCallback(async (eventId: string, title: string, feature: EventFeature) => {
@@ -140,7 +141,7 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
       if (!response.ok) throw new Error(result.error ?? "Der Freischaltcode konnte nicht eingelöst werden.");
       await loadEntitlement(dialog.eventId);
       setCode("");
-      setDialogMessage(`Event freigeschaltet. Der Tarif ${result.plan === "event_pro" ? "Event Pro" : "Event"} ist jetzt aktiv.`);
+      setDialogMessage(`Event freigeschaltet. Der Tarif ${eventPlanLabel(result.plan)} ist jetzt aktiv.`);
       window.dispatchEvent(new CustomEvent("sponso:event-entitlement-updated", { detail: { eventId: dialog.eventId } }));
     } catch (error) {
       setDialogError(error instanceof Error ? error.message : "Der Freischaltcode konnte nicht eingelöst werden.");
@@ -166,7 +167,7 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
           const isProUpgrade = plan.code === "event_pro" && proUpgradePrice !== null;
           const isInitialEventChoice = plan.code === "event" && currentEntitlement?.plan_code === "free";
           return <article key={plan.code} className={`entitlement-plan-card${isCurrent ? " is-current" : ""}${isProUpgrade ? " is-upgrade" : ""}`}>
-            <div><span>{plan.name}{isCurrent && <em>Aktueller Tarif</em>}</span><strong>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(isProUpgrade ? proUpgradePrice! / 100 : (plan.price_cents ?? 0) / 100)}</strong><small>{isProUpgrade ? "Einmaliger Aufpreis für den Wechsel" : isInitialEventChoice ? `Event-Tarif (Basic): später für ${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(EVENT_PRO_UPGRADE_SURCHARGE_CENTS / 100)} auf Event Pro erweiterbar` : "einmalig pro Event"}</small></div>
+            <div><span>{eventPlanLabel(plan.code)}{isCurrent && <em>Aktueller Tarif</em>}</span><strong>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(isProUpgrade ? proUpgradePrice! / 100 : (plan.price_cents ?? 0) / 100)}</strong><small>{isProUpgrade ? "Einmaliger Aufpreis für den Wechsel" : isInitialEventChoice ? `Basic-Tarif: später für ${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(EVENT_PRO_UPGRADE_SURCHARGE_CENTS / 100)} auf Pro erweiterbar` : "einmalig pro Event"}</small></div>
             <ul><li>{plan.max_sponsors === null ? "Unbegrenzt Sponsoren" : `Bis zu ${plan.max_sponsors} Sponsoren`}</li>{(Object.keys(planFeatureLabels) as EventFeature[]).filter((feature) => plan.features[feature]).map((feature) => <li key={feature}>{planFeatureLabels[feature]}</li>)}</ul>
             {isProUpgrade && <Link className="btn btn-primary entitlement-upgrade-button" href={`/kontakt?anliegen=event-pro&event=${encodeURIComponent(dialog.eventId)}&eventName=${encodeURIComponent(dialog.title)}`} onClick={() => setDialog(null)}>Für {new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(proUpgradePrice! / 100)} wechseln</Link>}
           </article>;
@@ -174,7 +175,7 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
         <aside className="entitlement-enterprise-plan"><div><strong>Enterprise-Edition</strong><span>Für Veranstalter mit mehreren Events</span></div><p>Unbegrenzte Events und Sponsoren, alle Funktionen. Jährliche Abrechnung per Rechnung; die Freischaltung erfolgt manuell durch den sponso Admin.</p><Link className="btn btn-primary" href="/kontakt?anliegen=enterprise">Enterprise anfragen</Link></aside>
         {dialogError && <p className="field-message error" role="alert">{dialogError}</p>}{dialogMessage && <p className="field-message success" role="status">{dialogMessage}</p>}
         <form className="entitlement-code-form" onSubmit={redeemCode}><label className="settings-field"><span>Du hast einen Freischaltcode?</span><input autoComplete="off" autoCapitalize="characters" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder={`S-${new Date().getFullYear()}-00000000 (Beispiel, nicht einlösbar)`} maxLength={80} /></label><button className="btn btn-primary" type="submit" disabled={redeeming || !code.trim()}>{redeeming ? "Wird eingelöst …" : "Einlösen"}</button></form>
-        <p className="entitlement-payment-note">Die Freischaltung erfolgt mit einem gültigen Code. Eine Online-Zahlung ist noch nicht eingerichtet.{proUpgradePrice !== null ? " Den Wechsel zu Event Pro kannst du zum angezeigten Aufpreis per Rechnung anfragen." : ""}</p>
+        <p className="entitlement-payment-note">Die Freischaltung erfolgt mit einem gültigen Code. Eine Online-Zahlung ist noch nicht eingerichtet.{proUpgradePrice !== null ? " Den Wechsel zu Pro kannst du zum angezeigten Aufpreis per Rechnung anfragen." : ""}</p>
       </section>
     </div>}
   </EventEntitlementsContext.Provider>;

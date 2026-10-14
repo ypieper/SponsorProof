@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { activationCodeHint, createActivationCode, decryptActivationCode, encryptActivationCode, hashActivationCode } from "@/lib/activation-codes";
 import { createAdminClient, getAuthorizedPlatformAdmin } from "@/lib/supabase/admin";
+import { eventPlanLabel } from "@/lib/event-plan-labels";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -19,7 +20,7 @@ export async function GET() {
 
   const organizationNames = new Map((organizations ?? []).map((item) => [item.id, item.name]));
   const eventNames = new Map((events ?? []).map((item) => [item.id, item.title]));
-  return NextResponse.json({ organizations: organizations ?? [], events: events ?? [], plans: plans ?? [], codes: (codes ?? []).map((item) => {
+  return NextResponse.json({ organizations: organizations ?? [], events: events ?? [], plans: (plans ?? []).map((plan) => ({ ...plan, name: eventPlanLabel(plan.code) })), codes: (codes ?? []).map((item) => {
     let code: string | null = null;
     if (item.code_encrypted) {
       try { code = decryptActivationCode(item.code_encrypted); } catch { /* Legacy encryption keys may no longer be available. */ }
