@@ -19,11 +19,12 @@ function formatDue(value: string) {
   return new Intl.DateTimeFormat("de-DE").format(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
 }
 
-function TaskProofControl({ task, evidence, disabled, onProofAdded, onProofDeleted }: { task: Task; evidence?: Evidence; disabled: boolean; onProofAdded: (task: Task, file: File) => Promise<void>; onProofDeleted: (task: Task) => Promise<void> }) {
+function TaskProofControl({ task, evidence, disabled, mobileMode = false, onProofAdded, onProofDeleted }: { task: Task; evidence?: Evidence; disabled: boolean; mobileMode?: boolean; onProofAdded: (task: Task, file: File) => Promise<void>; onProofDeleted: (task: Task) => Promise<void> }) {
   const uploadRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [proofSaved, setProofSaved] = useState(false);
 
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -35,8 +36,10 @@ function TaskProofControl({ task, evidence, disabled, onProofAdded, onProofDelet
     }
     setSaving(true);
     setError("");
+    setProofSaved(false);
     try {
       await onProofAdded(task, file);
+      setProofSaved(true);
     } catch {
       setError("Der Nachweis konnte nicht gespeichert werden.");
     } finally {
@@ -60,6 +63,7 @@ function TaskProofControl({ task, evidence, disabled, onProofAdded, onProofDelet
     if (!evidence || !window.confirm(`Möchtest du den Nachweis „${evidence.name}“ wirklich löschen?`)) return;
     setSaving(true);
     setError("");
+    setProofSaved(false);
     try {
       await onProofDeleted(task);
     } catch {
@@ -78,8 +82,9 @@ function TaskProofControl({ task, evidence, disabled, onProofAdded, onProofDelet
       <button className={`btn task-proof-camera ${evidence ? "task-proof-icon-button" : ""}`} type="button" onClick={() => cameraRef.current?.click()} disabled={disabled || saving} aria-label={evidence ? "Foto aufnehmen" : undefined} title={evidence ? "Foto aufnehmen" : undefined}><Icon name="camera" size={14}/>{!evidence && "Kamera"}</button>
       {evidence && <><button className="btn task-proof-icon-button" type="button" onClick={downloadEvidence} disabled={saving} aria-label="Nachweis herunterladen" title="Herunterladen"><Icon name="download" size={14}/></button><button className="btn task-proof-delete task-proof-icon-button" type="button" onClick={() => { void removeEvidence(); }} disabled={disabled || saving} aria-label="Nachweis löschen" title="Löschen"><Icon name="trash" size={14}/></button></>}
     </div>
+    {mobileMode && proofSaved && <span className="task-proof-success" role="status"><Icon name="check" size={14}/> Nachweis gespeichert</span>}
     {error && <span className="task-proof-error" role="alert">{error}</span>}
-    {saving && <span className="task-proof-error" role="status">Nachweis wird gespeichert …</span>}
+    {saving && <span className="task-proof-saving" role="status">Nachweis wird gespeichert …</span>}
   </div>;
 }
 
@@ -137,7 +142,7 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
     window.dispatchEvent(new Event("sponso:event-timeline-updated"));
     setEvidenceByTask((current) => ({ ...current, [task.id]: data }));
     setItems((current) => current.map((item) => item.id === task.id ? { ...item, status: "Erledigt" as Task["status"] } : item));
-    setMessage(`Nachweis für „${task.title}“ gespeichert. Aufgabe abgeschlossen.`);
+    if (!mobileMode) setMessage(`Nachweis für „${task.title}“ gespeichert. Aufgabe abgeschlossen.`);
   }
 
   async function deleteProof(task: Task) {
@@ -232,7 +237,7 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
       <div className="table-head tasks-table-head"><div>{mobileMode ? <><h2>Aufgaben im Überblick</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>{completionSummary}</p></> : embedded ? <><h2>Aufgaben im Überblick</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Verwalte Aufgaben und dokumentiere Nachweise zu vereinbarten Leistungen.</p><p className="subtitle" style={{ fontSize: 10, marginTop: 4 }}>{completionSummary}</p></> : <><h2>{selectedSponsorName ? `${selectedSponsorName} · Aufgaben` : "Alle Aufgaben"}</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>{completionSummary}</p></>}</div>{mobileMode ? <label className="mobile-open-tasks-filter"><input type="checkbox" checked={hideCompleted} onChange={(event) => setHideCompleted(event.target.checked)}/>Nur offene</label> : <div className="task-filters"><label className="task-event-filter"><span>Sponsor</span><select value={selectedSponsor} onChange={(event) => setSelectedSponsor(event.target.value)}><option value="all">Alle Sponsoren</option>{sponsorOptions.map((sponsor) => <option key={sponsor.id} value={sponsor.id}>{sponsor.name}</option>)}</select></label>{!embedded && <label className="task-event-filter"><span>Event</span><select value={selectedEvent} onChange={(event) => setSelectedEvent(event.target.value)}><option value="all">Alle Events</option>{eventOptions.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>}<label className="task-event-filter"><span>Status</span><select value={selectedStatus} onChange={(event) => setSelectedStatus(event.target.value as "all" | Task["status"])}><option value="all">Alle Status</option><option value="Offen">Offen</option><option value="Erledigt">Erledigt</option></select></label>{embedded && <button className="btn btn-primary" type="button" onClick={() => { setMessage(""); setShowCreate(true); }}><Icon name="plus" size={15}/> Aufgabe anlegen</button>}</div>}</div>
       {mobileMode && visibleItems.length > 0 && <div className="mobile-proof-list">{visibleItems.map((task) => <article className="mobile-task" key={task.id}>
         <div className="mobile-task-top"><div className="mobile-task-heading"><h3>{task.title}</h3><p>{sponsorNames[task.sponsorId] ?? task.sponsor}{task.dueAt || task.due !== "—" ? ` · Fällig ${formatDue(task.dueAt ?? task.due)}` : ""}</p></div><Status value={task.status} /></div>
-        <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} onProofAdded={addProof} onProofDeleted={deleteProof}/>
+        <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} mobileMode={mobileMode} onProofAdded={addProof} onProofDeleted={deleteProof}/>
       </article>)}</div>}
       {!mobileMode && visibleItems.length > 0 && <table className="table tasks-table"><thead><tr><th>AUFGABE</th><th>SPONSOR</th><th>EVENT</th><th>FÄLLIG</th><th>QUELLE</th><th>STATUS</th><th>NACHWEIS</th><th>AKTION</th></tr></thead><tbody>{visibleItems.map((task) => <tr key={task.id} className={task.status === "Erledigt" ? "task-completed-row" : undefined}>
         <td><b style={{ color: "#3d4c5b" }}>{task.title}</b></td><td>{sponsorFilter && task.sponsorId === sponsorFilter ? sponsorName ?? sponsorNames[task.sponsorId] ?? "Sponsor" : sponsorNames[task.sponsorId] ?? (task.sponsor === task.sponsorId ? "Sponsor" : task.sponsor)}</td><td className="task-event-cell"><span className="task-event-name" title={task.eventTitle}>{task.eventTitle}</span></td><td><input className="task-due-input" aria-label={`Fälligkeit für ${task.title}`} type="date" value={task.dueAt ?? (/^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : "")} onChange={(event) => updateTaskDueDate(task, event.target.value)} disabled={!ready} /></td><td><span className={`task-source ${task.source === "Leistung" ? "derived" : "manual"}`}>{task.source === "Leistung" ? "Aus Vertrag" : "Manuell"}</span></td><td><Status value={task.status} /></td><td><TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} onProofAdded={addProof} onProofDeleted={deleteProof}/></td><td>{task.source === "Manuell" && <button className="btn task-delete-button" type="button" onClick={() => deleteManualTask(task)} aria-label={`Aufgabe ${task.title} löschen`} title="Aufgabe löschen"><Icon name="trash" size={14}/></button>}</td>

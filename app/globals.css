@@ -1185,3 +1185,84 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
 }
 .mobile-nav a, .mobile-nav button { color: #53677a; }
 .mobile-nav a.active, .mobile-nav button.active { color: #c84932; }
+
+/* Clearer type rhythm with the platform's native system font. */
+:root { --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.45;
+  text-rendering: optimizeLegibility;
+}
+h1, .page-heading h1 {
+  font-size: clamp(27px, 2.2vw, 32px);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -.045em;
+  text-wrap: balance;
+}
+h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
+.page-heading { gap: 18px; margin-bottom: 34px; }
+.page-heading .subtitle { max-width: 64ch; margin-top: 10px; line-height: 1.6; }
+.panel-heading { margin-bottom: 21px; }
+.dashboard-grid { gap: 22px; }
+.metric-grid { gap: 16px; }
+.metric-value, .sponsor-value b, .event-stat b, .event-overview-progress-bar b {
+  font-variant-numeric: tabular-nums;
+}
+.task-caption { font-size: 11px; line-height: 1.45; }
+.table th { font-size: 10px; }
+
+/* A clear, local confirmation after saving a proof on the event-mode screen. */
+.task-proof-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #d4eee2;
+  border-radius: 999px;
+  background: #eff9f4;
+  color: #19765f;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  animation: proof-saved-in .22s cubic-bezier(.2,.8,.2,1) both;
+}
+.task-proof-success svg { flex: 0 0 auto; }
+.task-proof-saving {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #617487;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.task-proof-saving::before {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #dce6ec;
+  border-top-color: #648096;
+  border-radius: 50%;
+  content: "";
+  animation: proof-saving-spin .75s linear infinite;
+}
+@keyframes proof-saved-in {
+  from { opacity: 0; transform: translateY(3px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes proof-saving-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 700px) {
+  .page-heading { margin-bottom: 27px; }
+  .mobile-event-mode .mobile-task { padding: 17px; }
+  .mobile-event-mode .mobile-task-top { margin-bottom: 14px; }
+  .mobile-event-mode .mobile-task h3 { font-size: 15px; line-height: 1.35; }
+  .mobile-event-mode .mobile-task-heading p { font-size: 12px; line-height: 1.5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-proof-success, .task-proof-saving::before { animation: none; }
+  .task-proof-saving::before { border-top-color: #648096; }
+}
