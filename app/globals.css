@@ -1625,3 +1625,73 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
   .account-delete-submit { width: 100%; min-height: 46px; }
   .account-delete-option { padding: 12px; }
 }
+
+/* Auth pages: make account creation an obvious, low-friction next step. */
+.auth-page {
+  min-height: 100svh;
+  padding: clamp(16px, 4vw, 48px);
+  background: radial-gradient(ellipse at 12% 10%, #fff0eb 0, transparent 34%), #f4f7fa;
+}
+.auth-layout {
+  width: min(100%, 980px);
+  display: grid;
+  grid-template-columns: minmax(300px, .88fr) minmax(380px, 1.12fr);
+  overflow: hidden;
+  border: 1px solid #e3eaf0;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(29, 48, 67, .13);
+}
+.auth-intro {
+  display: flex;
+  flex-direction: column;
+  min-height: 610px;
+  padding: clamp(28px, 4vw, 48px);
+  color: #fff;
+  background: radial-gradient(circle at 90% 8%, rgba(255, 147, 120, .25), transparent 34%), linear-gradient(150deg, #18364d, #10283b 72%);
+}
+.auth-brand { color: #fff; font-size: 19px; }
+.auth-brand .brand-mark { background: linear-gradient(145deg, #ff9378, #ec6246); }
+.auth-intro-copy { margin: auto 0 30px; }
+.auth-kicker, .auth-form-eyebrow { display: block; color: #ff9a7f; font-size: 10px; font-weight: 800; letter-spacing: .16em; }
+.auth-intro-copy h2 { max-width: 390px; margin: 15px 0 13px; font-size: clamp(30px, 3.2vw, 40px); line-height: 1.08; letter-spacing: -.055em; }
+.auth-intro-copy p { max-width: 360px; margin: 0; color: #c2d0dc; font-size: 14px; line-height: 1.7; }
+.auth-flow { display: flex; align-items: center; gap: 9px; color: #d4dfe8; font-size: 10px; font-weight: 650; }
+.auth-flow i { width: 20px; height: 1px; background: #638095; }
+.auth-register-prompt { display: grid; gap: 15px; margin-top: 34px; padding: 19px; border: 1px solid rgba(219, 232, 241, .2); border-radius: 15px; background: rgba(255, 255, 255, .07); }
+.auth-register-prompt strong { font-size: 14px; }
+.auth-register-prompt p { margin: 5px 0 0; color: #c2d0dc; font-size: 12px; }
+.auth-register-button { display: flex; align-items: center; justify-content: space-between; min-height: 46px; padding: 0 14px; border: 1px solid rgba(255,255,255,.55); border-radius: 10px; background: #fff; color: #a94e36; font-size: 13px; font-weight: 750; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+.auth-register-button:hover { transform: translateY(-1px); box-shadow: 0 7px 18px rgba(7, 20, 31, .18); }
+.auth-register-button span { font-size: 19px; line-height: 1; }
+.auth-card { width: auto; align-self: center; padding: clamp(32px, 5vw, 62px); border: 0; border-radius: 0; box-shadow: none; }
+.auth-heading { margin: 0 0 28px; }
+.auth-form-eyebrow { margin-bottom: 12px; color: #c45b40; font-size: 9px; }
+.auth-heading h1 { font-size: 30px; }
+.auth-heading p { margin-top: 10px; font-size: 13px; line-height: 1.65; }
+.auth-form { gap: 19px; }
+.auth-form .settings-field { gap: 8px; font-size: 12px; }
+.auth-form .settings-field input { height: 48px; padding-inline: 13px; border-radius: 10px; font-size: 14px; }
+.auth-submit { min-height: 48px; height: auto; margin-top: 2px; border-radius: 10px; font-size: 13px; }
+.auth-mode-switch { justify-self: center; padding: 7px; font-size: 12px; }
+.auth-legal-links { grid-column: 1 / -1; padding: 16px 20px; border-top: 1px solid #edf1f4; background: #fbfcfd; }
+.auth-legal-links a:hover { color: #b94e35; }
+.auth-message { padding: 12px 13px; border: 1px solid #e5ebef; border-radius: 10px; background: #f8fafb; font-size: 12px; }
+.auth-setup-message { font-size: 12px; }
+@media (max-width: 700px) {
+  .auth-page { display: block; padding: 14px; }
+  .auth-layout { width: 100%; grid-template-columns: minmax(0, 1fr); border-radius: 19px; }
+  .auth-card { order: 1; padding: 30px 23px 25px; }
+  .auth-intro { order: 2; min-height: 0; padding: 24px 23px; }
+  .auth-intro-copy { margin: 28px 0 20px; }
+  .auth-intro-copy h2 { max-width: 460px; margin-top: 11px; font-size: 28px; }
+  .auth-intro-copy p { font-size: 12px; }
+  .auth-flow { display: none; }
+  .auth-register-prompt { grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; margin-top: 0; padding: 14px; }
+  .auth-register-prompt strong { font-size: 12px; }
+  .auth-register-prompt p { font-size: 11px; }
+  .auth-register-button { min-height: 42px; gap: 8px; padding-inline: 11px; font-size: 11px; }
+  .auth-heading { margin-bottom: 23px; }
+  .auth-heading h1 { font-size: 26px; }
+  .auth-legal-links { order: 3; padding: 15px 12px; gap: 12px; }
+}
