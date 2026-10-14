@@ -17,17 +17,18 @@ export async function fetchStoredEvidence() {
 }
 
 export async function uploadStoredEvidence(input: { file: File; eventId?: string; taskId: string; benefitId?: string }) {
+  if (!input.eventId) return { data: null, error: new Error("EVIDENCE_REQUIRES_EVENT") };
   const supabase = createClient();
   const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
   if (organizationError || typeof organizationId !== "string") return { data: null, error: organizationError ?? new Error("Veranstalterbereich nicht gefunden.") };
   const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]+/g, "-");
-  const storagePath = `${organizationId}/evidence/${crypto.randomUUID()}-${safeName}`;
+  const storagePath = `${organizationId}/events/${input.eventId}/evidence/${crypto.randomUUID()}-${safeName}`;
   const { error: uploadError } = await supabase.storage.from("sponsorproof-files").upload(storagePath, input.file, { contentType: input.file.type || "application/octet-stream", upsert: false });
   if (uploadError) return { data: null, error: uploadError };
   const benefitId = input.benefitId || (input.taskId.startsWith("benefit-") ? input.taskId.slice("benefit-".length) : undefined);
   const { data, error } = await supabase.from("evidence_files").insert({
     organization_id: organizationId,
-    event_id: input.eventId || null,
+    event_id: input.eventId,
     benefit_id: benefitId || null,
     task_id: benefitId ? null : input.taskId,
     storage_path: storagePath,

@@ -28,11 +28,15 @@ export async function createStoredTask(input: TaskInput) {
   return { data: data as StoredTaskRecord | null, error };
 }
 
-export async function updateStoredTask(id: string, changes: { title?: string; dueAt?: string | null; status?: string }) {
+export async function updateStoredTask(id: string, changes: { title?: string; dueAt?: string | null; status?: string; eventId?: string | null }) {
   const update: Record<string, unknown> = {};
   if (changes.title !== undefined) update.title = changes.title;
   if (changes.dueAt !== undefined) update.due_at = changes.dueAt;
   if (changes.status !== undefined) update.status = changes.status;
+  if (changes.eventId !== undefined) {
+    update.event_id = changes.eventId;
+    update.sponsor_id = null;
+  }
   const { error } = await createClient().from("tasks").update(update).eq("id", id);
   return { error };
 }

@@ -15,6 +15,7 @@ import { fetchStoredEvidence } from "@/lib/evidence-storage";
 import { deleteContractDocument, downloadContractDocument, fetchContractDocuments, saveContractDocument, type ContractDocument } from "@/lib/contract-documents-storage";
 import { updateContractRecord } from "@/lib/sponsors-storage";
 import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
+import { useEventEntitlements } from "@/components/event-entitlements";
 
 type Block = { title: string; category: string; description: string; detail: string };
 type BenefitTemplate = Pick<Block, "title" | "category" | "description" | "detail">;
@@ -132,6 +133,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   baseBenefits: EventBenefit[];
   blocks: Block[];
 }) {
+  const { ensureFeature } = useEventEntitlements();
   const [addedBenefits, setAddedBenefits] = useState<EventBenefit[]>([]);
   const [availableBlocks, setAvailableBlocks] = useState(blocks);
   const [blocksLoading, setBlocksLoading] = useState(isSupabaseConfigured);
@@ -251,6 +253,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   }
 
   async function saveContractDetails() {
+    if (!(await ensureFeature(eventId, eventTitle, "contracts"))) return;
     const amount = parseContractValueInput(contractAmountInput);
     const grossAmount = grossContractAmountInput.trim() ? parseContractValueInput(grossContractAmountInput) : grossValueFromNet(amount);
     if (!Number.isFinite(amount) || amount < 0) {
@@ -276,6 +279,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   async function uploadSignedContractFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!(await ensureFeature(eventId, eventTitle, "contracts"))) { event.target.value = ""; return; }
     try {
       const { data: savedFile, error } = await saveContractDocument(contract.id, "signed", file, file.name);
       if (error || !savedFile) throw error ?? new Error("Datei konnte nicht gespeichert werden.");
@@ -314,7 +318,8 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     }
   }
 
-  function openAddBenefits() {
+  async function openAddBenefits() {
+    if (!(await ensureFeature(eventId, eventTitle, "benefits"))) return;
     setSelectedBlocks([]);
     setBenefitDueDates({});
     setAdding(true);
@@ -327,6 +332,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   }
 
   async function addSelectedBlocks() {
+    if (!(await ensureFeature(eventId, eventTitle, "benefits"))) return;
     try {
       const alreadyAdded = new Set(benefits.map((benefit) => normalizeBenefitTitle(benefit.title)));
       const requested = availableBlocks.filter((block) => selectedBlocks.includes(block.title));
@@ -439,6 +445,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   }
 
   async function createDefaultContractPdf() {
+    if (!(await ensureFeature(eventId, eventTitle, "contracts"))) return;
     const amount = parseContractValueInput(contractAmountInput);
     const grossAmount = grossContractAmountInput.trim() ? parseContractValueInput(grossContractAmountInput) : grossValueFromNet(amount);
     if (!Number.isFinite(amount) || amount < 0) {
@@ -483,6 +490,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   }
 
   async function openContractOutput() {
+    if (!(await ensureFeature(eventId, eventTitle, "contracts"))) return;
     setShowContractOutput(true);
     setContractTemplate(null);
     setTemplateLoadMessage("");
@@ -523,6 +531,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
 
   async function createTemplatedDocument(format: "docx" | "pdf") {
     if (creatingContract) return;
+    if (!(await ensureFeature(eventId, eventTitle, "contracts"))) return;
     if (!contractTemplate) {
       if (format === "docx") return;
       setShowContractOutput(false);
@@ -557,7 +566,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
         sponsor,
         contract: contractForTemplate,
         grossValue: grossAmount,
-        event: { id: eventId, title: eventTitle, startDate: eventStartDate, endDate: eventEndDate, location: eventLocation, responsible: eventResponsible, createdAt: "" },
+        event: { id: eventId, title: eventTitle, startDate: eventStartDate, endDate: eventEndDate, location: eventLocation, responsible: eventResponsible, createdAt: "", planCode: "free", bookedPlanCode: "free", entitlementStatus: "active", hasPaidEventLicense: false },
         benefits,
       });
       if (format === "docx") {

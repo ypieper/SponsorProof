@@ -20,8 +20,11 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const isLoginPage = request.nextUrl.pathname === "/login";
   const isAuthCallback = request.nextUrl.pathname === "/auth/confirm";
+  const publicPages = new Set(["/agb", "/impressum", "/datenschutz", "/kontakt"]);
+  const isPublicPage = publicPages.has(request.nextUrl.pathname);
+  const isPublicContactApi = request.nextUrl.pathname === "/api/contact";
 
-  if (!user && !isLoginPage && !isAuthCallback) {
+  if (!user && !isLoginPage && !isAuthCallback && !isPublicPage && !isPublicContactApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     if (request.nextUrl.pathname === "/team/join") {

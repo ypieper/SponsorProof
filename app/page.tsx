@@ -3,10 +3,12 @@ import { Icon } from "@/components/ui";
 import { DashboardEvents } from "@/components/dashboard-events";
 import { DashboardTasks } from "@/components/dashboard-tasks";
 import { DashboardGreeting } from "@/components/dashboard-greeting";
+import { DashboardOnboarding } from "@/components/dashboard-onboarding";
 
 export default function DashboardPage() {
   return <main className="content">
     <DashboardGreeting />
+    <DashboardOnboarding />
     <div className="dashboard-grid">
       <section className="panel">
         <div className="panel-heading"><div><h2>Benötigt deine Aufmerksamkeit</h2><p>Offene Aufgaben im Blick behalten</p></div></div>

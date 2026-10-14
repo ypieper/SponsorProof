@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { SponsoLogo } from "@/components/ui";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -78,5 +79,6 @@ export function AuthForm({ initialMode = "login", invitation = false }: { initia
       {mode === "login" && <button className="auth-mode-switch" type="button" onClick={() => { setMode("recovery"); setMessage(""); }}>Passwort vergessen?</button>}
       {mode !== "recovery" ? <button className="auth-mode-switch" type="button" onClick={() => { setMode((current) => current === "login" ? "signup" : "login"); setMessage(""); }}>{mode === "login" ? "Noch kein Konto? Konto erstellen" : "Schon registriert? Anmelden"}</button> : <button className="auth-mode-switch" type="button" onClick={() => { setMode("login"); setMessage(""); }}>Zurück zur Anmeldung</button>}
     </form>}
+    <nav className="auth-legal-links" aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav>
   </section>;
 }

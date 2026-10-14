@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Icon } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { AccountDeletionSettings } from "@/components/account-deletion-settings";
+import { WorkspaceDataExport } from "@/components/workspace-data-export";
 
 type Account = { firstName: string; lastName: string; email: string };
 
@@ -88,6 +90,9 @@ export function AccountSettings() {
           <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="settings" size={16}/></span><div><h2>Passwort ändern</h2><p>Lass das Feld leer, wenn du dein Passwort behalten möchtest.</p></div></div>
           <div className="settings-grid"><div className="settings-field-full"><Field label="Neues Passwort" value={password} onChange={setPassword} type="password" placeholder="Mindestens 8 Zeichen" autoComplete="new-password" /></div></div>
         </div>}
+
+        {isSupabaseConfigured && <WorkspaceDataExport />}
+        {isSupabaseConfigured && <AccountDeletionSettings />}
       </div>
 
       <div className="settings-save-row"><p role="status" aria-live="polite">{message || (ready ? "Deine Kontodaten werden sicher in deinem Konto gespeichert." : "Kontodaten werden geladen …")}</p><button className="btn btn-primary" type="submit" disabled={!ready || saving || !isSupabaseConfigured}><Icon name="check" size={15}/>{saving ? "Wird gespeichert …" : "Speichern"}</button></div>

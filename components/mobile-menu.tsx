@@ -20,16 +20,20 @@ export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (!dialog.open) dialog.showModal();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeRef.current?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setOpen(false);
         toggleRef.current?.focus();
         return;
@@ -50,6 +54,7 @@ export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
+      if (dialog.open) dialog.close();
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -67,9 +72,9 @@ export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
       aria-controls="mobile-primary-navigation"
       onClick={() => setOpen((value) => !value)}
     ><Icon name="menu" size={18}/></button>
-    {open && createPortal(<div className="mobile-menu-layer">
+    {open && createPortal(<dialog className="mobile-menu-layer" aria-label="Hauptmenü" ref={dialogRef} onCancel={(event) => { event.preventDefault(); setOpen(false); toggleRef.current?.focus(); }}>
       <div className="mobile-menu-backdrop" aria-hidden="true" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}/>
-      <div className="mobile-drawer" id="mobile-primary-navigation" role="dialog" aria-modal="true" aria-label="Hauptmenü" ref={dialogRef}>
+      <div className="mobile-drawer" id="mobile-primary-navigation">
         <div className="mobile-drawer-head">
           <Link href="/" className="brand" aria-label="sponso Startseite"><SponsoLogo /></Link>
           <button ref={closeRef} className="icon-button" type="button" aria-label="Menü schließen" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}><Icon name="close" size={17}/></button>
@@ -81,6 +86,6 @@ export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
           return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
         })}{isPlatformAdmin && <a href="/admin" className={`nav-link ${path.startsWith("/admin") ? "active" : ""}`} aria-current={path.startsWith("/admin") ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name="users" size={17}/></span>Administration</a>}</nav>
       </div>
-    </div>, document.body)}
+    </dialog>, document.body)}
   </>;
 }

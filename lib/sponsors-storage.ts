@@ -204,48 +204,54 @@ export async function createSponsorRecord(input: {
     return { data: { sponsor: sponsorFromRow(row as SponsorRow), contracts: [] }, error: null };
   }
 
-  const { error: assignmentError } = await supabase.from("event_sponsors").insert({ event_id: input.eventId, sponsor_id: row.id });
+  const { data: contractId, error: assignmentError } = await supabase.rpc("add_sponsor_to_event", {
+    target_event_id: input.eventId,
+    target_sponsor_id: row.id,
+    initial_contract_value_cents: input.valueCents ?? null,
+  });
   if (assignmentError) {
     await supabase.from("sponsors").delete().eq("id", row.id);
     return { data: null, error: assignmentError };
   }
 
-  const { data: contractRow, error: contractError } = await supabase.from("contracts").insert({
-    event_id: input.eventId,
-    sponsor_id: row.id,
-    title: "Sponsoringvertrag",
-    value_cents: input.valueCents ?? 0,
-    status: "Offen",
-  }).select("*").single();
-  if (contractError || !contractRow) {
-    await supabase.from("event_sponsors").delete().eq("event_id", input.eventId).eq("sponsor_id", row.id);
-    await supabase.from("sponsors").delete().eq("id", row.id);
-    return { data: null, error: contractError };
+  const contracts: SponsorContract[] = [];
+  if (typeof contractId === "string") {
+    const { data: contractRow, error: contractError } = await supabase.from("contracts").select("*").eq("id", contractId).single();
+    if (contractError || !contractRow) return { data: null, error: contractError ?? new Error("Vertrag konnte nicht geladen werden.") };
+    contracts.push(contractFromRow(contractRow as ContractRow));
   }
-  const contract = contractFromRow(contractRow as ContractRow);
-  return { data: { sponsor: sponsorFromRow(row as SponsorRow, [contract], [input.eventId]), contracts: [contract] }, error: null };
+  return { data: { sponsor: sponsorFromRow(row as SponsorRow, contracts, [input.eventId]), contracts }, error: null };
 }
 
-export async function addExistingSponsorToEventRecord(eventId: string, sponsorId: string, valueCents: number) {
+export async function addExistingSponsorToEventRecord(eventId: string, sponsorId: string, valueCents?: number) {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
-  const { error: assignmentError } = await supabase.from("event_sponsors").insert({ event_id: eventId, sponsor_id: sponsorId });
+  const { data: contractId, error: assignmentError } = await supabase.rpc("add_sponsor_to_event", {
+    target_event_id: eventId,
+    target_sponsor_id: sponsorId,
+    initial_contract_value_cents: valueCents ?? null,
+  });
   if (assignmentError) return { data: null, error: assignmentError };
-  const { data: contractRow, error: contractError } = await supabase.from("contracts").insert({
+  const [sponsorResult, contractResult] = await Promise.all([
+    supabase.from("sponsors").select("*").eq("id", sponsorId).single(),
+    typeof contractId === "string" ? supabase.from("contracts").select("*").eq("id", contractId).single() : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (sponsorResult.error) return { data: null, error: sponsorResult.error };
+  if (contractResult.error) return { data: null, error: contractResult.error };
+  const contracts = contractResult.data ? [contractFromRow(contractResult.data as ContractRow)] : [];
+  return { data: { sponsor: sponsorFromRow(sponsorResult.data as SponsorRow, contracts, [eventId]), contracts }, error: null };
+}
+
+export async function createSponsorContractRecord(eventId: string, sponsorId: string, valueCents: number) {
+  const { createClient } = await import("@/lib/supabase/client");
+  const { data, error } = await createClient().from("contracts").insert({
     event_id: eventId,
     sponsor_id: sponsorId,
     title: "Sponsoringvertrag",
     value_cents: valueCents,
     status: "Offen",
   }).select("*").single();
-  if (contractError || !contractRow) {
-    await supabase.from("event_sponsors").delete().eq("event_id", eventId).eq("sponsor_id", sponsorId);
-    return { data: null, error: contractError };
-  }
-  const sponsorResult = await supabase.from("sponsors").select("*").eq("id", sponsorId).single();
-  if (sponsorResult.error) return { data: null, error: sponsorResult.error };
-  const contract = contractFromRow(contractRow as ContractRow);
-  return { data: { sponsor: sponsorFromRow(sponsorResult.data as SponsorRow, [contract], [eventId]), contracts: [contract] }, error: null };
+  return { data: data ? contractFromRow(data as ContractRow) : null, error };
 }
 
 export async function updateSponsorRecord(id: string, sponsor: Partial<Sponsor>) {

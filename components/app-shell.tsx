@@ -70,6 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   if (path.startsWith("/login")) return <>{children}</>;
+  if (["/agb", "/impressum", "/datenschutz", "/kontakt"].includes(path)) return <>{children}</>;
   const isMobileMode = path === "/event-modus";
   if (isMobileMode) return <>{children}</>;
   return <div className="app-frame">
@@ -89,6 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="main-area">
       <header className="topbar"><MobileMenu isPlatformAdmin={isPlatformAdmin}/><div className="crumb">Workspace <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? "Administration" : path === "/" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Bausteine" : path.includes("einstellungen") ? "Einstellungen" : "Workspace"}</b></div><div className="top-actions"><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link><LogoutButton/></div></header>
       {children}
+      <footer className="app-footer"><span>© {new Date().getFullYear()} sponso</span><nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
     </div>
     <Link className="event-mode-fab" href="/event-modus"><Icon name="camera" size={17}/> Nachweis-Modus</Link>
   </div>;
