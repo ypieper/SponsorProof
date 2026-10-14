@@ -8,9 +8,9 @@ const links = [
   ["Kontakt", "/kontakt"],
 ] as const;
 
-export function PublicPageFrame({ children }: { children: React.ReactNode }) {
+export function PublicPageFrame({ children, showLoginLink = true, partnerLogoUrl = null }: { children: React.ReactNode; showLoginLink?: boolean; partnerLogoUrl?: string | null }) {
   return <div className="public-site-shell">
-    <header className="public-site-header"><Link href="/" aria-label="sponso öffnen"><SponsoLogo /></Link><Link className="btn" href="/login">Zur Anmeldung</Link></header>
+    <header className={`public-site-header${partnerLogoUrl ? " public-site-header-partner" : ""}`}><div className="public-brand-lockup"><Link href="/" aria-label="sponso öffnen"><SponsoLogo /></Link>{partnerLogoUrl && <><span className="public-brand-partnership" aria-label="in Partnerschaft mit">×</span><img className="public-partner-logo" src={partnerLogoUrl} alt="Logo des Veranstalters"/></>}</div>{showLoginLink && <Link className="btn" href="/login">Zur Anmeldung</Link>}</header>
     {children}
     <footer className="public-site-footer"><span>© {new Date().getFullYear()} sponso</span><nav aria-label="Rechtliche Hinweise">{links.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}</nav></footer>
   </div>;

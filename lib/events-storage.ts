@@ -6,6 +6,8 @@ export type StoredEvent = {
   endDate: string;
   location: string;
   responsible: string;
+  organizerLogoPath: string | null;
+  organizerLogoUrl?: string | null;
   createdAt: string;
   planCode: "free" | "event" | "event_pro" | "enterprise";
   bookedPlanCode: "free" | "event" | "event_pro";
@@ -21,6 +23,7 @@ type EventRow = {
   end_date: string | null;
   location: string;
   responsible: string;
+  organizer_logo_path?: string | null;
   created_at: string;
   organization_id?: string;
   plan_code?: "free" | "event" | "event_pro";
@@ -35,6 +38,7 @@ function fromEventRow(row: EventRow, entitlement?: { plan_code: "free" | "event"
     endDate: row.end_date ?? "",
     location: row.location,
     responsible: row.responsible,
+    organizerLogoPath: row.organizer_logo_path ?? null,
     createdAt: row.created_at,
     planCode: enterpriseActive ? "enterprise" : entitlement?.plan_code ?? row.plan_code ?? "free",
     bookedPlanCode: entitlement?.plan_code ?? row.plan_code ?? "free",
@@ -47,7 +51,7 @@ export async function fetchStoredEventsFromDatabase() {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const [{ data, error }, { data: entitlements, error: entitlementError }, { data: organizationEntitlements, error: organizationEntitlementError }] = await Promise.all([
-    supabase.from("events").select("id, title, start_date, end_date, location, responsible, created_at, organization_id").order("created_at", { ascending: false }),
+    supabase.from("events").select("id, title, start_date, end_date, location, responsible, organizer_logo_path, created_at, organization_id").order("created_at", { ascending: false }),
     supabase.from("event_entitlements").select("event_id, plan_code, entitlement_status"),
     supabase.from("organization_entitlements").select("organization_id, is_active, expires_at"),
   ]);
@@ -57,7 +61,7 @@ export async function fetchStoredEventsFromDatabase() {
   return { data: (data ?? []).map((row) => fromEventRow(row as EventRow, entitlementByEvent.get(row.id), Boolean(row.organization_id && enterpriseOrganizations.has(row.organization_id)))), error: null };
 }
 
-export async function createStoredEventInDatabase(event: Omit<StoredEvent, "id" | "createdAt" | "planCode" | "bookedPlanCode" | "entitlementStatus" | "hasPaidEventLicense">) {
+export async function createStoredEventInDatabase(event: Omit<StoredEvent, "id" | "createdAt" | "planCode" | "bookedPlanCode" | "entitlementStatus" | "hasPaidEventLicense" | "organizerLogoPath" | "organizerLogoUrl">) {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const { data: eventId, error } = await supabase.rpc("create_event_with_free_entitlement", {
@@ -76,7 +80,7 @@ export async function fetchStoredEventFromDatabase(id: string) {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const [{ data, error }, { data: entitlement, error: entitlementError }] = await Promise.all([
-    supabase.from("events").select("id, title, start_date, end_date, location, responsible, created_at, organization_id").eq("id", id).maybeSingle(),
+    supabase.from("events").select("id, title, start_date, end_date, location, responsible, organizer_logo_path, created_at, organization_id").eq("id", id).maybeSingle(),
     supabase.from("event_entitlements").select("event_id, plan_code, entitlement_status").eq("event_id", id).maybeSingle(),
   ]);
   if (error || entitlementError) return { data: null, error: error ?? entitlementError };
@@ -89,12 +93,12 @@ export async function fetchStoredEventFromDatabase(id: string) {
   return { data: data ? fromEventRow(data as EventRow, entitlement, enterpriseActive) : null, error: null };
 }
 
-export async function updateStoredEventDetails(id: string, event: Omit<StoredEvent, "id" | "createdAt" | "planCode" | "bookedPlanCode" | "entitlementStatus" | "hasPaidEventLicense">) {
+export async function updateStoredEventDetails(id: string, event: Omit<StoredEvent, "id" | "createdAt" | "planCode" | "bookedPlanCode" | "entitlementStatus" | "hasPaidEventLicense" | "organizerLogoUrl">) {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const { error } = await supabase
     .from("events")
-    .update({ title: event.title, start_date: event.startDate || null, end_date: event.endDate || null, location: event.location, responsible: event.responsible })
+    .update({ title: event.title, start_date: event.startDate || null, end_date: event.endDate || null, location: event.location, responsible: event.responsible, organizer_logo_path: event.organizerLogoPath })
     .eq("id", id);
   if (error) return { data: null, error };
   return fetchStoredEventFromDatabase(id);

@@ -12,6 +12,7 @@ import { fetchStoredEventFromDatabase, type StoredEvent } from "@/lib/events-sto
 import { fetchSponsorRecordsForEvent, type SponsorRecord } from "@/lib/sponsors-storage";
 import { EmptyState, Icon, Metric, PageHeading, Tabs } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/client";
 import { eventLifecycleStage, useEventMetrics } from "@/lib/event-metrics";
 import { useEventEntitlements, type EventEntitlement } from "@/components/event-entitlements";
 
@@ -23,6 +24,7 @@ function mergeSponsorRecords(current: SponsorRecord[], updates: SponsorRecord[])
 
 export function CustomEventPage({ eventId, selectedTab, selectedSponsorId }: { eventId: string; selectedTab?: string; selectedSponsorId?: string }) {
   const [event, setEvent] = useState<StoredEvent | null>(null);
+  const [eventLogoUrl, setEventLogoUrl] = useState("");
   const [eventSponsors, setEventSponsors] = useState<SponsorRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
   const { getEntitlement, loadEntitlement, requestUpgrade } = useEventEntitlements();
@@ -46,6 +48,15 @@ export function CustomEventPage({ eventId, selectedTab, selectedSponsorId }: { e
     }
     void loadEvent();
   }, [eventId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!event?.organizerLogoPath) { setEventLogoUrl(""); return () => { active = false; }; }
+    void createClient().storage.from("sponsorproof-files").createSignedUrl(event.organizerLogoPath, 60 * 60 * 24)
+      .then(({ data }) => { if (active) setEventLogoUrl(data?.signedUrl ?? ""); })
+      .catch(() => { if (active) setEventLogoUrl(""); });
+    return () => { active = false; };
+  }, [event?.organizerLogoPath]);
 
   useEffect(() => {
     let active = true;
@@ -91,12 +102,12 @@ export function CustomEventPage({ eventId, selectedTab, selectedSponsorId }: { e
   const lifecycleStage = eventLifecycleStage(eventMetrics.byEvent[event.id] ?? { sponsorship: 0, sponsors: 0, benefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, evidenceTasks: 0, completedEvidenceTasks: 0 });
 
   return <main className="content">
-    <PageHeading eyebrow="EVENT" title={event.title} subtitle="Stammdaten und Veranstaltungsdetails." action={<div className="event-heading-actions"><span className={`event-lifecycle-status event-lifecycle-${lifecycleStage.color}`}>{eventMetrics.loading ? "Status wird geladen …" : lifecycleStage.label}</span><span className={`event-plan-badge event-plan-${entitlement?.plan_code ?? event.planCode}`}>{entitlement?.plan.name ?? (event.planCode === "enterprise" ? "Enterprise" : event.planCode === "event_pro" ? "Event Pro" : event.planCode === "event" ? "Event" : "Free")}</span>{event.planCode !== "enterprise" && <button className="btn" type="button" onClick={() => requestUpgrade(event.id, event.title, `Bis zu ${entitlement?.plan.max_sponsors ?? 2} Sponsoren`)}>{(entitlement?.plan_code ?? event.planCode) === "free" ? "Event freischalten" : "Tarif anzeigen"}</button>}<Link className="btn" href="/events"><Icon name="chevron" size={14}/> Alle Events</Link></div>} />
+    <div className="page-heading"><div className="event-page-heading-main">{eventLogoUrl && <span className="event-page-logo"><img src={eventLogoUrl} alt={`Logo für ${event.title}`}/></span>}<div><div className="eyebrow">EVENT</div><h1>{event.title}</h1><p className="subtitle">Stammdaten und Veranstaltungsdetails.</p></div></div><div className="event-heading-actions"><span className={`event-lifecycle-status event-lifecycle-${lifecycleStage.color}`}>{eventMetrics.loading ? "Status wird geladen …" : lifecycleStage.label}</span><span className={`event-plan-badge event-plan-${entitlement?.plan_code ?? event.planCode}`}>{entitlement?.plan.name ?? (event.planCode === "enterprise" ? "Enterprise" : event.planCode === "event_pro" ? "Event Pro" : event.planCode === "event" ? "Event" : "Free")}</span>{event.planCode !== "enterprise" && <button className="btn" type="button" onClick={() => requestUpgrade(event.id, event.title, `Bis zu ${entitlement?.plan.max_sponsors ?? 2} Sponsoren`)}>{(entitlement?.plan_code ?? event.planCode) === "free" ? "Event freischalten" : "Tarif anzeigen"}</button>}<Link className="btn" href="/events"><Icon name="chevron" size={14}/> Alle Events</Link></div></div>
     <EventTimeline event={event} sponsors={eventSponsors} />
     <Tabs items={[{ label: "Übersicht", href: `/events/${event.id}` }, { label: "Sponsoren", href: `/events/${event.id}?tab=sponsoren` }, { label: "Aufgaben & Nachweise", href: `/events/${event.id}?tab=aufgaben-nachweise` }, { label: "Reports", href: `/events/${event.id}?tab=reports` }]} active={activeTab} />
-    {activeTab === "Übersicht" && <><section className="metric-grid"><Metric label="Sponsoringvolumen netto" value={eventMetrics.loading || eventMetrics.error ? "—" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(eventMetrics.aggregate.sponsorship)} icon="spark"/><Metric label="Sponsoren" value={eventMetrics.loading || eventMetrics.error ? "—" : String(eventMetrics.aggregate.sponsors)} icon="users"/><Metric label="Leistungen" value={eventMetrics.loading || eventMetrics.error ? "—" : String(eventMetrics.aggregate.benefits)} icon="check"/><Metric label="Erledigt" value={eventMetrics.loading || eventMetrics.error ? "—" : `${eventMetrics.aggregate.benefits ? Math.round(eventMetrics.aggregate.completed / eventMetrics.aggregate.benefits * 100) : 0} %`} note={eventMetrics.loading || eventMetrics.error ? undefined : `${eventMetrics.aggregate.completed} von ${eventMetrics.aggregate.benefits}`} icon="layers"/></section><EventOverviewDetails eventId={event.id} initialDetails={{ title: event.title, startDate: event.startDate, endDate: event.endDate, location: event.location, responsible: event.responsible }} onDetailsSaved={(details) => setEvent((current) => current ? { ...current, ...details } : current)} /></>}
+    {activeTab === "Übersicht" && <><section className="metric-grid"><Metric label="Sponsoringvolumen netto" value={eventMetrics.loading || eventMetrics.error ? "—" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(eventMetrics.aggregate.sponsorship)} icon="spark"/><Metric label="Sponsoren" value={eventMetrics.loading || eventMetrics.error ? "—" : String(eventMetrics.aggregate.sponsors)} icon="users"/><Metric label="Leistungen" value={eventMetrics.loading || eventMetrics.error ? "—" : String(eventMetrics.aggregate.benefits)} icon="check"/><Metric label="Erledigt" value={eventMetrics.loading || eventMetrics.error ? "—" : `${eventMetrics.aggregate.benefits ? Math.round(eventMetrics.aggregate.completed / eventMetrics.aggregate.benefits * 100) : 0} %`} note={eventMetrics.loading || eventMetrics.error ? undefined : `${eventMetrics.aggregate.completed} von ${eventMetrics.aggregate.benefits}`} icon="layers"/></section><EventOverviewDetails eventId={event.id} initialDetails={{ title: event.title, startDate: event.startDate, endDate: event.endDate, location: event.location, responsible: event.responsible, organizerLogoPath: event.organizerLogoPath, organizerLogoUrl: event.organizerLogoUrl ?? eventLogoUrl }} onDetailsSaved={(details) => setEvent((current) => current ? { ...current, ...details } : current)} /></>}
     {activeTab === "Sponsoren" && selectedSponsorRecord && selectedContract ? <EventSponsorDetail eventId={event.id} eventTitle={event.title} eventStartDate={event.startDate} eventEndDate={event.endDate} eventLocation={event.location} eventResponsible={event.responsible} sponsor={selectedSponsorRecord.sponsor} contract={selectedContract} baseBenefits={[]} blocks={[]} /> : activeTab === "Sponsoren" && <EventSponsorsOverview eventId={event.id} eventTitle={event.title} sponsors={[]} contracts={[]} benefits={[]} databaseBacked />}
     {activeTab === "Aufgaben & Nachweise" && <TasksOverview eventFilter={event.id} embedded allowCreate />}
-    {activeTab === "Reports" && <EventReports eventId={event.id} eventTitle={event.title} sponsors={eventSponsors.map((record) => record.sponsor)} contracts={eventSponsors.flatMap((record) => record.contracts)} benefits={[]} />}
+    {activeTab === "Reports" && <EventReports eventId={event.id} eventTitle={event.title} organizerLogoUrl={eventLogoUrl} sponsors={eventSponsors.map((record) => record.sponsor)} contracts={eventSponsors.flatMap((record) => record.contracts)} benefits={[]} />}
   </main>;
 }

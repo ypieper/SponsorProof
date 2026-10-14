@@ -79,7 +79,7 @@ export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
           <Link href="/" className="brand" aria-label="sponso Startseite"><SponsoLogo /></Link>
           <button ref={closeRef} className="icon-button" type="button" aria-label="Menü schließen" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}><Icon name="close" size={17}/></button>
         </div>
-        <div className="nav-label">Workspace</div>
+        <div className="nav-label">Veranstalterbereich</div>
         <nav className="nav-list" aria-label="Hauptnavigation">{navigation.map((item) => {
           const route = item.href.split("?")[0];
           const active = path === route || (route !== "/" && path.startsWith(`${route}/`));

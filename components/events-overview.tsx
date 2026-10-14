@@ -8,7 +8,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { eventLifecycleStage, useEventMetrics } from "@/lib/event-metrics";
 import { useEventEntitlements } from "@/components/event-entitlements";
 
-type EventDraft = Omit<StoredEvent, "id" | "createdAt" | "planCode" | "bookedPlanCode" | "entitlementStatus" | "hasPaidEventLicense">;
+type EventDraft = Omit<StoredEvent, "id" | "createdAt" | "planCode" | "bookedPlanCode" | "entitlementStatus" | "hasPaidEventLicense" | "organizerLogoPath" | "organizerLogoUrl">;
 const emptyDraft: EventDraft = { title: "", startDate: "", endDate: "", location: "", responsible: "" };
 
 export function EventsOverview() {
@@ -121,7 +121,7 @@ export function EventsOverview() {
   }
 
   return <main className="content">
-    <div className="page-heading"><div><div className="eyebrow">WORKSPACE</div><h1>Events</h1><p className="subtitle">Alle Veranstaltungen und ihren aktuellen Fortschritt im Überblick.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); setCreating(true); }}><Icon name="plus" size={16}/> Event erstellen</button></div>
+    <div className="page-heading"><div><div className="eyebrow">VERANSTALTERBEREICH</div><h1>Events</h1><p className="subtitle">Alle Veranstaltungen und ihren aktuellen Fortschritt im Überblick.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); setCreating(true); }}><Icon name="plus" size={16}/> Event erstellen</button></div>
     <section>
       <div className="panel-heading event-overview-list-heading"><div><h2>Events</h2><p>Veranstaltungen und ihr aktueller Sponsoringfortschritt</p></div><div className="event-overview-heading-actions"><label className="event-completed-filter"><input type="checkbox" checked={showCompletedEvents} onChange={(event) => setShowCompletedEvents(event.target.checked)} /> Abgeschlossene Events anzeigen</label><span className="status status-progress">{displayedEvents.length} {displayedEvents.length === 1 ? "Event" : "Events"}</span></div></div>
       <div className="event-overview-list">

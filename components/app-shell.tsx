@@ -70,13 +70,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   if (path.startsWith("/login")) return <>{children}</>;
-  if (["/agb", "/impressum", "/datenschutz", "/kontakt"].includes(path)) return <>{children}</>;
+  if (["/agb", "/impressum", "/datenschutz", "/kontakt"].includes(path) || path.startsWith("/sponsor-upload/")) return <>{children}</>;
   const isMobileMode = path === "/event-modus";
   if (isMobileMode) return <>{children}</>;
   return <div className="app-frame">
     <aside className="sidebar">
       <Link href="/" className="brand" aria-label="sponso Startseite"><SponsoLogo /></Link>
-      <div className="nav-label">Workspace</div>
+      <div className="nav-label">Veranstalterbereich</div>
       <nav className="nav-list">{navigation.map((item) => {
         const route = item.href.split("?")[0];
         const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
@@ -88,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><MobileMenu isPlatformAdmin={isPlatformAdmin}/><div className="crumb">Workspace <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? "Administration" : path === "/" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Bausteine" : path.includes("einstellungen") ? "Einstellungen" : "Workspace"}</b></div><div className="top-actions"><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link><LogoutButton/></div></header>
+      <header className="topbar"><MobileMenu isPlatformAdmin={isPlatformAdmin}/><div className="crumb">Veranstalterbereich <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? "Administration" : path === "/" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Bausteine" : path.includes("einstellungen") ? "Einstellungen" : "Veranstalterbereich"}</b></div><div className="top-actions"><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link><LogoutButton/></div></header>
       {children}
       <footer className="app-footer"><span>© {new Date().getFullYear()} sponso</span><nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
     </div>

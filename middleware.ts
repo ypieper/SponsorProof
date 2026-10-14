@@ -21,10 +21,11 @@ export async function middleware(request: NextRequest) {
   const isLoginPage = request.nextUrl.pathname === "/login";
   const isAuthCallback = request.nextUrl.pathname === "/auth/confirm";
   const publicPages = new Set(["/agb", "/impressum", "/datenschutz", "/kontakt"]);
-  const isPublicPage = publicPages.has(request.nextUrl.pathname);
+  const isPublicPage = publicPages.has(request.nextUrl.pathname) || request.nextUrl.pathname.startsWith("/sponsor-upload/");
   const isPublicContactApi = request.nextUrl.pathname === "/api/contact";
+  const isPublicSponsorUploadApi = request.nextUrl.pathname.startsWith("/api/public/sponsor-upload/");
 
-  if (!user && !isLoginPage && !isAuthCallback && !isPublicPage && !isPublicContactApi) {
+  if (!user && !isLoginPage && !isAuthCallback && !isPublicPage && !isPublicContactApi && !isPublicSponsorUploadApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     if (request.nextUrl.pathname === "/team/join") {

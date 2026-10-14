@@ -5,11 +5,12 @@ import { Icon } from "@/components/ui";
 import { AccountSettings } from "@/components/account-settings";
 import { TeamSettings } from "@/components/team-settings";
 import { ContractTemplateSettings } from "@/components/contract-template-settings";
+import { AccountEventTariffs } from "@/components/account-event-tariffs";
 import { formatIban, lookupGermanBank, normalizeIban, validateIban } from "@/lib/bank-lookup";
 import { normalizeCityName } from "@/lib/location";
 import { fetchOrganizerSettings, saveOrganizerSettings } from "@/lib/organization-settings-storage";
 
-type TabName = "Stammdaten" | "Ansprechperson" | "Vertragsvorlage" | "Meine Daten" | "Team";
+type TabName = "Stammdaten" | "Ansprechperson" | "Vertragsvorlage" | "Tarife & Events" | "Meine Daten" | "Team";
 type Settings = {
   organization: string;
   street: string;
@@ -79,6 +80,7 @@ export function SettingsForm() {
         stammdaten: "Stammdaten",
         ansprechperson: "Ansprechperson",
         vertragsvorlage: "Vertragsvorlage",
+        tarife: "Tarife & Events",
         profile: "Meine Daten",
         "meine-daten": "Meine Daten",
         team: "Team",
@@ -96,6 +98,7 @@ export function SettingsForm() {
       Stammdaten: "stammdaten",
       Ansprechperson: "ansprechperson",
       Vertragsvorlage: "vertragsvorlage",
+      "Tarife & Events": "tarife",
       "Meine Daten": "profile",
       Team: "team",
     };
@@ -243,15 +246,15 @@ export function SettingsForm() {
 
   return <section className="settings-card panel">
     <div className="settings-tabs" role="tablist" aria-label="Einstellungsbereiche">
-      {(["Stammdaten", "Ansprechperson", "Vertragsvorlage", "Meine Daten", "Team"] as const).map((tab) => {
-        const tabId = tab === "Meine Daten" ? "meine-daten" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab;
+      {(["Stammdaten", "Ansprechperson", "Vertragsvorlage", "Meine Daten", "Tarife & Events", "Team"] as const).map((tab) => {
+        const tabId = tab === "Meine Daten" ? "meine-daten" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Tarife & Events" ? "tarife" : tab;
         const panelId = `settings-panel-${tabId}`;
-        const tabParam = tab === "Meine Daten" ? "profile" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Ansprechperson" ? "ansprechperson" : "stammdaten";
+        const tabParam = tab === "Meine Daten" ? "profile" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Tarife & Events" ? "tarife" : tab === "Ansprechperson" ? "ansprechperson" : "stammdaten";
         return <a key={tab} href={`/einstellungen?tab=${tabParam}`} role="tab" id={`settings-tab-${tabId}`} aria-selected={activeTab === tab} aria-controls={panelId} aria-current={activeTab === tab ? "page" : undefined} className={`settings-tab ${activeTab === tab ? "active" : ""}`} onClick={(event) => openSettingsTab(tab, event)}>{tab}</a>;
       })}
     </div>
 
-    {activeTab === "Team" ? <div id="settings-panel-team" role="tabpanel" aria-labelledby="settings-tab-team"><TeamSettings /></div> : activeTab === "Meine Daten" ? <div id="settings-panel-meine-daten" role="tabpanel" aria-labelledby="settings-tab-meine-daten"><AccountSettings /></div> : activeTab === "Vertragsvorlage" ? <ContractTemplateSettings /> : <form className="settings-form" onSubmit={saveSettings}>
+    {activeTab === "Team" ? <div id="settings-panel-team" role="tabpanel" aria-labelledby="settings-tab-team"><TeamSettings /></div> : activeTab === "Meine Daten" ? <div id="settings-panel-meine-daten" role="tabpanel" aria-labelledby="settings-tab-meine-daten"><AccountSettings /></div> : activeTab === "Tarife & Events" ? <div id="settings-panel-tarife" role="tabpanel" aria-labelledby="settings-tab-tarife" className="settings-panel-content"><AccountEventTariffs /></div> : activeTab === "Vertragsvorlage" ? <ContractTemplateSettings /> : <form className="settings-form" onSubmit={saveSettings}>
     {activeTab === "Stammdaten" ? <div id="settings-panel-Stammdaten" role="tabpanel" aria-labelledby="settings-tab-Stammdaten" className="settings-panel-content">
       <div className="settings-section">
         <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="pin" size={16}/></span><div><h2>Anschrift</h2><p>Bezeichnung und offizielle Anschrift des Veranstalters.</p></div></div>
