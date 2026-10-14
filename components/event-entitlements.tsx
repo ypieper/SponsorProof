@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { EVENT_PRO_UPGRADE_SURCHARGE_CENTS } from "@/lib/pricing";
 import { Icon } from "@/components/ui";
 
 export type EventPlanCode = "free" | "event" | "event_pro" | "enterprise";
@@ -44,6 +45,11 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
   const [redeeming, setRedeeming] = useState(false);
   const [dialogMessage, setDialogMessage] = useState("");
   const [dialogError, setDialogError] = useState("");
+  const currentEntitlement = dialog ? entries[dialog.eventId]?.data : null;
+  const proPlan = plans.find((plan) => plan.code === "event_pro");
+  const proUpgradePrice = currentEntitlement?.plan_code === "event" && proPlan
+    ? EVENT_PRO_UPGRADE_SURCHARGE_CENTS
+    : null;
 
   const loadEntitlement = useCallback(async (eventId: string) => {
     setEntries((current) => ({ ...current, [eventId]: { data: current[eventId]?.data ?? null, loading: true } }));
@@ -155,11 +161,20 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
     {dialog && <div className="modal-backdrop entitlement-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !redeeming) setDialog(null); }}>
       <section className="create-modal entitlement-modal" role="dialog" aria-modal="true" aria-labelledby="entitlement-title">
         <div className="create-modal-head"><div><div className="eyebrow">EVENT FREISCHALTEN</div><h2 id="entitlement-title">sponso für dieses Event freischalten</h2><p>{dialog.title}{dialog.reason ? ` · ${dialog.reason}` : ""}</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={redeeming} onClick={() => setDialog(null)}><Icon name="close" size={16}/></button></div>
-        <div className="entitlement-plan-grid">{plans.filter((plan) => plan.code === "event" || plan.code === "event_pro").map((plan) => <article key={plan.code} className="entitlement-plan-card"><div><span>{plan.name}</span><strong>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format((plan.price_cents ?? 0) / 100)}</strong><small>einmalig pro Event</small></div><ul><li>{plan.max_sponsors === null ? "Unbegrenzt Sponsoren" : `Bis zu ${plan.max_sponsors} Sponsoren`}</li>{(Object.keys(planFeatureLabels) as EventFeature[]).filter((feature) => plan.features[feature]).map((feature) => <li key={feature}>{planFeatureLabels[feature]}</li>)}</ul></article>)}</div>
+        <div className="entitlement-plan-grid">{plans.filter((plan) => plan.code === "event" || plan.code === "event_pro").map((plan) => {
+          const isCurrent = currentEntitlement?.plan_code === plan.code;
+          const isProUpgrade = plan.code === "event_pro" && proUpgradePrice !== null;
+          const isInitialEventChoice = plan.code === "event" && currentEntitlement?.plan_code === "free";
+          return <article key={plan.code} className={`entitlement-plan-card${isCurrent ? " is-current" : ""}${isProUpgrade ? " is-upgrade" : ""}`}>
+            <div><span>{plan.name}{isCurrent && <em>Aktueller Tarif</em>}</span><strong>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(isProUpgrade ? proUpgradePrice! / 100 : (plan.price_cents ?? 0) / 100)}</strong><small>{isProUpgrade ? "Einmaliger Aufpreis für den Wechsel" : isInitialEventChoice ? `Event-Tarif (Basic): später für ${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(EVENT_PRO_UPGRADE_SURCHARGE_CENTS / 100)} auf Event Pro erweiterbar` : "einmalig pro Event"}</small></div>
+            <ul><li>{plan.max_sponsors === null ? "Unbegrenzt Sponsoren" : `Bis zu ${plan.max_sponsors} Sponsoren`}</li>{(Object.keys(planFeatureLabels) as EventFeature[]).filter((feature) => plan.features[feature]).map((feature) => <li key={feature}>{planFeatureLabels[feature]}</li>)}</ul>
+            {isProUpgrade && <Link className="btn btn-primary entitlement-upgrade-button" href={`/kontakt?anliegen=event-pro&event=${encodeURIComponent(dialog.eventId)}&eventName=${encodeURIComponent(dialog.title)}`} onClick={() => setDialog(null)}>Für {new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(proUpgradePrice! / 100)} wechseln</Link>}
+          </article>;
+        })}</div>
         <aside className="entitlement-enterprise-plan"><div><strong>Enterprise-Edition</strong><span>Für Veranstalter mit mehreren Events</span></div><p>Unbegrenzte Events und Sponsoren, alle Funktionen. Jährliche Abrechnung per Rechnung; die Freischaltung erfolgt manuell durch den sponso Admin.</p><Link className="btn btn-primary" href="/kontakt?anliegen=enterprise">Enterprise anfragen</Link></aside>
         {dialogError && <p className="field-message error" role="alert">{dialogError}</p>}{dialogMessage && <p className="field-message success" role="status">{dialogMessage}</p>}
         <form className="entitlement-code-form" onSubmit={redeemCode}><label className="settings-field"><span>Du hast einen Freischaltcode?</span><input autoComplete="off" autoCapitalize="characters" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder={`S-${new Date().getFullYear()}-00000000 (Beispiel, nicht einlösbar)`} maxLength={80} /></label><button className="btn btn-primary" type="submit" disabled={redeeming || !code.trim()}>{redeeming ? "Wird eingelöst …" : "Einlösen"}</button></form>
-        <p className="entitlement-payment-note">Die Freischaltung erfolgt mit einem gültigen Code. Eine Online-Zahlung ist noch nicht eingerichtet.</p>
+        <p className="entitlement-payment-note">Die Freischaltung erfolgt mit einem gültigen Code. Eine Online-Zahlung ist noch nicht eingerichtet.{proUpgradePrice !== null ? " Den Wechsel zu Event Pro kannst du zum angezeigten Aufpreis per Rechnung anfragen." : ""}</p>
       </section>
     </div>}
   </EventEntitlementsContext.Provider>;

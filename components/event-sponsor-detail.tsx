@@ -40,87 +40,6 @@ function benefitTaskId(eventId: string, benefit: EventBenefit) {
   return benefit.id ? `benefit-${benefit.id}` : `benefit-${eventId}-${benefit.title.toLocaleLowerCase("de-DE").replace(/[^a-z0-9]+/g, "-")}`;
 }
 
-function pdfTextHex(value: string) {
-  const winAnsiSpecials: Record<string, number> = { "€": 0x80, "‚": 0x82, "ƒ": 0x83, "„": 0x84, "…": 0x85, "†": 0x86, "‡": 0x87, "ˆ": 0x88, "‰": 0x89, "Š": 0x8a, "‹": 0x8b, "Œ": 0x8c, "Ž": 0x8e, "‘": 0x91, "’": 0x92, "“": 0x93, "”": 0x94, "•": 0x95, "–": 0x96, "—": 0x97, "˜": 0x98, "™": 0x99, "š": 0x9a, "›": 0x9b, "œ": 0x9c, "ž": 0x9e, "Ÿ": 0x9f };
-  return Array.from(value).map((character) => {
-    const code = winAnsiSpecials[character] ?? character.codePointAt(0) ?? 0x3f;
-    return (code <= 0xff ? code : 0x3f).toString(16).padStart(2, "0");
-  }).join("").toUpperCase();
-}
-
-function wrapPdfText(value: string, maxLength = 88) {
-  const words = value.trim().split(/\s+/);
-  const lines: string[] = [];
-  let line = "";
-  for (const word of words) {
-    if (line && `${line} ${word}`.length > maxLength) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
-}
-
-function buildContractPdf(lines: { text: string; size?: number; bold?: boolean; gap?: number }[]) {
-  const pages: typeof lines[] = [];
-  let page: typeof lines = [];
-  let usedHeight = 0;
-  for (const line of lines) {
-    const wrapped = wrapPdfText(line.text, line.size && line.size > 12 ? 64 : 88);
-    for (const [index, text] of wrapped.entries()) {
-      const item = { ...line, text, size: index === 0 ? line.size : 10, gap: index === 0 ? line.gap : 2 };
-      const height = (item.size ?? 10) + (item.gap ?? 8);
-      if (usedHeight + height > 730 && page.length) {
-        pages.push(page);
-        page = [];
-        usedHeight = 0;
-      }
-      page.push(item);
-      usedHeight += height;
-    }
-  }
-  if (page.length || pages.length === 0) pages.push(page);
-
-  const objects: string[] = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
-  ];
-  const pageRefs: string[] = [];
-  pages.forEach((pageLines, index) => {
-    const pageObjectNumber = 5 + index * 2;
-    const contentObjectNumber = pageObjectNumber + 1;
-    pageRefs.push(`${pageObjectNumber} 0 R`);
-    let y = 790;
-    const stream = pageLines.map((line) => {
-      const size = line.size ?? 10;
-      const font = line.bold ? "F2" : "F1";
-      const draw = `BT /${font} ${size} Tf 48 ${y} Td <${pdfTextHex(line.text)}> Tj ET`;
-      y -= size + (line.gap ?? 8);
-      return draw;
-    }).join("\n");
-    objects[pageObjectNumber - 1] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjectNumber} 0 R >>`;
-    objects[contentObjectNumber - 1] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
-  });
-  objects[1] = `<< /Type /Pages /Kids [${pageRefs.join(" ")}] /Count ${pages.length} >>`;
-
-  let document = "%PDF-1.4\n% sponso\n";
-  const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(document.length);
-    document += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  });
-  const xrefOffset = document.length;
-  document += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  offsets.slice(1).forEach((offset) => { document += `${String(offset).padStart(10, "0")} 00000 n \n`; });
-  document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return new Blob([document], { type: "application/pdf" });
-}
-
 export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventEndDate, eventLocation, eventResponsible, sponsor, contract, baseBenefits, blocks }: {
   eventId: string;
   eventTitle: string;
@@ -444,51 +363,6 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     return pdf.output("blob");
   }
 
-  async function createDefaultContractPdf() {
-    if (!(await ensureFeature(eventId, eventTitle, "contracts"))) return;
-    const amount = parseContractValueInput(contractAmountInput);
-    const grossAmount = grossContractAmountInput.trim() ? parseContractValueInput(grossContractAmountInput) : grossValueFromNet(amount);
-    if (!Number.isFinite(amount) || amount < 0) {
-      setMessage("Bitte gib einen gültigen Vertragswert netto ein.");
-      return;
-    }
-    if (!Number.isFinite(grossAmount) || grossAmount < 0) {
-      setMessage("Bitte gib einen gültigen Bruttovertragswert ein.");
-      return;
-    }
-    const lines = [
-      { text: "SPONSORINGVERTRAG", size: 20, bold: true, gap: 7 },
-      { text: "Vereinbarte Leistungen", size: 14, bold: true, gap: 20 },
-      { text: `Event: ${eventTitle}`, size: 11, bold: true },
-      { text: `Sponsor: ${sponsor.name}` },
-      { text: `Vertragswert netto: ${formatContractValue(amount)}`, gap: 18 },
-      { text: `Vertragswert brutto: ${formatContractValue(grossAmount)}`, gap: 18 },
-      { text: "LEISTUNGSÜBERSICHT", size: 11, bold: true, gap: 10 },
-      ...(benefits.length ? benefits.flatMap((benefit, index) => [
-        { text: `${index + 1}. ${benefit.title} · ${benefit.category}`, size: 11, bold: true, gap: 4 },
-        { text: benefit.description || "Keine Leistungsbeschreibung hinterlegt.", gap: 12 },
-        ...(benefit.dueAt ? [{ text: `Fällig bis: ${new Intl.DateTimeFormat("de-DE").format(new Date(`${benefit.dueAt}T00:00:00`))}`, gap: 12 }] : []),
-      ]) : [{ text: "Für diesen Vertrag sind noch keine einzelnen Leistungen erfasst." }]),
-    ];
-    const blob = buildContractPdf(lines);
-    const filename = `Vertrag-${sponsor.name}-${eventTitle}.pdf`.replace(/[^a-zA-Z0-9._-]+/g, "-");
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    try {
-      const { data, error } = await saveContractDocument(contract.id, "generated_pdf", blob, filename);
-      if (error || !data) throw error ?? new Error("PDF konnte nicht gespeichert werden.");
-      setGeneratedContracts((current) => ({ ...current, pdf: data }));
-      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
-      setMessage("Der Vertrag wurde heruntergeladen und steht im Vertragsreiter erneut zum Download bereit.");
-    } catch {
-      setMessage("Der Vertrag wurde heruntergeladen, konnte aber nicht für einen späteren Download gespeichert werden.");
-    }
-  }
-
   async function openContractOutput() {
     if (!(await ensureFeature(eventId, eventTitle, "contracts"))) return;
     setShowContractOutput(true);
@@ -533,14 +407,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     if (creatingContract) return;
     if (!(await ensureFeature(eventId, eventTitle, "contracts"))) return;
     if (!contractTemplate) {
-      if (format === "docx") return;
-      setShowContractOutput(false);
-      setCreatingContract("pdf");
-      try {
-        await createDefaultContractPdf();
-      } finally {
-        setCreatingContract(null);
-      }
+      setTemplateLoadMessage("Diesem Event ist keine Dokumentenvorlage zugeordnet. Ordne unter Einstellungen → Vertragsvorlage eine vorhandene Vorlage zu oder lade eine neue DOCX-Datei hoch.");
       return;
     }
     const amount = parseContractValueInput(contractAmountInput);
@@ -638,10 +505,19 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       <section className="create-modal contract-output-modal" role="dialog" aria-modal="true" aria-labelledby="contract-output-title">
         <div className="create-modal-head"><div><h2 id="contract-output-title">Vertrag erstellen</h2><p>Wähle das gewünschte Dateiformat für {sponsor.name}.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => setShowContractOutput(false)}><Icon name="close" size={16}/></button></div>
         {templateLoading ? <p className="task-empty">Zugeordnete Vorlage wird geladen …</p> : <>
-          <p className="contract-output-note">{contractTemplate ? `Verwendete Vorlage: ${contractTemplate.name}` : templateLoadMessage || "Diesem Event ist keine Word-Vorlage zugeordnet. Die PDF-Datei wird im Standardlayout erstellt."}</p>
+          {contractTemplate ? <p className="contract-output-note">Verwendete Vorlage: {contractTemplate.name}</p> : <div
+            className={`contract-template-required-notice ${templateLoadMessage ? "error" : ""}`}
+            role={templateLoadMessage ? "alert" : "status"}
+          >
+            <div>
+              <strong>{templateLoadMessage ? "Vorlage konnte nicht geladen werden" : "Dokumentenvorlage erforderlich"}</strong>
+              <p>{templateLoadMessage || `Für „${eventTitle}“ ist noch keine Dokumentenvorlage zugeordnet. Ordne unter Einstellungen → Vertragsvorlage eine vorhandene Vorlage zu oder lade eine neue DOCX-Datei hoch. PDF- und Word-Verträge werden beide daraus erstellt.`}</p>
+            </div>
+            {!templateLoadMessage && <Link className="btn" href="/einstellungen?tab=vertragsvorlage">Vorlage hinterlegen</Link>}
+          </div>}
           {creatingContract && <p className="contract-output-note" role="status">{creatingContract === "pdf" ? "PDF wird erstellt und gleich heruntergeladen …" : "Word-Datei wird erstellt …"}</p>}
           <div className="contract-output-options">
-            <button className="contract-output-option" type="button" disabled={creatingContract !== null} onClick={() => { void createTemplatedDocument("pdf"); }}><Icon name="file" size={23}/><span>PDF-Datei erstellen</span></button>
+            <button className="contract-output-option" type="button" disabled={!contractTemplate || creatingContract !== null} onClick={() => { void createTemplatedDocument("pdf"); }}><Icon name="file" size={23}/><span>PDF-Datei erstellen</span></button>
             <button className="contract-output-option" type="button" disabled={!contractTemplate || creatingContract !== null} onClick={() => { void createTemplatedDocument("docx"); }}><Icon name="file" size={23}/><span>Word-Datei erstellen</span></button>
           </div>
           {contractTemplate && <p className="contract-output-note">Die PDF-Datei wird aus der Vorlage erstellt und direkt heruntergeladen.</p>}

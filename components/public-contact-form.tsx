@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
-export function PublicContactForm({ defaultSubject }: { defaultSubject: "Enterprise-Anfrage" | "Allgemeine Anfrage" }) {
+export function PublicContactForm({ defaultSubject, defaultMessage = "" }: { defaultSubject: "Enterprise-Anfrage" | "Allgemeine Anfrage"; defaultMessage?: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(defaultMessage);
   const [privacyRead, setPrivacyRead] = useState(false);
   const [website, setWebsite] = useState("");
   const [busy, setBusy] = useState(false);
