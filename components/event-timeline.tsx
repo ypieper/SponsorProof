@@ -22,7 +22,7 @@ export function EventTimeline({ event, sponsors }: { event: StoredEvent; sponsor
     { title: "Verträge erstellt", detail: "Wird geladen …", complete: false },
     { title: "Verträge unterschrieben", detail: "Wird geladen …", complete: false },
     { title: "Alle Nachweise erbracht", detail: "Wird geladen …", complete: false },
-    { title: "Abschlussreport erstellt", detail: "Wird geladen …", complete: false },
+    { title: "Abschlussreport erstellt und versendet", detail: "Wird geladen …", complete: false },
   ]);
   useEffect(() => {
     let cancelled = false;
@@ -31,12 +31,13 @@ export function EventTimeline({ event, sponsors }: { event: StoredEvent; sponsor
         const metrics = (await fetchEventMetrics([event.id]))[event.id] as EventMetricValues;
         const totalContracts = contracts.length;
         const totalSponsors = eventSponsors.length;
+        const reportsComplete = totalContracts > 0 && metrics.reportsCreated === totalContracts && metrics.reportsSent === totalContracts;
         const next: TimelineStep[] = [
           { title: "Event angelegt", detail: formatDate(event.createdAt) || "Erfasst", complete: true },
           { title: "Verträge erstellt", detail: `${metrics.contractsCreated} von ${totalContracts} Verträgen`, complete: totalContracts > 0 && metrics.contractsCreated === totalContracts },
           { title: "Verträge unterschrieben", detail: `${metrics.contractsSigned} von ${totalSponsors} gezeichnete Vereinbarungen hochgeladen`, complete: totalSponsors > 0 && metrics.contractsSigned === totalSponsors },
           { title: "Alle Nachweise erbracht", detail: metrics.evidenceTasks ? `${metrics.completedEvidenceTasks} von ${metrics.evidenceTasks} Nachweisen` : "Noch keine Aufgaben oder Leistungen", complete: metrics.evidenceTasks > 0 && metrics.completedEvidenceTasks === metrics.evidenceTasks },
-          { title: "Abschlussreport erstellt", detail: `${metrics.reportsCreated} von ${totalContracts} Reports`, complete: totalContracts > 0 && metrics.reportsCreated === totalContracts },
+          { title: "Abschlussreport erstellt und versendet", detail: reportsComplete ? "Abgeschlossen" : `${metrics.reportsCreated} von ${totalContracts} erstellt · ${metrics.reportsSent} von ${totalContracts} versendet`, complete: reportsComplete },
         ];
         if (!cancelled) setSteps(next);
       } catch {

@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { createStoredEventInDatabase, deleteStoredEventFromDatabase, fetchStoredEventsFromDatabase, formatEventDateRange, type StoredEvent } from "@/lib/events-storage";
 import { EmptyState, Icon } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/client";
 import { eventPlanLabel } from "@/lib/event-plan-labels";
 import { eventLifecycleStage, useEventMetrics } from "@/lib/event-metrics";
 import { useEventEntitlements } from "@/components/event-entitlements";
@@ -19,7 +20,10 @@ export function EventsOverview() {
   const [creating, setCreating] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<{ id: string; title: string; hasPaidEventLicense: boolean } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [showCompletedEvents, setShowCompletedEvents] = useState(false);
+  const [showCompletedEvents, setShowCompletedEvents] = useState(true);
+  const [completedEventsPreferenceReady, setCompletedEventsPreferenceReady] = useState(false);
+  const [savingCompletedEventsPreference, setSavingCompletedEventsPreference] = useState(false);
+  const [completedEventsPreferenceMessage, setCompletedEventsPreferenceMessage] = useState("");
   const [draft, setDraft] = useState<EventDraft>(emptyDraft);
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
@@ -46,11 +50,56 @@ export function EventsOverview() {
     void loadEvents();
   }, []);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setCompletedEventsPreferenceReady(true);
+      return;
+    }
+    let cancelled = false;
+    void createClient().auth.getUser().then(({ data, error }) => {
+      if (cancelled) return;
+      if (error || !data.user) {
+        setCompletedEventsPreferenceMessage("Deine Anzeigeauswahl konnte nicht geladen werden.");
+      } else {
+        const savedPreference = data.user.user_metadata?.show_completed_events;
+        if (typeof savedPreference === "boolean") setShowCompletedEvents(savedPreference);
+      }
+      setCompletedEventsPreferenceReady(true);
+    }).catch(() => {
+      if (cancelled) return;
+      setCompletedEventsPreferenceMessage("Deine Anzeigeauswahl konnte nicht geladen werden.");
+      setCompletedEventsPreferenceReady(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function updateCompletedEventsPreference(showCompleted: boolean) {
+    const previous = showCompletedEvents;
+    setShowCompletedEvents(showCompleted);
+    setCompletedEventsPreferenceMessage("");
+    if (!isSupabaseConfigured) return;
+    setSavingCompletedEventsPreference(true);
+    try {
+      const supabase = createClient();
+      const { data, error: userError } = await supabase.auth.getUser();
+      if (userError || !data.user) throw userError ?? new Error("Nutzerkonto nicht gefunden.");
+      const { error } = await supabase.auth.updateUser({
+        data: { ...data.user.user_metadata, show_completed_events: showCompleted },
+      });
+      if (error) throw error;
+    } catch {
+      setShowCompletedEvents(previous);
+      setCompletedEventsPreferenceMessage("Die Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut.");
+    } finally {
+      setSavingCompletedEventsPreference(false);
+    }
+  }
+
   const visibleEvents = createdEvents.sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
   const eventMetrics = useEventMetrics(visibleEvents.map((event) => event.id));
   const activeEvents = visibleEvents.map((event) => {
     const metrics = eventMetrics.byEvent[event.id];
-    const values = metrics ?? { sponsorship: 0, sponsors: 0, benefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, evidenceTasks: 0, completedEvidenceTasks: 0 };
+    const values = metrics ?? { sponsorship: 0, sponsors: 0, benefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, reportsSent: 0, evidenceTasks: 0, completedEvidenceTasks: 0 };
     return { ...event, date: formatEventDateRange(event.startDate, event.endDate), sponsorship: values.sponsorship, sponsors: values.sponsors, completed: values.completed, benefits: values.benefits, metricsLoading: eventMetrics.loading || eventMetrics.error, stage: eventLifecycleStage(values) };
   });
   const displayedEvents = activeEvents.filter((event) => showCompletedEvents || event.stage.label !== "Abgeschlossen");
@@ -124,13 +173,14 @@ export function EventsOverview() {
   return <main className="content">
     <div className="page-heading"><div><div className="eyebrow">VERANSTALTERBEREICH</div><h1>Events</h1><p className="subtitle">Alle Veranstaltungen und ihren aktuellen Fortschritt im Überblick.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); setCreating(true); }}><Icon name="plus" size={16}/> Event erstellen</button></div>
     <section>
-      <div className="panel-heading event-overview-list-heading"><div><h2>Events</h2><p>Veranstaltungen und ihr aktueller Sponsoringfortschritt</p></div><div className="event-overview-heading-actions"><label className="event-completed-filter"><input type="checkbox" checked={showCompletedEvents} onChange={(event) => setShowCompletedEvents(event.target.checked)} /> Abgeschlossene Events anzeigen</label><span className="status status-progress">{displayedEvents.length} {displayedEvents.length === 1 ? "Event" : "Events"}</span></div></div>
+      <div className="panel-heading event-overview-list-heading"><div><h2>Events</h2><p>Veranstaltungen und ihr aktueller Sponsoringfortschritt</p></div><div className="event-overview-heading-actions"><label className="event-completed-filter"><input type="checkbox" checked={showCompletedEvents} disabled={!completedEventsPreferenceReady || savingCompletedEventsPreference} onChange={(event) => void updateCompletedEventsPreference(event.target.checked)} /> Abgeschlossene Events anzeigen</label><span className="status status-progress">{displayedEvents.length} {displayedEvents.length === 1 ? "Event" : "Events"}</span></div></div>
+      {completedEventsPreferenceMessage && <p className="event-details-message" role="status">{completedEventsPreferenceMessage}</p>}
       <div className="event-overview-list">
         {displayedEvents.map((event) => <article className="event-overview-row" key={event.id}>
           <Link href={`/events/${event.id}`} className="event-overview-row-link">
             <div className="event-overview-identity"><div className="event-overview-title"><h3>{event.title}</h3><span className={`event-plan-badge event-plan-${event.planCode === "enterprise" ? "enterprise" : event.bookedPlanCode}`}>Tarif: {eventPlanLabel(event.planCode === "enterprise" ? "enterprise" : event.bookedPlanCode)}</span></div><div className="event-overview-meta"><span>{event.date}</span><span className="event-location"><Icon name="pin" size={13} />{event.location}</span></div></div>
             <div className="event-overview-metrics"><div><small>Vertragsvolumen netto</small><b>{event.metricsLoading ? "—" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(event.sponsorship)}</b></div><div><small>Sponsoren</small><b>{event.metricsLoading ? "—" : event.sponsors}</b></div><div><small>Leistungen</small><b>{event.metricsLoading ? "—" : event.benefits}</b></div><div><small>Erledigt</small><b>{event.metricsLoading ? "—" : `${event.benefits ? Math.round(event.completed / event.benefits * 100) : 0} %`}</b></div></div>
-            <span className={`event-lifecycle-status event-lifecycle-${event.stage.color}`}>{eventMetrics.loading ? "Status wird geladen …" : eventMetrics.error ? "Status nicht verfügbar" : event.stage.label}</span>
+            <span className={`event-lifecycle-status event-lifecycle-${event.stage.color}`}>Event Status: {eventMetrics.loading ? "Status wird geladen …" : eventMetrics.error ? "Status nicht verfügbar" : event.stage.label}</span>
             <div className="event-overview-progress"><div><small>Leistungsfortschritt</small><span>{event.metricsLoading ? "Wird geladen …" : `${event.completed} von ${event.benefits} Leistungen erledigt`}</span></div><div className="event-overview-progress-bar"><div className="progress-track"><div className="progress-fill" style={{ width: `${event.benefits ? Math.round(event.completed / event.benefits * 100) : 0}%` }} /></div><b>{event.metricsLoading ? "—" : `${event.benefits ? Math.round(event.completed / event.benefits * 100) : 0} %`}</b></div></div>
             <Icon name="chevron" size={16} />
           </Link>

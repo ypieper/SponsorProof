@@ -6,14 +6,14 @@ import { createClient } from "@/lib/supabase/client";
 
 export type EventMetricValues = {
   sponsorship: number; sponsors: number; benefits: number; completed: number; contracts: number;
-  contractsCreated: number; contractsSigned: number; reportsCreated: number; evidenceTasks: number; completedEvidenceTasks: number;
+  contractsCreated: number; contractsSigned: number; reportsCreated: number; reportsSent: number; evidenceTasks: number; completedEvidenceTasks: number;
 };
 type Assignment = { event_id: string; sponsor_id: string };
 type Contract = { id: string; event_id: string; sponsor_id: string; value_cents: number };
 type Benefit = { id: string; event_id: string; sponsor_id: string | null; contract_id: string | null; title: string; status: string; evidence_summary: string | null };
 
 function emptyMetrics(): EventMetricValues {
-  return { sponsorship: 0, sponsors: 0, benefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, evidenceTasks: 0, completedEvidenceTasks: 0 };
+  return { sponsorship: 0, sponsors: 0, benefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, reportsSent: 0, evidenceTasks: 0, completedEvidenceTasks: 0 };
 }
 
 export async function fetchEventMetrics(eventIds: string[]) {
@@ -57,6 +57,7 @@ export async function fetchEventMetrics(eventIds: string[]) {
     if (generatedIds.has(contract.id)) metrics.contractsCreated += 1;
     if (signedIds.has(contract.id)) metrics.contractsSigned += 1;
     if (reports.get(contract.id)?.generated_at) metrics.reportsCreated += 1;
+    if (reports.get(contract.id)?.sent_at) metrics.reportsSent += 1;
   });
 
   const evidenceKeys = new Set((evidenceResult.data ?? []).map((item) => item.benefit_id ? `benefit-${item.benefit_id}` : item.task_id).filter(Boolean));
@@ -87,6 +88,7 @@ export function sumEventMetrics(metrics: EventMetricValues[]): EventMetricValues
     benefits: sum.benefits + item.benefits, completed: sum.completed + item.completed,
     contracts: sum.contracts + item.contracts, contractsCreated: sum.contractsCreated + item.contractsCreated,
     contractsSigned: sum.contractsSigned + item.contractsSigned, reportsCreated: sum.reportsCreated + item.reportsCreated,
+    reportsSent: sum.reportsSent + item.reportsSent,
     evidenceTasks: sum.evidenceTasks + item.evidenceTasks, completedEvidenceTasks: sum.completedEvidenceTasks + item.completedEvidenceTasks,
   }), emptyMetrics());
 }
@@ -97,7 +99,7 @@ export type EventLifecycleStage = {
 };
 
 export function eventLifecycleStage(metrics: EventMetricValues): EventLifecycleStage {
-  if (metrics.contracts > 0 && metrics.contracts === metrics.sponsors && metrics.reportsCreated === metrics.contracts) return { label: "Abgeschlossen", color: "green" };
+  if (metrics.contracts > 0 && metrics.contracts === metrics.sponsors && metrics.reportsCreated === metrics.contracts && metrics.reportsSent === metrics.contracts) return { label: "Abgeschlossen", color: "green" };
   if (metrics.evidenceTasks > 0 && metrics.completedEvidenceTasks === metrics.evidenceTasks) return { label: "Alle Nachweise erbracht", color: "blue" };
   if (metrics.sponsors > 0 && metrics.contracts === metrics.sponsors && metrics.contractsSigned === metrics.sponsors) return { label: "Alle Verträge unterschrieben", color: "blue" };
   if (metrics.sponsors > 0 && metrics.contracts === metrics.sponsors && metrics.contractsCreated === metrics.contracts) return { label: "Alle Verträge erstellt", color: "blue" };
