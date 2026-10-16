@@ -12,9 +12,11 @@ import { fetchStoredBenefits } from "@/lib/benefits-storage";
 import { fetchStoredTasks } from "@/lib/tasks-storage";
 import { fetchStoredEvidence } from "@/lib/evidence-storage";
 import { useEventEntitlements } from "@/components/event-entitlements";
+import { createClient } from "@/lib/supabase/client";
 
 type ContractSummary = { status: "Offen" | "In Arbeit" | "Erledigt"; progress: number };
 type EventBenefit = { id?: string; title: string; sponsorId: string; eventId: string };
+type SponsorInvitationCode = { code: string; redeemedAt: string | null };
 
 export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors, contracts, benefits, databaseBacked = false }: {
   eventId: string;
@@ -45,6 +47,9 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
   const [contractValueDraft, setContractValueDraft] = useState("");
   const [savingContract, setSavingContract] = useState(false);
   const [contractsEnabled, setContractsEnabled] = useState(false);
+  const [invitationCodes, setInvitationCodes] = useState<Record<string, SponsorInvitationCode>>({});
+  const [creatingCodeFor, setCreatingCodeFor] = useState("");
+  const [copiedCodeFor, setCopiedCodeFor] = useState("");
   const displaySponsors = useMemo(() => databaseBacked ? databaseRecords.map((record) => record.sponsor) : sponsors, [databaseBacked, databaseRecords, sponsors]);
   const displayContracts = useMemo(() => databaseBacked ? databaseRecords.flatMap((record) => record.contracts) : contracts, [databaseBacked, databaseRecords, contracts]);
   const availableLibrarySponsors = libraryRecords.filter((record) => !record.sponsor.eventIds.includes(eventId));
@@ -61,6 +66,28 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
       else setDatabaseRecords(data ?? []);
     }).catch(() => setDatabaseError("Sponsoren konnten nicht aus Supabase geladen werden.")).finally(() => setDatabaseLoading(false));
   }, [databaseBacked, eventId]);
+
+  useEffect(() => {
+    if (!databaseBacked || databaseLoading) return;
+    let active = true;
+    void fetch(`/api/events/${eventId}/sponsor-invitation-codes`, { cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "Einladungscodes konnten nicht geladen werden.");
+        return result as { codes?: Array<{ sponsorId: string; code: string; redeemedAt: string | null }> };
+      })
+      .then(({ codes }) => {
+        if (!active) return;
+        setInvitationCodes((current) => {
+          const next = { ...current };
+          Object.keys(next).filter((key) => key.startsWith(`${eventId}:`)).forEach((key) => delete next[key]);
+          (codes ?? []).forEach(({ sponsorId, code, redeemedAt }) => { next[`${eventId}:${sponsorId}`] = { code, redeemedAt }; });
+          return next;
+        });
+      })
+      .catch(() => { if (active) setDatabaseError("Einladungscodes konnten nicht geladen werden."); });
+    return () => { active = false; };
+  }, [databaseBacked, databaseLoading, displaySponsors, eventId]);
 
   useEffect(() => {
     if (!addingSponsor || !databaseBacked) return;
@@ -100,8 +127,8 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
   async function saveSponsor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = parseContractValueInput(contractValue);
-    if (addMode === "new" && postalCodeStatus !== "valid") {
-      setDatabaseError(postalCodeStatus === "invalid" ? "Bitte gib eine gültige PLZ ein." : postalCodeStatus === "unavailable" ? "Die PLZ konnte gerade nicht geprüft werden. Bitte versuche es erneut." : "Bitte warte, bis die PLZ geprüft wurde.");
+    if (addMode === "new" && postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim())) {
+      setDatabaseError(postalCodeStatus === "invalid" ? "Bitte gib eine gültige PLZ ein." : postalCodeStatus === "unavailable" ? "Bitte trage den Ort manuell ein, wenn die PLZ-Prüfung gerade nicht verfügbar ist." : "Bitte warte, bis die PLZ geprüft wurde.");
       return;
     }
     if ((addMode === "new" && !masterData.name.trim()) || (addMode === "existing" && !selectedSponsorId) || (contractsEnabled && (!Number.isFinite(amount) || amount < 0)) || savingSponsor) return;
@@ -182,6 +209,35 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
     }
   }
 
+  async function createInvitationCode(sponsorId: string) {
+    if (creatingCodeFor) return;
+    setCreatingCodeFor(sponsorId);
+    setDatabaseError("");
+    try {
+      const { data, error } = await createClient().rpc("create_sponsor_event_code", {
+        target_event_id: eventId,
+        target_sponsor_id: sponsorId,
+        target_expires_at: null,
+      });
+      if (error || typeof data !== "string") throw error ?? new Error("Der Einladungscode konnte nicht erstellt werden.");
+      setInvitationCodes((current) => ({ ...current, [`${eventId}:${sponsorId}`]: { code: data, redeemedAt: null } }));
+    } catch {
+      setDatabaseError("Der Einladungscode konnte nicht erstellt werden. Bitte prüfe deine Verbindung und den Zugriff auf das Event.");
+    } finally {
+      setCreatingCodeFor("");
+    }
+  }
+
+  async function copyInvitationCode(sponsorId: string, code: string) {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCodeFor(sponsorId);
+      window.setTimeout(() => setCopiedCodeFor((current) => current === sponsorId ? "" : current), 1800);
+    } catch {
+      setDatabaseError("Der Code konnte nicht kopiert werden. Bitte markiere ihn und kopiere ihn manuell.");
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function loadSummaries() {
@@ -198,11 +254,13 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
           }
           const contractBenefits = (benefitResult.data ?? []).filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === contract.sponsorId);
           const contractTasks = (taskResult.data ?? []).filter((task) => task.event_id === eventId && (task.sponsor_id === contract.sponsorId || (!task.sponsor_id && task.sponsor_name === displaySponsors.find((item) => item.id === contract.sponsorId)?.name)));
+          const benefitsWithSubtasks = new Set(contractTasks.filter((task) => task.source === "Leistung" && task.benefit_id).map((task) => task.benefit_id));
+          const legacyBenefits = contractBenefits.filter((benefit) => !benefitsWithSubtasks.has(benefit.id));
           const taskIds = [
-            ...contractBenefits.map((benefit) => `benefit-${benefit.id}`),
+            ...legacyBenefits.map((benefit) => `benefit-${benefit.id}`),
             ...contractTasks.map((task) => task.id),
           ];
-          const completed = taskIds.filter((id) => evidence.has(id) || contractBenefits.some((benefit) => `benefit-${benefit.id}` === id && (benefit.status === "Erfüllt" || benefit.status === "Erledigt"))).length;
+          const completed = taskIds.filter((id) => evidence.has(id) || contractTasks.some((task) => task.id === id && task.status === "Erledigt") || legacyBenefits.some((benefit) => `benefit-${benefit.id}` === id && (benefit.status === "Erfüllt" || benefit.status === "Erledigt"))).length;
           const progress = taskIds.length ? Math.round(completed / taskIds.length * 100) : 0;
           next[contract.id] = { status: taskIds.length > 0 && completed === taskIds.length ? "Erledigt" : "In Arbeit", progress };
         }
@@ -223,14 +281,17 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
     return () => { cancelled = true; };
   }, [eventId, displaySponsors, displayContracts, benefits]);
 
-  return <><section className="panel table-panel event-sponsors-panel"><div className="table-head"><div><h2>Sponsoren im Überblick</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Wähle einen Sponsor, um Vertrag und vereinbarte Einzelleistungen dieses Events zu sehen.</p></div>{databaseBacked && <button className="btn btn-primary" type="button" onClick={openAddSponsorForm}><Icon name="plus" size={14}/> Sponsor hinzufügen</button>}</div>{databaseError && <p className="field-message error" role="alert">{databaseError}</p>}{databaseBacked && databaseLoading ? <p className="task-empty">Sponsoren werden geladen …</p> : displaySponsors.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Sponsoren" description="Füge den ersten Sponsor zu diesem Event hinzu, um Vereinbarungen festzuhalten." action={databaseBacked ? <button className="btn btn-primary" type="button" onClick={openAddSponsorForm}><Icon name="plus" size={14}/> Sponsor hinzufügen</button> : undefined} /> : <table className="table"><thead><tr><th>SPONSOR</th><th>VERTRAGSWERT (NETTO)</th><th>ERFÜLLUNG</th><th>STATUS</th><th>AKTION</th></tr></thead><tbody>{displaySponsors.map((sponsor) => {
+  return <><section className="panel table-panel event-sponsors-panel"><div className="table-head"><div><h2>Sponsoren im Überblick</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Wähle einen Sponsor, um Vertrag und vereinbarte Einzelleistungen dieses Events zu sehen.</p></div>{databaseBacked && <button className="btn btn-primary" type="button" onClick={openAddSponsorForm}><Icon name="plus" size={14}/> Sponsor hinzufügen</button>}</div>{databaseError && <p className="field-message error" role="alert">{databaseError}</p>}{databaseBacked && databaseLoading ? <p className="task-empty">Sponsoren werden geladen …</p> : displaySponsors.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Sponsoren" description="Füge den ersten Sponsor zu diesem Event hinzu, um Vereinbarungen festzuhalten." action={databaseBacked ? <button className="btn btn-primary" type="button" onClick={openAddSponsorForm}><Icon name="plus" size={14}/> Sponsor hinzufügen</button> : undefined} /> : <table className="table"><thead><tr><th>SPONSOR</th><th>VERTRAGSWERT (NETTO)</th><th>ERFÜLLUNG</th><th>STATUS</th><th>EINLADUNGSCODE</th><th>AKTION</th></tr></thead><tbody>{displaySponsors.map((sponsor) => {
     const contract = displayContracts.find((item) => item.sponsorId === sponsor.id);
     const sponsorContract = contract;
     const initialSignedOn = sponsorContract?.signedAt;
-    if (!sponsorContract) return <tr key={sponsor.id}><td><Link href={`/events/${eventId}?tab=sponsoren&sponsor=${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={{ background: sponsor.color, color: "white" }}>{sponsor.initials}</span>{sponsor.name}</Link></td><td>—</td><td>—</td><td><span className="status status-locked">Daten unvollständig</span></td><td><button className="btn btn-primary" type="button" onClick={() => { void openContractCreation(sponsor); }}>{contractsEnabled ? "Sponsor vervollständigen" : "Freischalten"}</button></td></tr>;
+    const codeKey = `${eventId}:${sponsor.id}`;
+    const invitationCode = invitationCodes[codeKey];
+    const codeCell = <td><div className="event-sponsor-invitation-code">{invitationCode ? <><code>{invitationCode.code}</code><button className="btn event-sponsor-code-copy" type="button" onClick={() => void copyInvitationCode(sponsor.id, invitationCode.code)}>{copiedCodeFor === sponsor.id ? "Kopiert" : "Code kopieren"}</button><small>{invitationCode.redeemedAt ? "Dieser Einladungscode wurde bereits eingelöst." : "Damit verknüpft der Sponsor sein Konto mit diesem Event."}</small></> : <button className="btn" type="button" disabled={Boolean(creatingCodeFor)} onClick={() => { void createInvitationCode(sponsor.id); }}>{creatingCodeFor === sponsor.id ? "Code wird erstellt …" : "Einladungscode erstellen"}</button>}</div></td>;
+    if (!sponsorContract) return <tr key={sponsor.id}><td><Link href={`/events/${eventId}?tab=sponsoren&sponsor=${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={{ background: sponsor.color, color: "white" }}>{sponsor.initials}</span>{sponsor.name}</Link></td><td>—</td><td>—</td><td><span className="status status-locked">Daten unvollständig</span></td>{codeCell}<td><div className="event-sponsor-row-actions"><button className="btn btn-primary" type="button" onClick={() => { void openContractCreation(sponsor); }}>{contractsEnabled ? "Sponsor vervollständigen" : "Freischalten"}</button><button className="btn btn-danger event-sponsor-remove" type="button" onClick={() => { setDatabaseError(""); setPendingRemoval(sponsor); }}>Entfernen</button></div></td></tr>;
     const summary = summaries[sponsorContract.id] ?? { status: !initialSignedOn ? "Offen" as const : "In Arbeit" as const, progress: initialSignedOn ? sponsorContract.progress : 0 };
     const contractAmount = parseContractValue(sponsorContract.value);
-    return <tr key={sponsorContract.id}><td><Link href={`/events/${eventId}?tab=sponsoren&sponsor=${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={{ background: sponsor.color, color: "white" }}>{sponsor.initials}</span>{sponsor.name}</Link></td><td>{formatContractValue(contractAmount)}</td><td><Progress value={summary.progress}/></td><td><Status value={summary.status}/></td><td><button className="btn btn-danger event-sponsor-remove" type="button" onClick={() => { setDatabaseError(""); setPendingRemoval(sponsor); }}>Entfernen</button></td></tr>;
+    return <tr key={sponsorContract.id}><td><Link href={`/events/${eventId}?tab=sponsoren&sponsor=${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={{ background: sponsor.color, color: "white" }}>{sponsor.initials}</span>{sponsor.name}</Link></td><td>{formatContractValue(contractAmount)}</td><td><Progress value={summary.progress}/></td><td><Status value={summary.status}/></td>{codeCell}<td><button className="btn btn-danger event-sponsor-remove" type="button" onClick={() => { setDatabaseError(""); setPendingRemoval(sponsor); }}>Entfernen</button></td></tr>;
   })}</tbody></table>}</section>{addingSponsor && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingSponsor) setAddingSponsor(false); }}>
     <section className="create-modal add-event-sponsor-modal" role="dialog" aria-modal="true" aria-labelledby="add-event-sponsor-title">
       <div className="create-modal-head">
@@ -263,7 +324,7 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
           </section> : <section className="add-sponsor-contract-section add-sponsor-upgrade-note"><div className="add-sponsor-step-heading"><span><Icon name="lock" size={14}/></span><div><h3>Vertrag und Vertragswert</h3><p>Ein Vertrag kann nach der Freischaltung eines Tarifs für dieses Event angelegt werden.</p></div></div><button className="btn" type="button" onClick={() => requestUpgrade(eventId, eventTitle, "Verträge und Vertragswerte")}>Tarife ansehen</button></section>}
         </div>
         {databaseError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{databaseError}</p>}
-        <div className="create-modal-actions"><button className="btn" type="button" disabled={savingSponsor} onClick={() => setAddingSponsor(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingSponsor || libraryLoading || (addMode === "new" && postalCodeStatus !== "valid") || (addMode === "existing" && (!selectedSponsorId || !availableLibrarySponsors.some((record) => record.sponsor.id === selectedSponsorId)))}>{savingSponsor ? "Wird gespeichert …" : addMode === "new" ? "Sponsor anlegen & hinzufügen" : "Zum Event hinzufügen"}</button></div>
+        <div className="create-modal-actions"><button className="btn" type="button" disabled={savingSponsor} onClick={() => setAddingSponsor(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingSponsor || libraryLoading || (addMode === "new" && postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim())) || (addMode === "existing" && (!selectedSponsorId || !availableLibrarySponsors.some((record) => record.sponsor.id === selectedSponsorId)))}>{savingSponsor ? "Wird gespeichert …" : addMode === "new" ? "Sponsor anlegen & hinzufügen" : "Zum Event hinzufügen"}</button></div>
       </form>
     </section>
   </div>}{contractSponsor && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingContract) setContractSponsor(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-sponsor-contract-title"><div className="create-modal-head"><div><h2 id="create-sponsor-contract-title">Sponsor vervollständigen</h2><p>Lege für {contractSponsor.name} den Vertragswert für dieses Event fest. Danach kannst du den Vertrag und die vereinbarten Leistungen ergänzen.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={savingContract} onClick={() => setContractSponsor(null)}><Icon name="close" size={16}/></button></div><form onSubmit={saveContractForSponsor}><label className="settings-field"><span>Vertragswert netto (€) *</span><CurrencyField ariaLabel="Vertragswert netto in Euro" required value={contractValueDraft} onChange={setContractValueDraft}/></label>{databaseError && <p className="field-message error" role="alert">{databaseError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={savingContract} onClick={() => setContractSponsor(null)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingContract || !contractValueDraft.trim()}>{savingContract ? "Wird gespeichert …" : "Vertrag anlegen"}</button></div></form></section></div>}{pendingRemoval && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !removingSponsor) setPendingRemoval(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="remove-event-sponsor-title"><div className="create-modal-head"><div><h2 id="remove-event-sponsor-title">Sponsor aus Event entfernen?</h2><p>„{pendingRemoval.name}“ wird aus diesem Event entfernt. Der Vertrag und die zugehörigen Leistungen und Aufgaben werden gelöscht; die Sponsor-Stammdaten bleiben erhalten.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={removingSponsor} onClick={() => setPendingRemoval(null)}><Icon name="close" size={16}/></button></div>{databaseError && <p className="field-message error" role="alert">{databaseError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={removingSponsor} onClick={() => setPendingRemoval(null)}>Abbrechen</button><button className="btn btn-danger" type="button" disabled={removingSponsor} onClick={() => void confirmRemoveSponsor()}>{removingSponsor ? "Wird entfernt …" : "Aus Event entfernen"}</button></div></section></div>}</>;

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon, SponsoLogo } from "@/components/ui";
-import { MobileMenu, navigation } from "@/components/mobile-menu";
+import { MobileMenu, adminNavigation, navigation } from "@/components/mobile-menu";
 import { LogoutButton } from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -30,6 +30,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const [userDisplay, setUserDisplay] = useState(defaultUserDisplay);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [isSalesPartner, setIsSalesPartner] = useState(false);
+  const adminNavigationOnly = isPlatformAdmin || path.startsWith("/admin");
 
   useEffect(() => {
     let active = true;
@@ -52,12 +54,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       }).catch(() => undefined);
     };
 
-    loadOrganization();
+    if (!path.startsWith("/login")) loadOrganization();
     loadUser();
     if (isSupabaseConfigured) {
       void fetch("/api/admin/access").then((response) => response.ok ? response.json() : null)
         .then((result) => { if (active) setIsPlatformAdmin(Boolean(result?.isAdmin)); })
         .catch(() => undefined);
+      void fetch("/api/partner", { cache: "no-store" }).then((response) => { if (active) setIsSalesPartner(response.ok); }).catch(() => undefined);
     }
     window.addEventListener("sponsorproof:organizer-settings-updated", loadOrganization);
     window.addEventListener("sponsorproof:user-account-updated", loadUser);
@@ -67,54 +70,67 @@ export function AppShell({ children }: { children: ReactNode }) {
       window.removeEventListener("sponsorproof:organizer-settings-updated", loadOrganization);
       window.removeEventListener("sponsorproof:user-account-updated", loadUser);
     };
-  }, []);
+  }, [path]);
 
   useEffect(() => {
-    const title = path === "/" ? "Übersicht"
+    const title = path === "/" ? "Sponsoringmanagement für Veranstalter"
+      : path === "/dashboard" ? "Übersicht"
       : path === "/events" ? "Events"
       : path.startsWith("/events/") ? "Eventdetails"
       : path === "/aufgaben" ? "Aufgaben"
-      : path === "/bausteine" ? "Bausteine"
+      : path === "/bausteine" ? "Vertragsbausteine"
       : path === "/sponsors" ? "Sponsoren"
       : path.startsWith("/sponsors/") ? "Sponsorprofil"
       : path.startsWith("/einstellungen") ? "Einstellungen"
       : path === "/event-modus" ? "Nachweise vor Ort"
-      : path.startsWith("/sponsor-upload/") ? "Dateien sicher übermitteln"
-      : path === "/login" ? "Anmelden"
+      : path.startsWith("/login") ? "Anmelden"
+      : path === "/landing" ? "Sponsoringmanagement für Veranstalter"
       : path === "/passwort-zuruecksetzen" ? "Passwort zurücksetzen"
       : path === "/agb" ? "Allgemeine Geschäftsbedingungen"
       : path === "/impressum" ? "Impressum"
       : path === "/datenschutz" ? "Datenschutzerklärung"
       : path === "/kontakt" ? "Kontakt"
       : path.startsWith("/team/join") ? "Team beitreten"
+      : path === "/onboarding" ? "Zugang einrichten"
+      : path === "/admin/users" ? "Benutzer"
+      : path === "/admin/organizations" ? "Veranstalterbereiche"
+      : path === "/admin/codes" ? "Freischaltcodes"
+      : path === "/admin/enterprise" ? "Enterprise"
+      : path === "/admin/contacts" ? "Kontaktanfragen"
+      : path === "/admin/partners" ? "Vertriebspartner"
+      : path === "/admin/commissions" ? "Provisionen"
+      : path === "/admin/commission-rules" ? "Provisionsregeln"
       : path.startsWith("/admin") ? "Administration"
       : "Sponsoring verwalten";
     document.title = `${title} | sponso`;
   }, [path]);
 
-  if (path.startsWith("/login")) return <>{children}</>;
-  if (["/agb", "/impressum", "/datenschutz", "/kontakt"].includes(path) || path.startsWith("/sponsor-upload/")) return <>{children}</>;
+  if (path.startsWith("/login") || path === "/admin/login" || path === "/onboarding" || path === "/partner" || path === "/sponsor" || path.startsWith("/sponsor/")) return <>{children}</>;
+  if (["/", "/agb", "/impressum", "/datenschutz", "/kontakt", "/landing"].includes(path)) return <>{children}</>;
   const isMobileMode = path === "/event-modus";
   if (isMobileMode) return <>{children}</>;
   return <div className="app-frame">
     <aside className="sidebar">
-      <Link href="/" className="brand" aria-label="sponso Startseite"><SponsoLogo /></Link>
-      <div className="nav-label">Veranstalterbereich</div>
-      <nav className="nav-list">{navigation.map((item) => {
+      <Link href={adminNavigationOnly ? "/admin/users" : "/dashboard"} className="brand" aria-label={adminNavigationOnly ? "sponso Administration" : "sponso Übersicht öffnen"}><SponsoLogo /></Link>
+      <div className="nav-label">{adminNavigationOnly ? "Plattform" : "Veranstalterbereich"}</div>
+      <nav className="nav-list">{adminNavigationOnly ? adminNavigation.map((item) => {
+        const active = path === item.href || (item.href !== "/admin/users" && path.startsWith(`${item.href}/`));
+        return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
+      }) : [...navigation, ...(isSalesPartner ? [{ label: "Vertriebspartner", href: "/partner", icon: "spark" }] : [])].map((item) => {
         const route = item.href.split("?")[0];
         const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
         return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
-      })}{isPlatformAdmin && <a href="/admin" className={`nav-link ${path.startsWith("/admin") ? "active" : ""}`} aria-current={path.startsWith("/admin") ? "page" : undefined}><span className="nav-icon"><Icon name="users" size={17}/></span>Administration</a>}</nav>
-      <div className="sidebar-bottom">
+      })}</nav>
+      {!adminNavigationOnly && <div className="sidebar-bottom">
         <div className="help-card"><span className="metric-icon"><Icon name="spark" size={15}/></span><strong>Gut vorbereitet?</strong><p>Behalte alle Sponsoringleistungen an einem Ort im Blick.</p><Link href="/event-modus">Event-Modus öffnen →</Link></div>
         <Link className="profile" href="/einstellungen?tab=profile" aria-label="Einstellungen und Meine Daten öffnen" title="Meine Daten bearbeiten"><span className="avatar">{userDisplay.initials}</span><div><b title={userDisplay.name}>{userDisplay.name}</b><small title={userDisplay.organization}>{userDisplay.organization}</small></div><span style={{marginLeft:"auto",color:"#8a94a0"}}><Icon name="chevron" size={16}/></span></Link>
-      </div>
+      </div>}
     </aside>
     <div className="main-area">
-      <header className="topbar"><MobileMenu isPlatformAdmin={isPlatformAdmin}/><div className="crumb">Veranstalterbereich <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? "Administration" : path === "/" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Bausteine" : path.includes("einstellungen") ? "Einstellungen" : "Veranstalterbereich"}</b></div><div className="top-actions"><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link><LogoutButton/></div></header>
+      <header className="topbar"><MobileMenu isPlatformAdmin={adminNavigationOnly} isSalesPartner={isSalesPartner}/><div className="crumb">{adminNavigationOnly ? "Plattform" : "Veranstalterbereich"} <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? (adminNavigation.find((item) => item.href === path)?.label ?? "Benutzer") : path === "/dashboard" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Vertragsbausteine" : path.includes("einstellungen") ? "Einstellungen" : "Veranstalterbereich"}</b></div><div className="top-actions">{!adminNavigationOnly && <Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link>}<LogoutButton/></div></header>
       {children}
       <footer className="app-footer"><span>© {new Date().getFullYear()} sponso</span><nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
     </div>
-    <Link className="event-mode-fab" href="/event-modus"><Icon name="camera" size={17}/> Nachweis-Modus</Link>
+    {!adminNavigationOnly && <Link className="event-mode-fab" href="/event-modus"><Icon name="camera" size={17}/> Nachweis-Modus</Link>}
   </div>;
 }

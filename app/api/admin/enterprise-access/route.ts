@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient, getAuthorizedPlatformAdmin } from "@/lib/supabase/admin";
+import { formatSponsoId } from "@/lib/sponso-id";
 
 export async function GET() {
   const auth = await getAuthorizedPlatformAdmin();
@@ -7,15 +8,16 @@ export async function GET() {
 
   const admin = createAdminClient();
   const [{ data: organizations, error: organizationError }, { data: entitlements, error: entitlementError }] = await Promise.all([
-    admin.from("organizations").select("id, name").order("name"),
+    admin.from("organizations").select("id, name, sponso_id").order("name"),
     admin.from("organization_entitlements").select("organization_id, is_active, activated_at, expires_at, annual_fee_cents, invoice_reference, internal_note, created_at, updated_at, activated_by").order("updated_at", { ascending: false }),
   ]);
   if (organizationError || entitlementError) return NextResponse.json({ error: "Enterprise-Freischaltungen konnten nicht geladen werden. Prüfe die Datenbankmigration." }, { status: 500 });
 
   const names = new Map((organizations ?? []).map((item) => [item.id, item.name]));
+  const sponsoIds = new Map((organizations ?? []).map((item) => [item.id, formatSponsoId(item.sponso_id)]));
   return NextResponse.json({
-    organizations: organizations ?? [],
-    entitlements: (entitlements ?? []).map((item) => ({ ...item, organization_name: names.get(item.organization_id) ?? "Nicht gefunden" })),
+    organizations: (organizations ?? []).map((item) => ({ ...item, sponso_id: formatSponsoId(item.sponso_id) })),
+    entitlements: (entitlements ?? []).map((item) => ({ ...item, organization_name: names.get(item.organization_id) ?? "Nicht gefunden", sponso_id: sponsoIds.get(item.organization_id) ?? null })),
   }, { headers: { "Cache-Control": "no-store" } });
 }
 

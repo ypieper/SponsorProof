@@ -44,7 +44,7 @@ export function JoinWorkspace({ token }: { token: string }) {
       }
       if (active) {
         setMessage("Du bist jetzt Teil des Veranstalterbereichs. Weiterleitung …");
-        router.replace("/");
+        router.replace("/dashboard");
         router.refresh();
       }
     }

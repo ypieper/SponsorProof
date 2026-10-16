@@ -97,7 +97,7 @@ export function SponsorMasterDataFields({ value, onChange, onPostalCodeStatusCha
   const postalMessage = postalCodeStatus === "invalid"
     ? { text: "Bitte gib eine gültige PLZ ein.", kind: "error" as const }
     : postalCodeStatus === "unavailable"
-      ? { text: "Die PLZ konnte gerade nicht geprüft werden. Bitte versuche es erneut.", kind: "error" as const }
+      ? { text: "PLZ-Prüfung nicht verfügbar. Ort bitte manuell eintragen.", kind: "hint" as const }
       : postalCodeStatus === "loading"
         ? { text: "PLZ wird geprüft …", kind: "hint" as const }
         : undefined;
@@ -121,7 +121,7 @@ export function SponsorMasterDataFields({ value, onChange, onPostalCodeStatusCha
         <Field label="Straße" value={value.street} onChange={(next) => update("street", next)} required autoComplete="address-line1" />
         <Field label="Hausnummer" value={value.streetNumber} onChange={(next) => update("streetNumber", next)} required autoComplete="address-line2" />
         <Field label="PLZ" value={value.postalCode} onChange={updatePostalCode} required autoComplete="postal-code" maxLength={5} message={postalMessage} />
-        <Field label="Ort" value={value.city} required readOnly autoComplete="address-level2" />
+        <Field label="Ort" value={value.city} onChange={(next) => update("city", next)} required autoComplete="address-level2" />
         <Field label="USt-IdNr." value={value.vatId} onChange={(next) => update("vatId", next)} />
       </div>
     </section>

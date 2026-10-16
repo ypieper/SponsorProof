@@ -6,9 +6,12 @@ export type StoredBenefit = {
   sponsorId: string | null;
   contractId: string | null;
   title: string;
+  benefitType: "monetary" | "in_kind";
+  materialLogistics?: string;
   category: string;
   description: string;
   detail: string;
+  quantity: number;
   status: string;
   evidence: string;
   dueAt?: string;
@@ -20,15 +23,18 @@ type BenefitRow = {
   sponsor_id: string | null;
   contract_id: string | null;
   title: string;
+  benefit_type: "monetary" | "in_kind" | null;
+  material_logistics: string | null;
   category: string;
   description: string;
   detail: string;
+  quantity: number;
   status: string;
   evidence_summary: string;
   due_at: string | null;
 };
 
-export type BenefitInput = Omit<StoredBenefit, "id">;
+export type BenefitInput = Omit<StoredBenefit, "id" | "quantity" | "detail" | "benefitType"> & { detail?: string; quantity?: number; benefitType?: StoredBenefit["benefitType"] };
 export type LegacyBenefit = {
   id?: string;
   eventId: string;
@@ -38,6 +44,7 @@ export type LegacyBenefit = {
   category?: string;
   description?: string;
   detail?: string;
+  quantity?: number;
   status?: string;
   evidence?: string;
   dueAt?: string;
@@ -50,9 +57,12 @@ export function benefitFromRow(row: BenefitRow): StoredBenefit {
     sponsorId: row.sponsor_id,
     contractId: row.contract_id,
     title: row.title,
+    benefitType: row.benefit_type ?? "monetary",
+    materialLogistics: row.material_logistics ?? "",
     category: row.category,
     description: row.description,
     detail: row.detail,
+    quantity: row.quantity ?? 1,
     status: row.status,
     evidence: row.evidence_summary,
     dueAt: row.due_at ?? undefined,
@@ -65,9 +75,12 @@ function rowFromInput(benefit: BenefitInput) {
     sponsor_id: benefit.sponsorId,
     contract_id: benefit.contractId,
     title: benefit.title,
+    benefit_type: benefit.benefitType ?? "monetary",
+    material_logistics: benefit.materialLogistics?.trim() || null,
     category: benefit.category,
     description: benefit.description,
-    detail: benefit.detail,
+    detail: benefit.detail ?? "",
+    quantity: benefit.quantity ?? 1,
     status: benefit.status,
     evidence_summary: benefit.evidence,
     due_at: benefit.dueAt ?? null,
@@ -75,7 +88,7 @@ function rowFromInput(benefit: BenefitInput) {
 }
 
 export async function fetchStoredBenefits(eventId?: string) {
-  let query = createClient().from("benefits").select("id, event_id, sponsor_id, contract_id, title, category, description, detail, status, evidence_summary, due_at").order("created_at", { ascending: true });
+  let query = createClient().from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, due_at").order("created_at", { ascending: true });
   if (eventId) query = query.eq("event_id", eventId);
   const { data, error } = await query;
   return { data: (data ?? []).map((row) => benefitFromRow(row as BenefitRow)), error };
@@ -86,7 +99,7 @@ export async function createStoredBenefits(benefits: BenefitInput[]) {
   const { data, error } = await createClient()
     .from("benefits")
     .insert(benefits.map(rowFromInput))
-    .select("id, event_id, sponsor_id, contract_id, title, category, description, detail, status, evidence_summary, due_at");
+    .select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, due_at");
   return { data: (data ?? []).map((row) => benefitFromRow(row as BenefitRow)), error };
 }
 
@@ -97,7 +110,7 @@ export async function syncLegacyBenefitsToSupabase(legacyBenefits: LegacyBenefit
   const supabase = createClient();
   const eventIds = [...new Set(legacy.map((benefit) => benefit.eventId))];
   const [benefitResult, contractResult] = await Promise.all([
-    supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, category, description, detail, status, evidence_summary, due_at").in("event_id", eventIds),
+    supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, due_at").in("event_id", eventIds),
     supabase.from("contracts").select("id, event_id, sponsor_id").in("event_id", eventIds),
   ]);
   if (benefitResult.error) return { data: [] as StoredBenefit[], error: benefitResult.error, imported: 0 };
@@ -118,9 +131,11 @@ export async function syncLegacyBenefitsToSupabase(legacyBenefits: LegacyBenefit
     sponsorId: benefit.sponsorId ?? null,
     contractId: benefit.contractId ?? contracts.get(`${benefit.eventId}:${benefit.sponsorId}`) ?? null,
     title: benefit.title,
+    benefitType: "monetary",
     category: benefit.category || "Werbung",
     description: benefit.description || "",
     detail: benefit.detail || "",
+    quantity: benefit.quantity ?? 1,
     status: benefit.status || "Offen",
     evidence: benefit.evidence || "Noch kein Nachweis",
     dueAt: benefit.dueAt,

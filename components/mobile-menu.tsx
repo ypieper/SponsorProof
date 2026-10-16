@@ -7,15 +7,27 @@ import { createPortal } from "react-dom";
 import { Icon, SponsoLogo } from "@/components/ui";
 
 export const navigation = [
-  { label: "Übersicht", href: "/", icon: "grid" },
+  { label: "Übersicht", href: "/dashboard", icon: "grid" },
   { label: "Events", href: "/events", icon: "calendar" },
   { label: "Sponsoren", href: "/sponsors", icon: "users" },
   { label: "Aufgaben", href: "/aufgaben", icon: "check" },
-  { label: "Bausteine", href: "/bausteine", icon: "layers" },
+  { label: "Vertragsbausteine", href: "/bausteine", icon: "layers" },
   { label: "Einstellungen", href: "/einstellungen", icon: "settings" },
 ];
 
-export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: boolean }) {
+export const adminNavigation = [
+  { label: "Veranstalterbereiche", href: "/admin/organizations", icon: "users" },
+  { label: "Benutzer", href: "/admin/users", icon: "users" },
+  { label: "Transaktionen", href: "/admin/transactions", icon: "file" },
+  { label: "Freischaltcodes", href: "/admin/codes", icon: "file" },
+  { label: "Enterprise", href: "/admin/enterprise", icon: "layers" },
+  { label: "Kontaktanfragen", href: "/admin/contacts", icon: "spark" },
+  { label: "Vertriebspartner", href: "/admin/partners", icon: "users" },
+  { label: "Provisionen", href: "/admin/commissions", icon: "file" },
+  { label: "Provisionsregeln", href: "/admin/commission-rules", icon: "settings" },
+];
+
+export function MobileMenu({ isPlatformAdmin = false, isSalesPartner = false }: { isPlatformAdmin?: boolean; isSalesPartner?: boolean }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -76,15 +88,18 @@ export function MobileMenu({ isPlatformAdmin = false }: { isPlatformAdmin?: bool
       <div className="mobile-menu-backdrop" aria-hidden="true" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}/>
       <div className="mobile-drawer" id="mobile-primary-navigation">
         <div className="mobile-drawer-head">
-          <Link href="/" className="brand" aria-label="sponso Startseite"><SponsoLogo /></Link>
+          <Link href={isPlatformAdmin ? "/admin/users" : "/dashboard"} className="brand" aria-label={isPlatformAdmin ? "sponso Administration" : "sponso Übersicht öffnen"}><SponsoLogo /></Link>
           <button ref={closeRef} className="icon-button" type="button" aria-label="Menü schließen" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}><Icon name="close" size={17}/></button>
         </div>
-        <div className="nav-label">Veranstalterbereich</div>
-        <nav className="nav-list" aria-label="Hauptnavigation">{navigation.map((item) => {
+        <div className="nav-label">{isPlatformAdmin ? "Plattform" : "Veranstalterbereich"}</div>
+        <nav className="nav-list" aria-label="Hauptnavigation">{isPlatformAdmin ? adminNavigation.map((item) => {
+          const active = path === item.href || (item.href !== "/admin/users" && path.startsWith(`${item.href}/`));
+          return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
+        }) : [...navigation, ...(isSalesPartner ? [{ label: "Vertriebspartner", href: "/partner", icon: "spark" }] : [])].map((item) => {
           const route = item.href.split("?")[0];
           const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
           return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
-        })}{isPlatformAdmin && <a href="/admin" className={`nav-link ${path.startsWith("/admin") ? "active" : ""}`} aria-current={path.startsWith("/admin") ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name="users" size={17}/></span>Administration</a>}</nav>
+        })}</nav>
       </div>
     </dialog>, document.body)}
   </>;

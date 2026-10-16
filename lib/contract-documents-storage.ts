@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 
-export type ContractDocumentKind = "generated_pdf" | "generated_docx" | "signed";
+export type ContractDocumentKind = "generated_pdf" | "generated_docx" | "uploaded_pdf" | "signed";
 export type ContractDocument = { id: string; contractId: string; kind: ContractDocumentKind; storagePath: string; fileName: string; contentType: string; createdAt: string };
 type DocumentRow = { id: string; contract_id: string; kind: ContractDocumentKind; storage_path: string; file_name: string; content_type: string; created_at: string };
 const bucket = "sponsorproof-files";

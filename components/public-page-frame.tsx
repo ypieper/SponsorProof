@@ -10,7 +10,7 @@ const links = [
   ["Kontakt", "/kontakt"],
 ] as const;
 
-export async function PublicPageFrame({ children, showLoginLink = true, partnerLogoUrl = null }: { children: React.ReactNode; showLoginLink?: boolean; partnerLogoUrl?: string | null }) {
+export async function PublicPageFrame({ children, showLoginLink = true, partnerLogoUrl = null, brandHref = "/" }: { children: React.ReactNode; showLoginLink?: boolean; partnerLogoUrl?: string | null; brandHref?: string }) {
   let isAuthenticated = false;
   if (showLoginLink && isSupabaseConfigured) {
     try {
@@ -23,7 +23,7 @@ export async function PublicPageFrame({ children, showLoginLink = true, partnerL
   }
 
   return <div className="public-site-shell">
-    <header className={`public-site-header${partnerLogoUrl ? " public-site-header-partner" : ""}`}><div className="public-brand-lockup"><Link href="/" aria-label="sponso öffnen"><SponsoLogo /></Link>{partnerLogoUrl && <><span className="public-brand-partnership" aria-label="in Partnerschaft mit">×</span><img className="public-partner-logo" src={partnerLogoUrl} alt="Logo des Veranstalters"/></>}</div>{showLoginLink && <Link className="btn" href={isAuthenticated ? "/" : "/login"}>{isAuthenticated ? "Zurück zum Veranstalterbereich" : "Zur Anmeldung"}</Link>}</header>
+    <header className={`public-site-header${partnerLogoUrl ? " public-site-header-partner" : ""}`}><div className="public-brand-lockup"><Link href={brandHref} aria-label="sponso öffnen"><SponsoLogo /></Link>{partnerLogoUrl && <><span className="public-brand-partnership" aria-label="in Partnerschaft mit">×</span><img className="public-partner-logo" src={partnerLogoUrl} alt="Logo des Veranstalters"/></>}</div>{showLoginLink && <Link className="btn" href={isAuthenticated ? "/dashboard" : "/login"}>{isAuthenticated ? "Zurück zum Veranstalterbereich" : "Zur Anmeldung"}</Link>}</header>
     {children}
     <footer className="public-site-footer"><span>© {new Date().getFullYear()} sponso</span><nav aria-label="Rechtliche Hinweise">{links.map(([label, href]) => <a key={href} href={href}>{label}</a>)}</nav></footer>
   </div>;

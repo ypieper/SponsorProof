@@ -74,7 +74,7 @@ export function EventMode() {
   const selectedEvent = events.find((event) => event.id === selectedEventId);
 
   return <div className="mobile-shell mobile-event-mode">
-    <header className="mobile-header"><Link href="/" className="brand" aria-label="sponso Startseite"><SponsoLogo markSize={29} /></Link><div className="mobile-header-actions"><MobileMenu/><Link href="/events" className="icon-button" aria-label="Zur Eventübersicht"><Icon name="chevron" size={16}/></Link></div></header>
+    <header className="mobile-header"><Link href="/dashboard" className="brand" aria-label="sponso Übersicht öffnen"><SponsoLogo markSize={29} /></Link><div className="mobile-header-actions"><MobileMenu/><Link href="/events" className="icon-button" aria-label="Zur Eventübersicht"><Icon name="chevron" size={16}/></Link></div></header>
     <main className="mobile-content">
       <span className="live-pill"><span className="live-dot"/> NACHWEIS-MODUS</span>
       <h1>{activeTab === "event" ? "Event auswählen" : "Nachweise vor Ort"}</h1>

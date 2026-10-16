@@ -1,18 +1,18 @@
 import { createClient } from "@/lib/supabase/client";
 
-export type StoredEvidence = { id: string; taskId: string; benefitId?: string; name: string; type: string; storagePath: string; eventId?: string };
-type EvidenceRow = { id: string; event_id: string | null; benefit_id: string | null; task_id: string | null; storage_path: string; file_name: string; content_type: string };
+export type StoredEvidence = { id: string; taskId: string; benefitId?: string; name: string; type: string; storagePath: string; eventId?: string; sponsorVisible?: boolean };
+type EvidenceRow = { id: string; event_id: string | null; benefit_id: string | null; task_id: string | null; storage_path: string; file_name: string; content_type: string; sponsor_visible?: boolean };
 
 function taskKey(row: EvidenceRow) {
-  return row.benefit_id ? `benefit-${row.benefit_id}` : row.task_id ?? "";
+  return row.task_id ?? (row.benefit_id ? `benefit-${row.benefit_id}` : "");
 }
 
 function fromRow(row: EvidenceRow): StoredEvidence {
-  return { id: row.id, taskId: taskKey(row), benefitId: row.benefit_id ?? undefined, name: row.file_name, type: row.content_type, storagePath: row.storage_path, eventId: row.event_id ?? undefined };
+  return { id: row.id, taskId: taskKey(row), benefitId: row.benefit_id ?? undefined, name: row.file_name, type: row.content_type, storagePath: row.storage_path, eventId: row.event_id ?? undefined, sponsorVisible: row.sponsor_visible ?? false };
 }
 
 export async function fetchStoredEvidence() {
-  const { data, error } = await createClient().from("evidence_files").select("id, event_id, benefit_id, task_id, storage_path, file_name, content_type").order("created_at", { ascending: true });
+  const { data, error } = await createClient().from("evidence_files").select("id, event_id, benefit_id, task_id, storage_path, file_name, content_type, sponsor_visible").order("created_at", { ascending: true });
   return { data: (data ?? []).map((row) => fromRow(row as EvidenceRow)), error };
 }
 
@@ -26,20 +26,26 @@ export async function uploadStoredEvidence(input: { file: File; eventId?: string
   const { error: uploadError } = await supabase.storage.from("sponsorproof-files").upload(storagePath, input.file, { contentType: input.file.type || "application/octet-stream", upsert: false });
   if (uploadError) return { data: null, error: uploadError };
   const benefitId = input.benefitId || (input.taskId.startsWith("benefit-") ? input.taskId.slice("benefit-".length) : undefined);
+  const taskId = input.taskId.startsWith("benefit-") ? null : input.taskId;
   const { data, error } = await supabase.from("evidence_files").insert({
     organization_id: organizationId,
     event_id: input.eventId,
     benefit_id: benefitId || null,
-    task_id: benefitId ? null : input.taskId,
+    task_id: taskId,
     storage_path: storagePath,
     file_name: input.file.name,
     content_type: input.file.type || "application/octet-stream",
-  }).select("id, event_id, benefit_id, task_id, storage_path, file_name, content_type").single();
+  }).select("id, event_id, benefit_id, task_id, storage_path, file_name, content_type, sponsor_visible").single();
   if (error || !data) {
     await supabase.storage.from("sponsorproof-files").remove([storagePath]);
     return { data: null, error: error ?? new Error("Nachweis-Metadaten konnten nicht gespeichert werden.") };
   }
   return { data: fromRow(data as EvidenceRow), error: null };
+}
+
+export async function setEvidenceSponsorVisible(evidence: StoredEvidence, sponsorVisible: boolean) {
+  const { error } = await createClient().from("evidence_files").update({ sponsor_visible: sponsorVisible }).eq("id", evidence.id);
+  return { error };
 }
 
 export async function downloadStoredEvidence(evidence: StoredEvidence) {

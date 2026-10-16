@@ -5,30 +5,56 @@ import { Icon, PageHeading } from "@/components/ui";
 import { AdminActivationCodes } from "@/components/admin-activation-codes";
 import { AdminEnterpriseAccess } from "@/components/admin-enterprise-access";
 import { AdminContactRequests } from "@/components/admin-contact-requests";
+import { AdminOrganizations } from "@/components/admin-organizations";
+import { AdminTransactions } from "@/components/admin-transactions";
+import { AdminPartners } from "@/components/admin-partners";
+import { AdminCommissions } from "@/components/admin-commissions";
+import { AdminCommissionRules } from "@/components/admin-commission-rules";
 
 type AdminUser = {
   id: string;
+  accountType: "admin" | "sponsor" | "organizer";
   email: string;
   firstName: string;
   lastName: string;
   organizationId: string | null;
   organizationName: string;
+  organizationSponsoId: string | null;
   workspaceRole: "owner" | "member" | null;
   platformAdmin: boolean;
   suspended: boolean;
   lastSignInAt: string | null;
 };
 
-export default function AdminPage() {
+export type AdminSection = "users" | "transactions" | "codes" | "enterprise" | "contacts" | "organizations" | "partners" | "commissions" | "commission-rules";
+
+const sectionDetails: Record<AdminSection, { title: string; subtitle: string }> = {
+  users: { title: "Benutzer", subtitle: "Plattformzugänge, Veranstalterrollen und Adminrechte verwalten." },
+  transactions: { title: "Transaktionen", subtitle: "Paketkäufe und manuelle Enterprise-Freischaltungen nachvollziehen." },
+  codes: { title: "Freischaltcodes", subtitle: "Plattformweite Codes erstellen und verwalten." },
+  enterprise: { title: "Enterprise", subtitle: "Enterprise-Freischaltungen über alle Veranstalterbereiche verwalten." },
+  contacts: { title: "Kontaktanfragen", subtitle: "Eingehende Anfragen an sponso verwalten." },
+  organizations: { title: "Veranstalterbereiche", subtitle: "Bereiche, Sponso-IDs und Inhaberschaften verwalten." },
+  partners: { title: "Vertriebspartner", subtitle: "Partnerkonten, Referral-Links und Vermittlungen verwalten." },
+  commissions: { title: "Provisionen", subtitle: "Bestätigte Zahlungseingänge prüfen, Provisionen freigeben und Auszahlungen dokumentieren." },
+  "commission-rules": { title: "Provisionsregeln", subtitle: "Attributionsfenster und Provisionssätze zentral konfigurieren." },
+};
+
+export default function AdminPage({ section }: { section: AdminSection }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [query, setQuery] = useState("");
+  const [accountTypeFilter, setAccountTypeFilter] = useState<"all" | AdminUser["accountType"]>("all");
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUserId, setCurrentUserId] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"users" | "codes" | "enterprise" | "contacts">("users");
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [deletePhrase, setDeletePhrase] = useState("");
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -53,13 +79,15 @@ export default function AdminPage() {
     }
   }, []);
 
-  useEffect(() => { void loadUsers(); }, [loadUsers]);
+  useEffect(() => { if (section === "users") void loadUsers(); }, [loadUsers, section]);
 
   const filteredUsers = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("de-DE");
-    if (!normalized) return users;
-    return users.filter((user) => `${user.firstName} ${user.lastName} ${user.email} ${user.organizationName}`.toLocaleLowerCase("de-DE").includes(normalized));
-  }, [query, users]);
+    return users.filter((user) => {
+      const matchesQuery = !normalized || `${user.firstName} ${user.lastName} ${user.email} ${user.organizationName} ${user.organizationSponsoId ?? ""}`.toLocaleLowerCase("de-DE").includes(normalized);
+      return matchesQuery && (accountTypeFilter === "all" || user.accountType === accountTypeFilter);
+    });
+  }, [accountTypeFilter, query, users]);
 
   async function saveUser(user: AdminUser) {
     setSaving(user.id);
@@ -85,32 +113,60 @@ export default function AdminPage() {
     setUsers((current) => current.map((user) => user.id === id ? { ...user, ...updates } : user));
   }
 
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setDeleteTarget(null);
+    setDeletePhrase("");
+    setDeleteConfirmed(false);
+    setDeleteError("");
+  }
+
+  async function deleteUser() {
+    if (!deleteTarget || deletePhrase !== "BENUTZERKONTO LÖSCHEN" || !deleteConfirmed || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch(`/api/admin/users/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmationPhrase: deletePhrase, confirmed: deleteConfirmed }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Das Benutzerkonto konnte nicht gelöscht werden.");
+      const deletedEmail = deleteTarget.email;
+      setDeleteTarget(null);
+      setDeletePhrase("");
+      setDeleteConfirmed(false);
+      await loadUsers();
+      setMessage(`Das Konto ${deletedEmail} wurde gelöscht.`);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Das Benutzerkonto konnte nicht gelöscht werden.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return <main className="content admin-content">
-    <PageHeading eyebrow="PLATTFORM" title="Administration" subtitle="Alle Plattform-Admins sehen und verwalten dieselben Daten über alle Veranstalterbereiche hinweg." />
-    {!configured ? <section className="panel admin-notice"><span className="metric-icon"><Icon name="settings" size={16}/></span><div><strong>Admin-Verwaltung noch nicht eingerichtet</strong><p>Hinterlege den serverseitigen Supabase Service-Role-Key in der lokalen Umgebung und in Vercel. Der Schlüssel bleibt ausschließlich auf dem Server.</p></div></section>
-      : !isAdmin ? <section className="panel admin-notice"><span className="metric-icon"><Icon name="users" size={16}/></span><div><strong>Kein Zugriff</strong><p>Dieser Bereich ist nur für plattformweite Admins verfügbar.</p></div></section>
-        : <>
-          <nav className="tabs admin-tabs" aria-label="Administration"><button type="button" className={activeTab === "users" ? "active" : ""} onClick={() => setActiveTab("users")}>Benutzer</button><button type="button" className={activeTab === "codes" ? "active" : ""} onClick={() => setActiveTab("codes")}>Freischaltcodes</button><button type="button" className={activeTab === "enterprise" ? "active" : ""} onClick={() => setActiveTab("enterprise")}>Enterprise</button><button type="button" className={activeTab === "contacts" ? "active" : ""} onClick={() => setActiveTab("contacts")}>Kontaktanfragen</button></nav>
-          {activeTab === "codes" ? <AdminActivationCodes/> : activeTab === "enterprise" ? <AdminEnterpriseAccess/> : activeTab === "contacts" ? <AdminContactRequests/> : <>
-          <section className="panel admin-toolbar"><div><strong>{users.length} Benutzerkonten</strong><p>Profil, Veranstalterrolle und Zugang zentral verwalten.</p></div><label className="admin-search"><span className="sr-only">Benutzer suchen</span><Icon name="users" size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, E-Mail oder Veranstalter suchen" /></label></section>
-          {message && <p className="admin-feedback" role="status">{message}</p>}
-          {loading ? <section className="panel admin-empty">Benutzer werden geladen …</section> : filteredUsers.length === 0 ? <section className="panel admin-empty">Keine passenden Benutzer gefunden.</section> : <div className="admin-user-list">
-            {filteredUsers.map((user) => <article className="panel admin-user-card" key={user.id}>
-              <div className="admin-user-heading"><div className="avatar">{`${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}` || user.email.slice(0, 2).toUpperCase()}</div><div className="admin-user-identity"><strong>{[user.firstName, user.lastName].filter(Boolean).join(" ") || "Name nicht hinterlegt"}</strong><span>{user.email}</span></div><span className={`admin-access-badge ${user.suspended ? "suspended" : "active"}`}>{user.suspended ? "Zugang gesperrt" : "Zugang aktiv"}</span></div>
-              <div className="admin-user-fields">
-                <label className="settings-field"><span>Vorname</span><input value={user.firstName} onChange={(event) => updateUser(user.id, { firstName: event.target.value })} /></label>
-                <label className="settings-field"><span>Nachname</span><input value={user.lastName} onChange={(event) => updateUser(user.id, { lastName: event.target.value })} /></label>
-                <div className="admin-user-workspace"><span>Veranstalterbereich</span><strong>{user.organizationName}</strong></div>
-                {user.organizationId && <label className="settings-field"><span>Rolle im Veranstalterbereich</span><select value={user.workspaceRole ?? "member"} onChange={(event) => updateUser(user.id, { workspaceRole: event.target.value as "owner" | "member" })}><option value="owner">Inhaber</option><option value="member">Mitglied</option></select></label>}
-              </div>
-              <div className="admin-user-actions">
-                <label className="admin-toggle"><input type="checkbox" checked={user.platformAdmin} disabled={user.id === currentUserId} onChange={(event) => updateUser(user.id, { platformAdmin: event.target.checked })} /><span>Plattform-Admin</span></label>
-                <button className={`btn ${user.suspended ? "" : "btn-danger-soft"}`} type="button" disabled={user.id === currentUserId} onClick={() => updateUser(user.id, { suspended: !user.suspended })}>{user.suspended ? "Zugang freigeben" : "Zugang sperren"}</button>
-                <button className="btn btn-primary" type="button" disabled={saving === user.id} onClick={() => void saveUser(user)}><Icon name="check" size={15}/>{saving === user.id ? "Wird gespeichert …" : "Änderungen speichern"}</button>
-              </div>
-            </article>)}
-          </div>}
+    <PageHeading eyebrow="PLATTFORM" title={sectionDetails[section].title} subtitle={sectionDetails[section].subtitle} />
+    {section === "users" ? <>
+      {!configured ? <section className="panel admin-notice"><span className="metric-icon"><Icon name="settings" size={16}/></span><div><strong>Admin-Verwaltung noch nicht eingerichtet</strong><p>Hinterlege den serverseitigen Supabase Service-Role-Key in der lokalen Umgebung und in Vercel. Der Schlüssel bleibt ausschließlich auf dem Server.</p></div></section>
+        : !isAdmin ? <section className="panel admin-notice"><span className="metric-icon"><Icon name="users" size={16}/></span><div><strong>Kein Zugriff</strong><p>Dieser Bereich ist nur für plattformweite Admins verfügbar.</p></div></section>
+          : <>
+            <section className="panel admin-toolbar"><div><strong>{filteredUsers.length} von {users.length} Benutzerkonten</strong><p>Profil, Veranstalterrolle und Zugang zentral verwalten.</p></div><div className="admin-user-filters"><label className="admin-user-type-filter"><span className="sr-only">Kontotyp filtern</span><select value={accountTypeFilter} onChange={(event) => setAccountTypeFilter(event.target.value as typeof accountTypeFilter)}><option value="all">Alle Kontotypen</option><option value="admin">Admin</option><option value="organizer">Veranstalter</option><option value="sponsor">Sponsor</option></select></label><label className="admin-search"><span className="sr-only">Benutzer suchen</span><Icon name="users" size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, E-Mail, Veranstalter oder Sponso-ID suchen" /></label></div></section>
+            {message && <p className="admin-feedback" role="status">{message}</p>}
+            {loading ? <section className="panel admin-empty">Benutzer werden geladen …</section> : filteredUsers.length === 0 ? <section className="panel admin-empty">Keine passenden Benutzer gefunden.</section> : <div className="panel admin-users-table-wrap"><table className="table admin-users-table">
+              <thead><tr><th>Benutzer</th><th>Kontotyp</th><th>Veranstalterbereich</th><th>Plattform-Admin</th><th>Zugang</th><th>Aktion</th></tr></thead>
+              <tbody>{filteredUsers.map((user) => <tr key={user.id}>
+                <td><div className="admin-table-identity"><div className="admin-table-name-fields"><input aria-label={`Vorname für ${user.email}`} value={user.firstName} onChange={(event) => updateUser(user.id, { firstName: event.target.value })} /><input aria-label={`Nachname für ${user.email}`} value={user.lastName} onChange={(event) => updateUser(user.id, { lastName: event.target.value })} /></div><span>{user.email}</span></div></td>
+                <td><span className={`admin-account-type-badge ${user.accountType}`}>{user.accountType === "admin" ? "Admin" : user.accountType === "sponsor" ? "Sponsor" : "Veranstalter"}</span></td>
+                <td><div className="admin-table-workspace"><strong>{user.organizationName}</strong>{user.organizationId && <small className="admin-table-sponso-id">Sponso-ID: {user.organizationSponsoId ?? "—"}</small>}{user.organizationId ? <select aria-label={`Veranstalterrolle für ${user.email}`} value={user.workspaceRole ?? "member"} onChange={(event) => updateUser(user.id, { workspaceRole: event.target.value as "owner" | "member" })}><option value="owner">Inhaber</option><option value="member">Mitglied</option></select> : <small>—</small>}</div></td>
+                <td><label className="admin-table-toggle"><input type="checkbox" checked={user.platformAdmin} disabled={user.id === currentUserId} onChange={(event) => updateUser(user.id, { platformAdmin: event.target.checked })} /><span>Admin</span></label></td>
+                <td><div className="admin-access-control"><span className={`admin-access-badge ${user.suspended ? "suspended" : "active"}`}>{user.suspended ? "Inaktiv" : "Aktiv"}</span><button className="admin-access-action" type="button" disabled={user.id === currentUserId || saving === user.id} aria-label={`Zugang ${user.suspended ? "aktivieren" : "inaktivieren"} für ${user.email}`} title={user.id === currentUserId ? "Das eigene Admin-Konto kann hier nicht inaktiviert werden" : "Die Änderung wird mit Speichern übernommen"} onClick={() => updateUser(user.id, { suspended: !user.suspended })}>{user.suspended ? "Aktivieren" : "Inaktivieren"}</button></div></td>
+                <td><div className="admin-user-row-actions"><button className="btn btn-danger-soft admin-delete-user" type="button" disabled={user.id === currentUserId || deleting} aria-label={`Konto ${user.email} löschen`} title={user.id === currentUserId ? "Das eigene Admin-Konto kann hier nicht gelöscht werden" : "Benutzerkonto löschen"} onClick={() => { setDeleteTarget(user); setDeletePhrase(""); setDeleteConfirmed(false); setDeleteError(""); }}><Icon name="trash" size={13}/></button><button className="btn btn-primary admin-save-user" type="button" disabled={saving === user.id} onClick={() => void saveUser(user)}><Icon name="check" size={13}/>{saving === user.id ? "Speichert …" : "Speichern"}</button></div></td>
+              </tr>)}</tbody>
+            </table></div>}
           </>}
-        </>}
+    </> : section === "transactions" ? <AdminTransactions/> : section === "codes" ? <AdminActivationCodes/> : section === "enterprise" ? <AdminEnterpriseAccess/> : section === "contacts" ? <AdminContactRequests/> : section === "organizations" ? <AdminOrganizations/> : section === "partners" ? <AdminPartners/> : section === "commissions" ? <AdminCommissions/> : <AdminCommissionRules/>}
+    {deleteTarget && <div className="admin-delete-overlay" role="presentation"><section className="panel admin-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="admin-delete-heading" aria-describedby="admin-delete-description"><button className="icon-button admin-delete-close" type="button" aria-label="Dialog schließen" disabled={deleting} onClick={closeDeleteDialog}><Icon name="close" size={16}/></button><span className="eyebrow">BENUTZERKONTO ENTFERNEN</span><h2 id="admin-delete-heading">Konto dauerhaft löschen?</h2><p id="admin-delete-description">Das Konto <strong>{deleteTarget.email}</strong> und seine Anmeldedaten werden unwiderruflich entfernt. Veranstalterdaten bleiben für die übrigen Mitglieder bestehen. Ein Konto kann nicht gelöscht werden, wenn dadurch der letzte Inhaber oder der letzte Plattform-Admin wegfällt.</p><label className="settings-field admin-delete-phrase"><span>Zur Bestätigung gib <b>BENUTZERKONTO LÖSCHEN</b> ein.</span><input autoComplete="off" spellCheck={false} value={deletePhrase} disabled={deleting} onChange={(event) => setDeletePhrase(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /></label><label className="account-delete-check"><input type="checkbox" checked={deleteConfirmed} disabled={deleting} onChange={(event) => setDeleteConfirmed(event.target.checked)} /><span>Ich bestätige, dass das Konto unwiderruflich gelöscht werden soll.</span></label>{deleteError && <p className="field-message error" role="alert">{deleteError}</p>}<div className="admin-delete-actions"><button className="btn" type="button" disabled={deleting} onClick={closeDeleteDialog}>Abbrechen</button><button className="btn btn-danger-soft" type="button" disabled={deleting || deletePhrase !== "BENUTZERKONTO LÖSCHEN" || !deleteConfirmed} onClick={() => void deleteUser()}><Icon name="trash" size={14}/>{deleting ? "Wird gelöscht …" : "Konto löschen"}</button></div></section></div>}
   </main>;
 }

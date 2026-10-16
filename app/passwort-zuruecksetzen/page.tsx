@@ -44,7 +44,7 @@ export default function ResetPasswordPage() {
       {updated ? <>
         <h1>Passwort geändert</h1>
         <p>Dein neues Passwort ist gespeichert. Du kannst sponso jetzt öffnen.</p>
-        <button className="btn btn-primary" type="button" onClick={() => router.replace("/")}>Weiter zu sponso</button>
+        <button className="btn btn-primary" type="button" onClick={() => router.replace("/dashboard")}>Weiter zu sponso</button>
       </> : <>
         <h1>Neues Passwort festlegen</h1>
         <p>Wähle ein neues Passwort für dein Konto.</p>

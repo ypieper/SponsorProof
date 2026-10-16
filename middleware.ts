@@ -18,16 +18,19 @@ export async function middleware(request: NextRequest) {
   });
 
   const { data: { user } } = await supabase.auth.getUser();
-  const isLoginPage = request.nextUrl.pathname === "/login";
+  const isSponsorLoginPage = request.nextUrl.pathname === "/login/sponsor";
+  const isAdminLoginPage = request.nextUrl.pathname === "/admin/login";
+  const isLoginPage = request.nextUrl.pathname === "/login" || request.nextUrl.pathname.startsWith("/login/") || isAdminLoginPage;
+  const isAdminPage = request.nextUrl.pathname === "/admin" || request.nextUrl.pathname.startsWith("/admin/");
   const isAuthCallback = request.nextUrl.pathname === "/auth/confirm";
-  const publicPages = new Set(["/agb", "/impressum", "/datenschutz", "/kontakt"]);
-  const isPublicPage = publicPages.has(request.nextUrl.pathname) || request.nextUrl.pathname.startsWith("/sponsor-upload/");
+  const publicPages = new Set(["/", "/landing", "/agb", "/impressum", "/datenschutz", "/kontakt"]);
+  const isPublicPage = publicPages.has(request.nextUrl.pathname);
   const isPublicContactApi = request.nextUrl.pathname === "/api/contact";
-  const isPublicSponsorUploadApi = request.nextUrl.pathname.startsWith("/api/public/sponsor-upload/");
+  const isPublicReferralRoute = request.nextUrl.pathname.startsWith("/r/");
 
-  if (!user && !isLoginPage && !isAuthCallback && !isPublicPage && !isPublicContactApi && !isPublicSponsorUploadApi) {
+  if (!user && !isLoginPage && !isAuthCallback && !isPublicPage && !isPublicContactApi && !isPublicReferralRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = isAdminPage ? "/admin/login" : "/login";
     if (request.nextUrl.pathname === "/team/join") {
       const token = request.nextUrl.searchParams.get("token") ?? "";
       url.search = new URLSearchParams({ mode: "signup", next: `/team/join?token=${token}` }).toString();
@@ -35,9 +38,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isLoginPage) {
+  const isOnboardingEndpoint = request.nextUrl.pathname === "/onboarding" || request.nextUrl.pathname === "/api/onboarding" || request.nextUrl.pathname === "/api/postal-code";
+  const isInvitationAcceptance = request.nextUrl.pathname === "/team/join";
+  const needsOrganizerOnboarding = user?.user_metadata?.onboarding_completed === false && user.user_metadata?.account_type !== "sponsor";
+  if (needsOrganizerOnboarding && !isOnboardingEndpoint && !isInvitationAcceptance && !isAuthCallback) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/onboarding";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  if (user && isLoginPage && !isSponsorLoginPage && !isAdminLoginPage) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

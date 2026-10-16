@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(42);
+select plan(43);
 
 -- Isolated users and organizations; all rows roll back at the end of this test.
 insert into auth.users (id, aud, role, email, encrypted_password, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
@@ -57,7 +57,7 @@ select ('40000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, '20000000-0
 from generate_series(1, 12) n
 on conflict (id) do nothing;
 
-select is((select max_sponsors from public.event_plans where code = 'free'), 2, 'Free tier allows two sponsors');
+select is((select max_sponsors from public.event_plans where code = 'free'), 1, 'Free tier allows one sponsor');
 select is((select max_sponsors from public.event_plans where code = 'event'), 10, 'Event tier allows ten sponsors');
 select is((select max_sponsors is null from public.event_plans where code = 'event_pro'), true, 'Event Pro has no sponsor limit');
 select is((select (features ->> 'contracts')::boolean from public.event_plans where code = 'free'), false, 'Free tier disables contract generation');
@@ -75,13 +75,13 @@ select throws_ok($$select public.create_event_with_free_entitlement('Second free
 
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select lives_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000001', null)$$, 'First free sponsor can be assigned');
-select lives_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000002', null)$$, 'Second free sponsor can be assigned');
-select throws_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000003', null)$$, 'P0001', 'SPONSOR_LIMIT_REACHED', 'Third free sponsor is blocked server-side');
+select throws_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000002', null)$$, 'P0001', 'SPONSOR_LIMIT_REACHED', 'Second free sponsor is blocked server-side');
 select throws_ok($$insert into public.contracts (event_id, sponsor_id, title, value_cents) values ('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000001', 'Test', 100)$$, '42501', 'EVENT_FEATURE_REQUIRED:contracts', 'Free tier blocks direct contract writes');
 reset role;
 select public.set_event_entitlement('30000000-0000-4000-8000-000000000001', 'event', 'admin');
-select is((select count(*)::integer from public.event_sponsors where event_id = '30000000-0000-4000-8000-000000000001'), 2, 'Upgrade preserves existing sponsor assignments');
+select is((select count(*)::integer from public.event_sponsors where event_id = '30000000-0000-4000-8000-000000000001'), 1, 'Upgrade preserves existing sponsor assignments');
 set local role authenticated;
+select lives_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000002', null)$$, 'Event plan permits a second sponsor after upgrade');
 select lives_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000003', null)$$, 'Event plan permits sponsor assignments above free limit');
 select lives_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000004', null)$$, 'Event plan permits fourth sponsor');
 select lives_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000005', null)$$, 'Event plan permits fifth sponsor');

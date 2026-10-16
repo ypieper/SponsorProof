@@ -9,9 +9,13 @@ const messages: Record<string, string> = {
   ACTIVATION_CODE_DISABLED: "Dieser Freischaltcode wurde deaktiviert.",
   ACTIVATION_CODE_EXPIRED: "Dieser Freischaltcode ist abgelaufen.",
   ACTIVATION_CODE_EXHAUSTED: "Dieser Freischaltcode wurde bereits vollständig genutzt.",
+  ACTIVATION_CODE_ALREADY_REDEEMED: "Dieser Freischaltcode wurde für dieses Event bereits eingelöst.",
   ACTIVATION_CODE_ORGANIZATION_MISMATCH: "Dieser Freischaltcode ist für einen anderen Veranstalterbereich bestimmt.",
   ACTIVATION_CODE_EVENT_MISMATCH: "Dieser Freischaltcode ist einem anderen Event zugeordnet.",
   ACTIVATION_CODE_CANNOT_DOWNGRADE: "Der Freischaltcode würde den aktuellen Tarif herabstufen.",
+  EVENT_PACKAGE_ALREADY_BOOKED: "Für dieses Event wurde bereits ein Paket freigeschaltet.",
+  ACTIVATION_CODE_PACKAGE_LIMIT_TOO_LOW: "Das Paket ist kleiner als die bestehende Anzahl an Sponsoren oder Verträgen.",
+  ORGANIZATION_ENTERPRISE_ALREADY_ACTIVE: "Für diesen Veranstalterbereich ist bereits Enterprise freigeschaltet.",
   EVENT_ACCESS_DENIED: "Du hast keinen Zugriff auf dieses Event.",
 };
 
@@ -33,5 +37,6 @@ export async function POST(request: Request, context: Context) {
     const reason = Object.keys(messages).find((key) => error.message.includes(key));
     return NextResponse.json({ error: reason ? messages[reason] : "Der Freischaltcode konnte nicht eingelöst werden." }, { status: reason === "EVENT_ACCESS_DENIED" ? 403 : 400 });
   }
-  return NextResponse.json({ plan: data }, { headers: { "Cache-Control": "no-store" } });
+  const packageCode = typeof data === "string" && /^contracts_(5|7|10|15)$/.test(data) ? data : null;
+  return NextResponse.json(packageCode ? { packageCode } : { plan: data }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -1,29 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Sponsor, SponsorContract } from "@/lib/sponsor-types";
 import { EmptyState, Icon, Progress, Status } from "@/components/ui";
-import { contractDateForInput } from "@/lib/event-contract-dates";
+import { contractDateForInput, formatContractDate } from "@/lib/event-contract-dates";
 import { formatContractValue, parseContractValue, parseContractValueInput } from "@/lib/event-contract-values";
 import { contractFilename, fillContractTemplate } from "@/lib/render-contract-template";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createStoredBenefits, fetchStoredBenefits, type StoredBenefit } from "@/lib/benefits-storage";
-import { fetchStoredTasks } from "@/lib/tasks-storage";
+import { createStoredTasks, fetchStoredTasks, updateStoredTask } from "@/lib/tasks-storage";
 import { fetchStoredEvidence } from "@/lib/evidence-storage";
-import { deleteContractDocument, downloadContractDocument, fetchContractDocuments, saveContractDocument, type ContractDocument } from "@/lib/contract-documents-storage";
-import { updateContractRecord } from "@/lib/sponsors-storage";
+import { downloadContractDocument, fetchContractDocuments, saveContractDocument, type ContractDocument } from "@/lib/contract-documents-storage";
+import { setContractSigningDocument, updateContractRecord } from "@/lib/sponsors-storage";
 import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
 import { useEventEntitlements } from "@/components/event-entitlements";
 import { SponsorDocumentArea } from "@/components/sponsor-document-area";
+import { EventSponsorInvoice } from "@/components/event-sponsor-invoice";
 
-type Block = { title: string; category: string; description: string; detail: string };
-type BenefitTemplate = Pick<Block, "title" | "category" | "description" | "detail">;
-type EventBenefit = { id?: string; title: string; category: string; description: string; detail?: string; status: string; evidence: string; sponsorId: string; eventId: string; dueAt?: string };
-type ManualTask = { id: string; title: string };
+type CompletionType = "file_required" | "organizer_approval" | "sponsor_approval" | "sponsor_upload";
+type BenefitType = "monetary" | "in_kind";
+type TemplateSubtask = { id: string; title: string; sort_order: number; completion_type: CompletionType };
+type Block = { id?: string; title: string; category: string; description: string; detail?: string; benefit_type?: BenefitType; material_logistics?: string | null; default_completion_type?: "file_required" | "organizer_approval"; subtasks?: TemplateSubtask[] };
+type EventBenefit = { id?: string; title: string; category: string; description: string; detail?: string; benefitType?: BenefitType; materialLogistics?: string; quantity: number; status: string; evidence: string; sponsorId: string; eventId: string; dueAt?: string };
+type AssignedTask = { id: string; title: string; benefit_id: string | null; source: string; status: string; assigned_to: string | null; assigned_to_sponsor: boolean; due_at: string | null; completion_type: CompletionType; workflow_instance: number; workflow_order: number | null };
+type OrganizerMember = { user_id: string; email: string; role: "owner" | "member" };
 type StoredGeneratedContracts = { pdf?: ContractDocument; docx?: ContractDocument };
 type AssignedTemplate = { name: string; storagePath: string; file: Blob };
+type EventSponsorTab = "Vertrag" | "Rechnung" | "Leistungen" | "Dokumente";
+const SPONSOR_ASSIGNEE = "__sponsor__";
 
 function grossValueFromNet(netValue: number) {
   return Math.round((netValue * 1.19 + Number.EPSILON) * 100) / 100;
@@ -34,11 +40,37 @@ function normalizeBenefitTitle(title: string) {
 }
 
 function storedBenefitToEventBenefit(benefit: StoredBenefit): EventBenefit {
-  return { id: benefit.id, title: benefit.title, category: benefit.category, description: benefit.description, detail: benefit.detail, status: benefit.status, evidence: benefit.evidence, sponsorId: benefit.sponsorId ?? "", eventId: benefit.eventId, dueAt: benefit.dueAt };
+  return { id: benefit.id, title: benefit.title, category: benefit.category, description: benefit.description, detail: benefit.detail, benefitType: benefit.benefitType ?? "monetary", materialLogistics: benefit.materialLogistics ?? "", quantity: benefit.quantity, status: benefit.status, evidence: benefit.evidence, sponsorId: benefit.sponsorId ?? "", eventId: benefit.eventId, dueAt: benefit.dueAt };
 }
 
 function benefitTaskId(eventId: string, benefit: EventBenefit) {
   return benefit.id ? `benefit-${benefit.id}` : `benefit-${eventId}-${benefit.title.toLocaleLowerCase("de-DE").replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function blockKey(block: Block) {
+  return block.id ?? block.title;
+}
+
+function taskGroupStatus(tasks: AssignedTask[]) {
+  if (tasks.length && tasks.every((task) => task.status === "Erledigt")) return "Abgeschlossen";
+  if (tasks.some((task) => task.status === "Erledigt")) return "In Bearbeitung";
+  return "Offen";
+}
+
+function displayBenefitDate(value: string | null | undefined) {
+  if (!value) return "Noch nicht geplant";
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
+}
+
+function subtaskKey(block: Block, task: TemplateSubtask) {
+  return `${blockKey(block)}:${task.id}`;
+}
+
+function tasksForBlock(block: Block): TemplateSubtask[] {
+  if (block.subtasks?.length) return block.subtasks;
+  const completionType = block.default_completion_type ?? "file_required";
+  return [{ id: "__primary_task__", title: completionType === "organizer_approval" ? "Bestätigung durch Veranstalter" : "Leistungsnachweis hochladen", sort_order: 0, completion_type: completionType }];
 }
 
 export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventEndDate, eventLocation, eventResponsible, sponsor, contract, baseBenefits, blocks }: {
@@ -54,17 +86,27 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   blocks: Block[];
 }) {
   const { ensureFeature } = useEventEntitlements();
+  const [signatureAddonEnabled, setSignatureAddonEnabled] = useState(false);
   const [addedBenefits, setAddedBenefits] = useState<EventBenefit[]>([]);
   const [availableBlocks, setAvailableBlocks] = useState(blocks);
   const [blocksLoading, setBlocksLoading] = useState(isSupabaseConfigured);
   const [blocksLoadError, setBlocksLoadError] = useState("");
+  const [blocksLoadWarning, setBlocksLoadWarning] = useState("");
+  const [subtasksUnavailable, setSubtasksUnavailable] = useState(false);
+  const [organizerMembers, setOrganizerMembers] = useState<OrganizerMember[]>([]);
   const [adding, setAdding] = useState(false);
   const [selectedBlocks, setSelectedBlocks] = useState<string[]>([]);
-  const [benefitDueDates, setBenefitDueDates] = useState<Record<string, string>>({});
+  const [benefitQuantities, setBenefitQuantities] = useState<Record<string, string>>({});
+  const [subtaskDueDates, setSubtaskDueDates] = useState<Record<string, string>>({});
+  const [subtaskAssignees, setSubtaskAssignees] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [signedOn, setSignedOn] = useState(() => contractDateForInput(contract.signedAt));
   const [evidenceTaskIds, setEvidenceTaskIds] = useState<string[]>([]);
-  const [manualTasks, setManualTasks] = useState<ManualTask[]>([]);
+  const [assignedTasks, setAssignedTasks] = useState<AssignedTask[]>([]);
+  const [removingBenefitId, setRemovingBenefitId] = useState<string | null>(null);
+  const [editingBenefit, setEditingBenefit] = useState<EventBenefit | null>(null);
+  const [taskEditValues, setTaskEditValues] = useState<Record<string, { dueAt: string; assigneeId: string }>>({});
+  const [savingBenefitId, setSavingBenefitId] = useState<string | null>(null);
   const [generatedContracts, setGeneratedContracts] = useState<StoredGeneratedContracts | null>(null);
   const [contractAmountInput, setContractAmountInput] = useState(() => String(parseContractValue(contract.value)));
   const [contractAmountFocused, setContractAmountFocused] = useState(false);
@@ -72,13 +114,35 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   const [grossContractAmountFocused, setGrossContractAmountFocused] = useState(false);
   const [grossContractAmountManuallyEdited, setGrossContractAmountManuallyEdited] = useState(false);
   const [signedContractFile, setSignedContractFile] = useState<ContractDocument | null>(null);
+  const [uploadedContract, setUploadedContract] = useState<ContractDocument | null>(null);
+  const [signingDocumentId, setSigningDocumentId] = useState(contract.signingDocumentId ?? "");
+  const [signingBusy, setSigningBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState<EventSponsorTab>("Vertrag");
   const [showContractOutput, setShowContractOutput] = useState(false);
   const [contractTemplate, setContractTemplate] = useState<AssignedTemplate | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateLoadMessage, setTemplateLoadMessage] = useState("");
   const [creatingContract, setCreatingContract] = useState<"pdf" | "docx" | null>(null);
   const [printReady, setPrintReady] = useState(false);
+  const [benefitTypeFilter, setBenefitTypeFilter] = useState<"all" | "monetary" | "in_kind">("all");
   const printPreviewRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (contract.signatureStatus !== "pending_sponsor" && contract.signatureStatus !== "pending_organizer") return;
+    let cancelled = false;
+    const refreshSignatureStatus = async () => {
+      try {
+        const response = await fetch(`/api/contracts/${contract.id}/simple-signature`, { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const result = await response.json();
+        if (!cancelled && result.signatureStatus && result.signatureStatus !== contract.signatureStatus) window.location.reload();
+      } catch {
+        // The current signing status remains available in the page if the refresh request fails.
+      }
+    };
+    const interval = window.setInterval(() => { void refreshSignatureStatus(); }, 15000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [contract.id, contract.signatureStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,7 +156,8 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
         if (cancelled) return;
         setGeneratedContracts({ pdf: documents.data?.find((document) => document.kind === "generated_pdf"), docx: documents.data?.find((document) => document.kind === "generated_docx") });
         setSignedContractFile(documents.data?.find((document) => document.kind === "signed") ?? null);
-        setManualTasks((tasks.data ?? []).filter((task) => task.event_id === eventId && task.source === "Manuell" && task.sponsor_id === sponsor.id).map((task) => ({ id: task.id, title: task.title })));
+        setUploadedContract(documents.data?.find((document) => document.kind === "uploaded_pdf") ?? null);
+        setAssignedTasks((tasks.data ?? []).filter((task) => task.event_id === eventId && task.sponsor_id === sponsor.id).map((task) => ({ id: task.id, title: task.title, benefit_id: task.benefit_id, source: task.source, status: task.status, assigned_to: task.assigned_to, assigned_to_sponsor: task.assigned_to_sponsor, due_at: task.due_at, completion_type: task.completion_type, workflow_instance: task.workflow_instance, workflow_order: task.workflow_order })));
         setEvidenceTaskIds((evidence.data ?? []).map((item) => item.taskId));
         setContractAmountInput(String(parseContractValue(contract.value)));
         const grossValue = parseContractValue(contract.grossValue ?? "") || grossValueFromNet(parseContractValue(contract.value));
@@ -107,6 +172,33 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   }, [contract.id, eventId, sponsor.id]);
 
   useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      const { data, error } = await createClient().rpc("event_signature_addon_enabled", { target_event_id: eventId });
+      if (!cancelled) setSignatureAddonEnabled(!error && data === true);
+    };
+    void refresh();
+    const onEntitlementUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ eventId?: string }>).detail;
+      if (!detail?.eventId || detail.eventId === eventId) void refresh();
+    };
+    window.addEventListener("sponso:event-entitlement-updated", onEntitlementUpdated);
+    return () => { cancelled = true; window.removeEventListener("sponso:event-entitlement-updated", onEntitlementUpdated); };
+  }, [eventId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const supabase = createClient();
+      const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
+      if (organizationError || typeof organizationId !== "string") return;
+      const { data, error } = await supabase.from("organization_members").select("user_id, email, role").eq("organization_id", organizationId).order("joined_at");
+      if (!cancelled && !error) setOrganizerMembers((data ?? []) as OrganizerMember[]);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (!isSupabaseConfigured) {
       setBlocksLoading(false);
       return;
@@ -115,20 +207,49 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     let cancelled = false;
     async function loadBenefitTemplates() {
       try {
-        const { data, error } = await createClient()
+        const supabase = createClient();
+        const { data, error } = await supabase
           .from("benefit_templates")
-          .select("title, category, description, detail")
+          .select("id, title, category, description, benefit_type, material_logistics, default_completion_type")
           .order("created_at", { ascending: true });
         if (error) throw error;
+        const templateIds = (data ?? []).map((item) => item.id);
+        let taskRows: Array<{ id: string; benefit_template_id: string; title: string; sort_order: number; completion_type?: CompletionType }> = [];
+        let warning = "";
+        let missingSubtaskTable = false;
+        if (templateIds.length) {
+          const taskResult = await supabase.from("benefit_template_tasks").select("id, benefit_template_id, title, sort_order, completion_type").in("benefit_template_id", templateIds).order("sort_order");
+          if (taskResult.error) {
+            const legacyTaskResult = await supabase.from("benefit_template_tasks").select("id, benefit_template_id, title, sort_order").in("benefit_template_id", templateIds).order("sort_order");
+            if (legacyTaskResult.error) {
+              missingSubtaskTable = true;
+              warning = "Bausteine sind verfügbar. Unteraufgaben können erst genutzt werden, wenn die Datenbankmigration eingespielt ist.";
+            }
+            else {
+              taskRows = (legacyTaskResult.data ?? []).map((task) => ({ ...task, completion_type: "file_required" as const }));
+              warning = "Bausteine sind verfügbar. Die aktuelle Datenbankmigration fehlt noch; Unteraufgaben mit Freigaben sind vorübergehend nicht verfügbar.";
+            }
+          } else taskRows = (taskResult.data ?? []) as typeof taskRows;
+        }
+        const subtasksByTemplate = new Map<string, TemplateSubtask[]>();
+        for (const task of taskRows ?? []) {
+          const current = subtasksByTemplate.get(task.benefit_template_id) ?? [];
+          current.push({ id: task.id, title: task.title, sort_order: task.sort_order, completion_type: task.completion_type ?? "file_required" });
+          subtasksByTemplate.set(task.benefit_template_id, current);
+        }
         if (!cancelled) {
-          const templates = (data ?? []) as BenefitTemplate[];
-          setAvailableBlocks(templates.length > 0 ? templates : blocks);
+          const templates: Block[] = (data ?? []).map((item) => ({ ...item, benefit_type: item.benefit_type ?? "monetary", material_logistics: item.material_logistics ?? null, default_completion_type: item.default_completion_type ?? "file_required", subtasks: subtasksByTemplate.get(item.id) ?? [] }));
+          setAvailableBlocks(templates);
           setBlocksLoadError("");
+          setBlocksLoadWarning(warning);
+          setSubtasksUnavailable(missingSubtaskTable);
         }
       } catch {
         if (!cancelled) {
           setAvailableBlocks(blocks);
           setBlocksLoadError("Die Bausteine konnten nicht aus deiner Bibliothek geladen werden.");
+          setBlocksLoadWarning("");
+          setSubtasksUnavailable(false);
         }
       } finally {
         if (!cancelled) setBlocksLoading(false);
@@ -140,11 +261,14 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   }, []);
 
   const benefits = useMemo(() => [...baseBenefits, ...addedBenefits], [baseBenefits, addedBenefits]);
+  const filteredBenefits = benefits.filter((benefit) => benefitTypeFilter === "all" || (benefitTypeFilter === "in_kind" ? benefit.benefitType === "in_kind" || Boolean(benefit.materialLogistics?.trim()) : benefit.benefitType !== "in_kind" && !benefit.materialLogistics?.trim()));
   const existingBenefitTitles = new Set(benefits.map((benefit) => normalizeBenefitTitle(benefit.title)));
-  const taskIds = [...benefits.map((benefit) => benefitTaskId(eventId, benefit)), ...manualTasks.map((task) => task.id)];
-  const completedTasks = taskIds.filter((taskId) => evidenceTaskIds.includes(taskId) || benefits.some((benefit) => benefitTaskId(eventId, benefit) === taskId && Boolean(benefit.evidence && benefit.evidence !== "Noch kein Nachweis"))).length;
+  const legacyBenefitTaskIds = benefits.filter((benefit) => !assignedTasks.some((task) => task.source === "Leistung" && task.benefit_id === benefit.id)).map((benefit) => benefitTaskId(eventId, benefit));
+  const taskIds = [...legacyBenefitTaskIds, ...assignedTasks.map((task) => task.id)];
+  const completedTasks = taskIds.filter((taskId) => evidenceTaskIds.includes(taskId) || assignedTasks.some((task) => task.id === taskId && task.status === "Erledigt") || benefits.some((benefit) => benefitTaskId(eventId, benefit) === taskId && Boolean(benefit.evidence && benefit.evidence !== "Noch kein Nachweis"))).length;
   const taskProgress = taskIds.length ? Math.round(completedTasks / taskIds.length * 100) : 0;
   const contractStatus = !signedOn ? "Offen" : taskIds.length > 0 && completedTasks === taskIds.length ? "Erledigt" : "In Arbeit";
+  const editingTasks = editingBenefit ? assignedTasks.filter((task) => task.source === "Leistung" && task.benefit_id === editingBenefit.id).sort((a, b) => (a.workflow_instance - b.workflow_instance) || (a.workflow_order ?? 0) - (b.workflow_order ?? 0)) : [];
 
   function updateNetContractValue(value: string) {
     setContractAmountInput(value);
@@ -185,31 +309,14 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       return;
     }
     try {
-      const { error } = await updateContractRecord(contract.id, { netValueCents: Math.round(amount * 100), grossValueCents: Math.round(grossAmount * 100), signedAt: signedOn || null });
+      const { error } = await updateContractRecord(contract.id, { netValueCents: Math.round(amount * 100), grossValueCents: Math.round(grossAmount * 100) });
       if (error) throw error;
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setContractAmountInput(String(amount));
       setContractAmountFocused(false);
-      setMessage(generatedContracts?.pdf ? "Vertragswerte und Vertragsdatum gespeichert. Erstelle den Vertrag erneut, damit die PDF-Datei die Änderungen enthält." : "Vertragswerte und Vertragsdatum gespeichert.");
+      setMessage(generatedContracts?.pdf ? "Vertragswerte gespeichert. Erstelle den Vertrag erneut, damit die PDF-Datei die Änderungen enthält." : "Vertragswerte gespeichert.");
     } catch {
       setMessage("Vertragswerte und Vertragsdatum konnten nicht gespeichert werden.");
-    }
-  }
-
-  async function uploadSignedContractFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!(await ensureFeature(eventId, eventTitle, "contracts"))) { event.target.value = ""; return; }
-    try {
-      const { data: savedFile, error } = await saveContractDocument(contract.id, "signed", file, file.name);
-      if (error || !savedFile) throw error ?? new Error("Datei konnte nicht gespeichert werden.");
-      setSignedContractFile(savedFile);
-      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
-      setMessage("Die gezeichnete Vertragsfassung wurde hochgeladen.");
-    } catch {
-      setMessage("Die gezeichnete Vertragsfassung konnte nicht gespeichert werden.");
-    } finally {
-      event.target.value = "";
     }
   }
 
@@ -225,37 +332,72 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function removeSignedContractFile() {
-    try {
-      if (!signedContractFile) return;
-      const { error } = await deleteContractDocument(signedContractFile);
-      if (error) throw error;
-      setSignedContractFile(null);
-      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
-      setMessage("Die gezeichnete Fassung wurde gelöscht. Du kannst eine neue Datei hochladen.");
-    } catch {
-      setMessage("Die gezeichnete Fassung konnte nicht gelöscht werden.");
-    }
-  }
-
   async function openAddBenefits() {
     if (!(await ensureFeature(eventId, eventTitle, "benefits"))) return;
     setSelectedBlocks([]);
-    setBenefitDueDates({});
+    setBenefitQuantities({});
+    setSubtaskDueDates({});
+    setSubtaskAssignees({});
     setAdding(true);
   }
 
   function closeAddBenefits() {
     setAdding(false);
     setSelectedBlocks([]);
-    setBenefitDueDates({});
+    setBenefitQuantities({});
+    setSubtaskDueDates({});
+    setSubtaskAssignees({});
+  }
+
+  function openBenefitTaskEditor(benefit: EventBenefit) {
+    const tasks = assignedTasks.filter((task) => task.source === "Leistung" && task.benefit_id === benefit.id);
+    setEditingBenefit(benefit);
+    setTaskEditValues(Object.fromEntries(tasks.map((task) => [task.id, { dueAt: task.due_at ?? "", assigneeId: task.assigned_to_sponsor ? SPONSOR_ASSIGNEE : task.assigned_to ?? "" }])));
+    setMessage("");
+  }
+
+  async function saveBenefitTaskEdits() {
+    if (!editingBenefit?.id || savingBenefitId) return;
+    const tasks = assignedTasks.filter((task) => task.source === "Leistung" && task.benefit_id === editingBenefit.id);
+    if (tasks.length === 0) {
+      setMessage("Für diese Leistung sind keine Unteraufgaben zum Bearbeiten vorhanden.");
+      setEditingBenefit(null);
+      return;
+    }
+    setSavingBenefitId(editingBenefit.id);
+    try {
+      const results = await Promise.all(tasks.map((task) => {
+        const value = taskEditValues[task.id] ?? { dueAt: task.due_at ?? "", assigneeId: task.assigned_to_sponsor ? SPONSOR_ASSIGNEE : task.assigned_to ?? "" };
+        const assignedToSponsor = task.completion_type === "sponsor_upload" || (task.completion_type !== "sponsor_approval" && value.assigneeId === SPONSOR_ASSIGNEE);
+        return updateStoredTask(task.id, { dueAt: value.dueAt || null, assignedTo: task.completion_type === "sponsor_approval" || assignedToSponsor ? null : value.assigneeId || null, assignedToSponsor });
+      }));
+      const failed = results.find((result) => result.error)?.error;
+      if (failed) throw failed;
+      setAssignedTasks((current) => current.map((task) => {
+        if (task.benefit_id !== editingBenefit.id || task.source !== "Leistung") return task;
+        const value = taskEditValues[task.id] ?? { dueAt: task.due_at ?? "", assigneeId: task.assigned_to_sponsor ? SPONSOR_ASSIGNEE : task.assigned_to ?? "" };
+        const assignedToSponsor = task.completion_type === "sponsor_upload" || (task.completion_type !== "sponsor_approval" && value.assigneeId === SPONSOR_ASSIGNEE);
+        return { ...task, due_at: value.dueAt || null, assigned_to: task.completion_type === "sponsor_approval" || assignedToSponsor ? null : value.assigneeId || null, assigned_to_sponsor: assignedToSponsor };
+      }));
+      setEditingBenefit(null);
+      setMessage("Personen und Fälligkeiten wurden gespeichert.");
+      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
+    } catch {
+      setMessage("Personen und Fälligkeiten konnten nicht vollständig gespeichert werden.");
+    } finally {
+      setSavingBenefitId(null);
+    }
   }
 
   async function addSelectedBlocks() {
     if (!(await ensureFeature(eventId, eventTitle, "benefits"))) return;
     try {
       const alreadyAdded = new Set(benefits.map((benefit) => normalizeBenefitTitle(benefit.title)));
-      const requested = availableBlocks.filter((block) => selectedBlocks.includes(block.title));
+      const requested = availableBlocks.filter((block) => selectedBlocks.includes(blockKey(block)));
+      if (blocksLoadWarning && (subtasksUnavailable || requested.some((block) => (block.subtasks?.length ?? 0) > 0))) {
+        setMessage("Die Unteraufgaben können erst angelegt werden, wenn die aktuelle Datenbankmigration eingespielt ist.");
+        return;
+      }
       const seen = new Set(alreadyAdded);
       const eligible = requested.filter((block) => {
         const key = normalizeBenefitTitle(block.title);
@@ -266,21 +408,32 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       if (eligible.length < requested.length) {
         setMessage("Ein oder mehrere Bausteine wurden diesem Sponsor im Event bereits hinzugefügt und übersprungen.");
       }
+      if (eligible.length > 0 && !(await ensureFeature(eventId, eventTitle, "tasks"))) return;
+      const invalidQuantity = eligible.some((block) => {
+        const quantity = Number(benefitQuantities[blockKey(block)] ?? "1");
+        return !Number.isInteger(quantity) || quantity < 1;
+      });
+      if (invalidQuantity) {
+        setMessage("Bitte gib für jeden Baustein eine ganze Anzahl ab 1 ein.");
+        return;
+      }
       const additions = eligible.map((block): EventBenefit => ({
         title: block.title,
+        benefitType: block.benefit_type ?? "monetary",
+        materialLogistics: block.material_logistics?.trim() ?? "",
         category: block.category,
         description: block.description,
+        quantity: Number(benefitQuantities[blockKey(block)] ?? "1"),
         status: "Offen",
         evidence: "Noch kein Nachweis",
         sponsorId: sponsor.id,
         eventId,
-        dueAt: benefitDueDates[block.title] || eventEndDate || undefined,
+        dueAt: undefined,
       }));
       if (additions.length === 0) {
         if (requested.length === 0) setMessage("Wähle zuerst mindestens einen Baustein aus.");
         else {
           setSelectedBlocks([]);
-          setBenefitDueDates({});
           setAdding(false);
           setMessage("Diese Bausteine wurden diesem Sponsor im Event bereits hinzugefügt.");
         }
@@ -291,25 +444,94 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
           sponsorId: benefit.sponsorId,
           contractId: contract.id,
           title: benefit.title,
+          benefitType: benefit.benefitType,
+          materialLogistics: benefit.materialLogistics,
           category: benefit.category,
           description: benefit.description,
-          detail: "",
           status: benefit.status,
           evidence: benefit.evidence,
+          quantity: benefit.quantity,
           dueAt: benefit.dueAt,
       })));
       if (result.error) throw result.error;
       const savedAdditions = result.data.map(storedBenefitToEventBenefit);
+      const taskInputs = eligible.flatMap((block) => {
+        const benefit = savedAdditions.find((item) => normalizeBenefitTitle(item.title) === normalizeBenefitTitle(block.title));
+        if (!benefit?.id) return [];
+        return Array.from({ length: benefit.quantity }, (_, instanceIndex) => tasksForBlock(block).map((task) => {
+          const key = subtaskKey(block, task);
+          return {
+            title: task.title,
+            eventId,
+            sponsorId: sponsor.id,
+            sponsorName: sponsor.name,
+            benefitId: benefit.id,
+            templateTaskId: task.id === "__primary_task__" ? undefined : task.id,
+            workflowOrder: task.sort_order,
+            workflowInstance: instanceIndex + 1,
+            source: "Leistung" as const,
+            completionType: task.completion_type,
+            dueAt: subtaskDueDates[key] || eventEndDate || undefined,
+            assignedTo: task.completion_type === "sponsor_approval" || task.completion_type === "sponsor_upload" || subtaskAssignees[key] === SPONSOR_ASSIGNEE ? undefined : subtaskAssignees[key] || undefined,
+            assignedToSponsor: task.completion_type === "sponsor_upload" || (task.completion_type !== "sponsor_approval" && subtaskAssignees[key] === SPONSOR_ASSIGNEE),
+          };
+        })).flat();
+      });
+      if (taskInputs.length) {
+        const taskResult = await createStoredTasks(taskInputs);
+        if (taskResult.error) {
+          await createClient().from("benefits").delete().in("id", savedAdditions.map((item) => item.id).filter(Boolean));
+          throw taskResult.error;
+        }
+        setAssignedTasks((current) => [...current, ...(taskResult.data ?? []).map((task) => ({ id: task.id, title: task.title, benefit_id: task.benefit_id, source: task.source, status: task.status, assigned_to: task.assigned_to, assigned_to_sponsor: task.assigned_to_sponsor, due_at: task.due_at, completion_type: task.completion_type, workflow_instance: task.workflow_instance, workflow_order: task.workflow_order }))]);
+      }
       setAddedBenefits((current) => [...current, ...savedAdditions]);
       window.dispatchEvent(new Event("sponso:event-timeline-updated"));
       setSelectedBlocks([]);
-      setBenefitDueDates({});
+      setBenefitQuantities({});
+      setSubtaskDueDates({});
+      setSubtaskAssignees({});
       setAdding(false);
       setMessage(eligible.length < requested.length
         ? `${additions.length} ${additions.length === 1 ? "Leistung hinzugefügt" : "Leistungen hinzugefügt"}. Bereits vorhandene Bausteine wurden übersprungen.`
         : `${additions.length} ${additions.length === 1 ? "Leistung hinzugefügt" : "Leistungen hinzugefügt"}.`);
+    } catch (error) {
+      setMessage(error instanceof Error && error.message.includes("TASK_WORKFLOW_INVALID_TRANSITION")
+        ? "Die Unteraufgaben dieses Bausteins haben eine ungültige Reihenfolge. Bitte korrigiere zuerst die Abschlussarten im Baustein."
+        : "Die Leistungen konnten nicht gespeichert werden.");
+    }
+  }
+
+  async function removeBenefit(benefit: EventBenefit) {
+    if (!benefit.id || removingBenefitId) return;
+    const units = benefit.quantity > 1 ? ` (${benefit.quantity} Einheiten)` : "";
+    if (!window.confirm(`„${benefit.title}“${units} aus diesem Sponsor-Event entfernen? Zugehörige Aufgaben und Nachweise werden ebenfalls entfernt.`)) return;
+
+    setRemovingBenefitId(benefit.id);
+    try {
+      const supabase = createClient();
+      const taskResult = await supabase.from("tasks").select("id").eq("event_id", eventId).eq("sponsor_id", sponsor.id).eq("benefit_id", benefit.id);
+      if (taskResult.error) throw taskResult.error;
+      const taskIds = (taskResult.data ?? []).map((task) => task.id as string);
+      const evidenceQueries = [supabase.from("evidence_files").select("storage_path").eq("event_id", eventId).eq("benefit_id", benefit.id)];
+      if (taskIds.length) evidenceQueries.push(supabase.from("evidence_files").select("storage_path").eq("event_id", eventId).in("task_id", taskIds));
+      const evidenceResults = await Promise.all(evidenceQueries);
+      const evidenceError = evidenceResults.find((result) => result.error)?.error;
+      if (evidenceError) throw evidenceError;
+
+      const { error } = await supabase.from("benefits").delete().eq("id", benefit.id).eq("event_id", eventId).eq("sponsor_id", sponsor.id);
+      if (error) throw error;
+
+      const storagePaths = [...new Set(evidenceResults.flatMap((result) => result.data ?? []).map((item) => item.storage_path as string).filter(Boolean))];
+      const { error: storageError } = storagePaths.length ? await supabase.storage.from("sponsorproof-files").remove(storagePaths) : { error: null };
+      setAddedBenefits((current) => current.filter((item) => item.id !== benefit.id));
+      setAssignedTasks((current) => current.filter((task) => task.benefit_id !== benefit.id));
+      setMessage(storageError ? `„${benefit.title}“ wurde entfernt. Mindestens eine Nachweisdatei konnte nicht aus dem Archiv gelöscht werden.` : `„${benefit.title}“ wurde aus diesem Sponsor-Event entfernt.`);
+      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
     } catch {
-      setMessage("Die Leistungen konnten nicht gespeichert werden.");
+      setMessage("Die Leistung konnte nicht entfernt werden.");
+    } finally {
+      setRemovingBenefitId(null);
     }
   }
 
@@ -319,6 +541,38 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     const { data, error } = await downloadContractDocument(generated);
     if (error || !data) { setMessage("Die erstellte Vertragsdatei konnte nicht geladen werden."); return; }
     downloadDocument(data, generated.fileName);
+  }
+
+  async function downloadUploadedContract() {
+    if (!uploadedContract) return;
+    const { data, error } = await downloadContractDocument(uploadedContract);
+    if (error || !data) { setMessage("Der hochgeladene Vertragsentwurf konnte nicht geladen werden."); return; }
+    downloadDocument(data, uploadedContract.fileName);
+  }
+
+  async function selectSigningDocument(document: ContractDocument) {
+    if (!signatureAddonEnabled || contract.signatureStatus !== "draft" || signingBusy) return;
+    setSigningBusy(true);
+    const { error } = await setContractSigningDocument(contract.id, document.id);
+    if (error) { setMessage("Die Vertragsfassung konnte nicht freigegeben werden."); setSigningBusy(false); return; }
+    const { error: startError } = await createClient().rpc("start_simple_contract_signing", { target_contract_id: contract.id });
+    if (startError) { setMessage("Der Vertrag konnte nicht zur Zeichnung freigegeben werden."); setSigningBusy(false); return; }
+    setSigningDocumentId(document.id);
+    window.location.reload();
+  }
+
+  async function signAsOrganizer() {
+    if (!signatureAddonEnabled || signingBusy) return;
+    setSigningBusy(true); setMessage("");
+    try {
+      const response = await fetch(`/api/contracts/${contract.id}/simple-signature`, { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Die Zeichnung konnte nicht gespeichert werden.");
+      window.location.reload();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Die Zeichnung konnte nicht gespeichert werden.");
+      setSigningBusy(false);
+    }
   }
 
   async function renderContractTemplatePdf(documentBlob: Blob, preview: HTMLDivElement) {
@@ -365,6 +619,10 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   }
 
   async function openContractOutput() {
+    if (benefits.length === 0) {
+      setMessage("Füge zuerst mindestens eine Leistung hinzu, bevor du den Vertrag erstellst.");
+      return;
+    }
     if (!(await ensureFeature(eventId, eventTitle, "contracts"))) return;
     setShowContractOutput(true);
     setContractTemplate(null);
@@ -477,28 +735,65 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     }
   }
 
+  const sponsorSigned = contract.signatureStatus === "pending_organizer" || contract.signatureStatus === "signed" || Boolean(contract.sponsorSignedAt);
+  const organizerSigned = contract.signatureStatus === "signed" || Boolean(contract.organizerSignedAt);
+  const signerStep = (done: boolean, active: boolean, signer: string, signedAt?: string | null, action?: ReactNode) => <div className={`signature-step ${done ? "done" : active ? "active" : ""}`}><span className="signature-step-marker">{done ? <Icon name="check" size={13}/> : null}</span><div><b>{signer}</b><small>{done ? `Gezeichnet${signedAt ? ` am ${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(signedAt))}` : ""}` : active ? "Als Nächstes" : "Wartet auf die vorherige Zeichnung"}</small></div>{action}</div>;
   return <section className="panel sponsor-event-detail"><div className="panel-heading"><div><div className="eyebrow">SPONSOR IM EVENT</div><div className="sponsor-event-name-row"><h2>{sponsor.name}</h2><Link className="text-link sponsor-event-customer-link" href={`/sponsors/${sponsor.id}`}>Kundenkartei →</Link></div></div><div className="sponsor-event-heading-actions"><Status value={contractStatus}/><Link className="btn" href={`/events/${eventId}?tab=sponsoren`}>← Alle Sponsoren</Link></div></div>
-    <section className="panel sponsor-contract-data"><div className="table-head"><div><h2>Vertragsdaten</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Nettowert, Bruttowert, Vertragsdatum und Fortschritt für diesen Eventvertrag.</p></div></div><div className="sponsor-contract-detail-grid"><div className="contract-volume-field"><label><span>Vertragswert netto</span><input aria-label="Vertragswert netto in Euro" inputMode="decimal" type="text" value={contractAmountFocused ? contractAmountInput : Number.isFinite(parseContractValueInput(contractAmountInput)) ? formatContractValue(parseContractValueInput(contractAmountInput)) : contractAmountInput} onFocus={() => setContractAmountFocused(true)} onChange={(event) => updateNetContractValue(event.target.value)} onBlur={() => setContractAmountFocused(false)} /></label></div><div className="contract-volume-field"><label><span>Vertragswert brutto</span><input aria-label="Vertragswert brutto in Euro" inputMode="decimal" type="text" value={grossContractAmountFocused ? grossContractAmountInput : grossContractAmountInput && Number.isFinite(parseContractValueInput(grossContractAmountInput)) ? formatContractValue(parseContractValueInput(grossContractAmountInput)) : grossContractAmountInput} onFocus={() => setGrossContractAmountFocused(true)} onChange={(event) => updateGrossContractValue(event.target.value)} onBlur={finishGrossContractValueEdit} /></label></div><div><span>Vereinbarte Leistungen</span><b>{benefits.length}</b></div><div><span>Leistungsfortschritt</span><Progress value={taskProgress}/></div><div className="event-contract-date"><label><span>Datum der Vertragsunterzeichnung</span><input aria-label="Datum der Vertragsunterzeichnung" type="date" value={signedOn} onChange={(event) => setSignedOn(event.target.value)} /></label></div></div><div className="contract-details-save"><button className="btn btn-primary" type="button" onClick={saveContractDetails}>Speichern</button></div></section>
-    <section className="panel sponsor-contract-files"><div className="table-head"><div><h2>Vertrag</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Erstelle eine Vertragsfassung oder füge eine gezeichnete Fassung hinzu.</p></div></div><div className="contract-file-actions"><button className="btn btn-primary" type="button" onClick={() => { void openContractOutput(); }}><Icon name="file" size={15}/> Vertrag erstellen</button>{generatedContracts?.pdf && <button className="btn" type="button" onClick={() => downloadGeneratedContract("pdf")}><Icon name="file" size={15}/> PDF erneut herunterladen</button>}{generatedContracts?.docx && <button className="btn" type="button" onClick={() => downloadGeneratedContract("docx")}><Icon name="file" size={15}/> Word erneut herunterladen</button>}<label className="btn contract-upload-button"><Icon name="file" size={15}/> Gezeichnete Fassung hochladen<input type="file" onChange={(event) => { void uploadSignedContractFile(event); }} /></label></div>{signedContractFile && <div className="signed-contract-file"><div><b>{signedContractFile.fileName}</b><span>Hochgeladen am {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(signedContractFile.createdAt))}</span></div><div className="signed-contract-actions"><button className="btn" type="button" onClick={() => { void downloadSignedContractFile(); }}><Icon name="file" size={14}/> Gezeichnete Fassung herunterladen</button><button className="btn signed-contract-delete" type="button" onClick={() => { void removeSignedContractFile(); }}>Datei löschen</button></div></div>}</section>
-    <div className="panel table-panel sponsor-contract-benefits"><div className="table-head"><div><h2>Vereinbarte Leistungen</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Einzelleistungen und Nachweisstatus für diesen Eventvertrag.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); openAddBenefits(); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button></div>{benefits.length ? <table className="table"><thead><tr><th>LEISTUNG</th><th>KATEGORIE</th><th>FÄLLIG</th><th>NACHWEIS</th><th>STATUS</th></tr></thead><tbody>{benefits.map((benefit) => <tr key={benefit.id ?? benefit.title}><td><b style={{ color: "#3d4c5b" }}>{benefit.title}</b><div className="task-caption">{benefit.description}</div></td><td>{benefit.category}</td><td>{benefit.dueAt ? new Intl.DateTimeFormat("de-DE").format(new Date(`${benefit.dueAt}T00:00:00`)) : "—"}</td><td>{benefit.evidence}</td><td><Status value={benefit.evidence && benefit.evidence !== "Noch kein Nachweis" ? "Erledigt" : "Offen"}/></td></tr>)}</tbody></table> : <EmptyState className="empty-state-compact" title="Noch keine Leistungen" description="Füge Leistungen aus der Bausteinbibliothek zu diesem Vertrag hinzu." action={<button className="btn btn-primary" type="button" onClick={() => { setMessage(""); openAddBenefits(); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button>} />}</div>
-    <SponsorDocumentArea eventId={eventId} sponsorId={sponsor.id} sponsorName={sponsor.name}/>
+    <div className="event-sponsor-tabs" role="tablist" aria-label={`Bereiche für ${sponsor.name}`}>
+      {(["Vertrag", "Rechnung", "Leistungen", "Dokumente"] as const).map((tab) => <button type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => setActiveTab(tab)}>{tab}</button>)}
+    </div>
+    {activeTab === "Vertrag" && <>
+      <section className="panel sponsor-contract-data"><div className="table-head"><div><h2>Vertragsdaten</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Vertragswerte, vereinbarte Leistungen und Leistungsfortschritt für diesen Eventvertrag.</p></div></div><div className="sponsor-contract-detail-grid"><div className="contract-volume-field"><label><span>Vertragswert netto</span><input aria-label="Vertragswert netto in Euro" inputMode="decimal" type="text" value={contractAmountFocused ? contractAmountInput : Number.isFinite(parseContractValueInput(contractAmountInput)) ? formatContractValue(parseContractValueInput(contractAmountInput)) : contractAmountInput} onFocus={() => setContractAmountFocused(true)} onChange={(event) => updateNetContractValue(event.target.value)} onBlur={() => setContractAmountFocused(false)} /></label></div><div className="contract-volume-field"><label><span>Vertragswert brutto</span><input aria-label="Vertragswert brutto in Euro" inputMode="decimal" type="text" value={grossContractAmountFocused ? grossContractAmountInput : grossContractAmountInput && Number.isFinite(parseContractValueInput(grossContractAmountInput)) ? formatContractValue(parseContractValueInput(grossContractAmountInput)) : grossContractAmountInput} onFocus={() => setGrossContractAmountFocused(true)} onChange={(event) => updateGrossContractValue(event.target.value)} onBlur={finishGrossContractValueEdit} /></label></div><div><span>Vereinbarte Leistungen</span><b>{benefits.length}</b></div><div><span>Leistungsfortschritt</span><Progress value={taskProgress}/></div><div className="event-contract-date"><span>Zeichnungsdatum</span><b>{signedOn ? formatContractDate(signedOn) : "Wird nach beiden Unterschriften automatisch gesetzt"}</b></div></div><div className="contract-details-save"><button className="btn btn-primary" type="button" onClick={saveContractDetails}>Speichern</button></div></section>
+      <section className="panel sponsor-contract-files"><div className="table-head"><div><h2>Vertragsentwurf</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Erstelle den Vertrag aus der hinterlegten Vorlage.</p></div></div>{benefits.length === 0 && <p className="field-message hint" role="status">Füge zuerst mindestens eine Leistung hinzu, bevor du einen Vertrag erstellst.</p>}<div className="contract-file-actions"><button className="btn btn-primary" type="button" disabled={benefits.length === 0} title={benefits.length === 0 ? "Füge zuerst mindestens eine Leistung hinzu." : undefined} onClick={() => { void openContractOutput(); }}><Icon name="file" size={15}/> Vertrag erstellen</button>{generatedContracts?.pdf && <><button className="btn" type="button" onClick={() => downloadGeneratedContract("pdf")}><Icon name="file" size={15}/> Aktuellen Vertrag herunterladen</button>{signatureAddonEnabled && <button className={`btn ${signingDocumentId === generatedContracts.pdf.id ? "btn-primary" : ""}`} type="button" disabled={contract.signatureStatus !== "draft" || signingBusy} onClick={() => { void selectSigningDocument(generatedContracts.pdf!); }}>Vertrag zur Zeichnung durch Sponsor freigeben</button>}</>}{generatedContracts?.docx && <button className="btn" type="button" onClick={() => downloadGeneratedContract("docx")}><Icon name="file" size={15}/> Word-Datei laden</button>}{uploadedContract && <><button className="btn" type="button" onClick={() => { void downloadUploadedContract(); }}><Icon name="file" size={15}/> {signingDocumentId === uploadedContract.id ? "Aktuellen Vertrag herunterladen" : "Hochgeladenes PDF laden"}</button>{signatureAddonEnabled && <button className={`btn ${signingDocumentId === uploadedContract.id ? "btn-primary" : ""}`} type="button" disabled={contract.signatureStatus !== "draft" || signingBusy} onClick={() => { void selectSigningDocument(uploadedContract); }}>Vertrag zur Zeichnung durch Sponsor freigeben</button>}</>}</div>
+        {uploadedContract && <div className="signed-contract-file"><div><b>{uploadedContract.fileName}</b><span>Vertragsentwurf · hochgeladen am {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(uploadedContract.createdAt))}</span></div></div>}
+      </section>
+      {signatureAddonEnabled && <section className="panel contract-signature-preparation"><div className="table-head"><div><h2>Unterschriften</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Die Zeichnung erfolgt in dieser Reihenfolge.</p></div><span className={`status ${contract.signatureStatus === "signed" ? "status-done" : contract.signatureStatus === "pending_sponsor" || contract.signatureStatus === "pending_organizer" ? "status-progress" : "status-open"}`}>{contract.signatureStatus === "signed" ? "Gezeichnet" : contract.signatureStatus === "pending_organizer" ? "Veranstalter zeichnet" : contract.signatureStatus === "pending_sponsor" ? "Sponsor zeichnet" : "Noch nicht gestartet"}</span></div>{contract.signatureStatus === "pending_organizer" && <div className="contract-sponsor-signed-notice" role="status"><b>Der Sponsor hat den Vertrag gezeichnet.</b><span>Du bist jetzt mit der Unterschrift an der Reihe.</span></div>}<div className="signature-steps">{signerStep(sponsorSigned, contract.signatureStatus === "pending_sponsor", "1. Sponsor", contract.sponsorSignedAt)}{signerStep(organizerSigned, contract.signatureStatus === "pending_organizer", "2. Veranstalter", contract.organizerSignedAt, contract.signatureStatus === "pending_organizer" && <button className="btn btn-primary signature-step-action" type="button" disabled={signingBusy} onClick={() => { void signAsOrganizer(); }}>{signingBusy ? "Wird gespeichert …" : "Jetzt zeichnen"}</button>)}</div><p className="contract-signature-note">{signingDocumentId ? "Mit der Freigabe erhält der verknüpfte Sponsor Zugang zur ausgewählten PDF und kann zuerst zeichnen." : "Wähle oben eine Vertrags-PDF aus, um den Zeichnungsablauf zu starten."} Die Klick-Zeichnung ist eine interne Bestätigung und keine qualifizierte elektronische Signatur.</p></section>}
+    </>}
+    {activeTab === "Leistungen" && <div className="panel table-panel sponsor-contract-benefits"><div className="table-head"><div><h2>Vereinbarte Leistungen</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Einzelleistungen und Nachweisstatus für diesen Eventvertrag.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); openAddBenefits(); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button></div><div className="sponsor-benefit-filters" role="group" aria-label="Leistungen nach Art filtern">{([{ value: "all", label: "Alle" }, { value: "monetary", label: "Geldleistungen" }, { value: "in_kind", label: "Sachleistungen" }] as const).map((filter) => <button key={filter.value} className={`filter-chip${benefitTypeFilter === filter.value ? " active" : ""}`} type="button" aria-pressed={benefitTypeFilter === filter.value} onClick={() => setBenefitTypeFilter(filter.value)}>{filter.label}</button>)}</div>{benefitTypeFilter === "in_kind" && <p className="sponsor-in-kind-origin-note">Die Sachleistungen ergeben sich aus den Leistungen, die im Reiter „Leistungen“ ausgewählt wurden. Sachleistungen werden zur besseren Nachvollziehbarkeit hier gesondert ausgegeben.</p>}{filteredBenefits.length ? <div className="sponsor-benefit-cards">{filteredBenefits.map((benefit) => {
+      const benefitTasks = assignedTasks.filter((task) => task.source === "Leistung" && task.benefit_id === benefit.id);
+      const taskDueDates = [...new Set(benefitTasks.flatMap((task) => task.due_at ? [task.due_at] : []))].sort();
+      const dueDate = taskDueDates.length ? [...new Set(taskDueDates.map(displayBenefitDate))].join(", ") : benefit.dueAt ? displayBenefitDate(benefit.dueAt) : "—";
+      const assignedPeople = [...new Set(benefitTasks.map((task) => task.assigned_to_sponsor || task.completion_type === "sponsor_upload" || task.completion_type === "sponsor_approval" ? "Sponsor" : organizerMembers.find((member) => member.user_id === task.assigned_to)?.email ?? "Nicht zugewiesen"))];
+      return <article className="sponsor-benefit-card" key={benefit.id ?? benefit.title}>
+      <div className="sponsor-benefit-card-heading"><div><span className="benefit-kind-badge">{benefit.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><h3>{benefit.title}</h3>{benefit.description && <p>{benefit.description}</p>}{benefit.materialLogistics && <p className="sponsor-in-kind-logistics"><b>Zusätzliche Materiallogistik:</b> {benefit.materialLogistics}</p>}</div><Status value={benefit.evidence && benefit.evidence !== "Noch kein Nachweis" ? "Erledigt" : "Offen"}/></div>
+      <dl className="sponsor-benefit-card-details"><div><dt>Anzahl</dt><dd>{benefit.quantity}</dd></div><div><dt>Kategorie</dt><dd>{benefit.category}</dd></div><div><dt>Fällig</dt><dd>{dueDate}</dd></div><div><dt>Nachweis</dt><dd>{benefit.evidence || "Noch kein Nachweis"}</dd></div><div><dt>Zuständige Person</dt><dd>{assignedPeople.length ? assignedPeople.join(", ") : "Nicht zugewiesen"}</dd></div></dl>
+      <div className="sponsor-benefit-card-actions"><button className="btn" type="button" disabled={!benefit.id || removingBenefitId !== null || savingBenefitId !== null} onClick={() => openBenefitTaskEditor(benefit)}>Bearbeiten</button><button className="btn" type="button" disabled={!benefit.id || removingBenefitId !== null || savingBenefitId !== null} onClick={() => { void removeBenefit(benefit); }}>{removingBenefitId === benefit.id ? "Wird entfernt …" : "Entfernen"}</button></div>
+    </article>;
+    })}</div> : benefits.length ? <EmptyState className="empty-state-compact" title="Keine passenden Leistungen" description="Für diese Leistungsart wurden noch keine Leistungen hinzugefügt." /> : <EmptyState className="empty-state-compact" title="Noch keine Leistungen" description="Füge Leistungen aus der Bausteinbibliothek zu diesem Vertrag hinzu." action={<button className="btn btn-primary" type="button" onClick={() => { setMessage(""); openAddBenefits(); }}><Icon name="plus" size={14}/> Leistung hinzufügen</button>} />}</div>}
+
+    {activeTab === "Rechnung" && <EventSponsorInvoice eventId={eventId} sponsorId={sponsor.id} sponsorName={sponsor.name} mode="organizer" />}
+    {activeTab === "Dokumente" && <div className="event-sponsor-documents"><SponsorDocumentArea eventId={eventId} sponsorId={sponsor.id} sponsorName={sponsor.name}/>{signedContractFile && <section className="panel signed-contract-file"><div><b>{signedContractFile.fileName}</b><span>Gezeichnete Fassung · hochgeladen am {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(signedContractFile.createdAt))}</span></div><button className="btn" type="button" onClick={() => { void downloadSignedContractFile(); }}><Icon name="file" size={14}/> Herunterladen</button></section>}</div>}
     {message && <p className="task-feedback" role="status">{message}</p>}
+    {editingBenefit && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingBenefitId) setEditingBenefit(null); }}><section className="create-modal add-benefit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-benefit-tasks-title"><div className="create-modal-head"><div><h2 id="edit-benefit-tasks-title">{editingBenefit.benefitType === "in_kind" ? "Sachleistung bearbeiten" : "Aufgaben bearbeiten"}</h2><p>Ändere Fälligkeit und zuständige Person für „{editingBenefit.title}“.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(savingBenefitId)} onClick={() => setEditingBenefit(null)}><Icon name="close" size={16}/></button></div><div className="add-benefit-options">{editingTasks.length ? editingTasks.map((task) => {
+      const value = taskEditValues[task.id] ?? { dueAt: task.due_at ?? "", assigneeId: task.assigned_to_sponsor ? SPONSOR_ASSIGNEE : task.assigned_to ?? "" };
+      const isNeedDate = (editingBenefit.benefitType === "in_kind" || Boolean(editingBenefit.materialLogistics?.trim())) && task.completion_type !== "sponsor_approval" && !editingTasks.some((other) => other.workflow_instance === task.workflow_instance && other.completion_type !== "sponsor_approval" && (other.workflow_order ?? 0) < (task.workflow_order ?? 0));
+      const sponsorCompletesTask = task.completion_type === "sponsor_approval" || task.completion_type === "sponsor_upload";
+      return <div className="add-benefit-subtask-row benefit-edit-subtask-row" key={task.id}><span><b>{editingBenefit.quantity > 1 ? `Leistung ${task.workflow_instance} · ` : ""}{task.title}</b></span>{!sponsorCompletesTask ? <label className="settings-field"><span>Zugeordnete Person</span><select value={value.assigneeId} onChange={(event) => setTaskEditValues((current) => ({ ...current, [task.id]: { ...value, assigneeId: event.target.value } }))}><option value="">Nicht zugewiesen</option><option value={SPONSOR_ASSIGNEE}>Sponsor</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label> : <span className="benefit-edit-sponsor-note">{task.completion_type === "sponsor_upload" ? "Datei-Upload durch Sponsor" : "Durch Sponsor erledigt"}</span>}<label className="settings-field"><span>{isNeedDate ? "Benötigt am" : "Fällig am"}</span><input type="date" value={value.dueAt} onChange={(event) => setTaskEditValues((current) => ({ ...current, [task.id]: { ...value, dueAt: event.target.value } }))}/></label></div>;
+    }) : <p className="task-empty">Für diese Leistung wurden keine Unteraufgaben angelegt.</p>}</div><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(savingBenefitId)} onClick={() => setEditingBenefit(null)}>Abbrechen</button><button className="btn btn-primary" type="button" disabled={!editingTasks.length || Boolean(savingBenefitId)} onClick={() => { void saveBenefitTaskEdits(); }}>{savingBenefitId === editingBenefit.id ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></section></div>}
     {adding && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAddBenefits(); }}>
       <section className="create-modal add-benefit-modal" role="dialog" aria-modal="true" aria-labelledby="add-benefit-title">
-        <div className="create-modal-head"><div><h2 id="add-benefit-title">Leistungen hinzufügen</h2><p>Wähle die vereinbarten Leistungen. Für jede kannst du eine eigene Fälligkeit festlegen.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={closeAddBenefits}><Icon name="close" size={16}/></button></div>
-        <div className="add-benefit-options">{blocksLoading ? <p className="task-empty">Bausteine werden geladen …</p> : blocksLoadError ? <EmptyState title="Bausteine nicht verfügbar" description={blocksLoadError} action={<Link className="btn btn-primary" href="/bausteine">Zur Bausteinbibliothek</Link>} /> : availableBlocks.length ? availableBlocks.map((block, index) => {
+        <div className="create-modal-head"><div><h2 id="add-benefit-title">Leistungen hinzufügen</h2><p>Lege die Anzahl fest. Bei Bausteinen mit Unteraufgaben kannst du Datum und Bearbeiter pro Aufgabe auswählen. Die Aufgaben werden nacheinander freigeschaltet.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={closeAddBenefits}><Icon name="close" size={16}/></button></div>
+        <div className="add-benefit-options">{!blocksLoading && !blocksLoadError && blocksLoadWarning && <p className="task-feedback" role="status">{blocksLoadWarning}</p>}{blocksLoading ? <p className="task-empty">Bausteine werden geladen …</p> : blocksLoadError ? <EmptyState title="Bausteine nicht verfügbar" description={blocksLoadError} action={<Link className="btn btn-primary" href="/bausteine">Zur Bausteinbibliothek</Link>} /> : availableBlocks.length ? availableBlocks.map((block, index) => {
+          const key = blockKey(block);
+          const selected = selectedBlocks.includes(key);
           const alreadyAdded = existingBenefitTitles.has(normalizeBenefitTitle(block.title));
-          return <div className={`add-benefit-item ${selectedBlocks.includes(block.title) ? "selected" : ""} ${alreadyAdded ? "already-added" : ""}`} key={`${block.title}-${index}`}>
-          <label className="add-benefit-option"><input type="checkbox" checked={alreadyAdded || selectedBlocks.includes(block.title)} disabled={alreadyAdded} onChange={(event) => {
-            if (event.target.checked) {
-              setSelectedBlocks((current) => current.includes(block.title) ? current : [...current, block.title]);
-              setBenefitDueDates((current) => ({ ...current, [block.title]: current[block.title] || eventEndDate }));
-            } else {
-              setSelectedBlocks((current) => current.filter((title) => title !== block.title));
-            }
-          }}/><span><b>{block.title}</b><small>{block.category}{block.detail ? ` · ${block.detail}` : ""}</small>{alreadyAdded && <small className="add-benefit-already-added">Bereits hinzugefügt</small>}<span>{block.description}</span></span></label>
-          {selectedBlocks.includes(block.title) && !alreadyAdded && <label className="settings-field add-benefit-due"><span>Fällig am</span><input type="date" value={benefitDueDates[block.title] ?? eventEndDate} onChange={(event) => setBenefitDueDates((current) => ({ ...current, [block.title]: event.target.value }))}/></label>}
-        </div>;
+          return <div className={`add-benefit-assignment ${selected ? "selected" : ""} ${alreadyAdded ? "already-added" : ""}`} key={`${key}-${index}`}>
+            <div className="add-benefit-assignment-top">
+              <label className="add-benefit-option"><input type="checkbox" checked={alreadyAdded || selected} disabled={alreadyAdded} onChange={(event) => {
+                if (event.target.checked) {
+                  setSelectedBlocks((current) => current.includes(key) ? current : [...current, key]);
+                  setBenefitQuantities((current) => ({ ...current, [key]: current[key] || "1" }));
+                } else setSelectedBlocks((current) => current.filter((item) => item !== key));
+              }}/><span><b>{block.title}</b><small>{block.category} · {block.benefit_type === "in_kind" ? "Sachleistung" : "Geldleistung"}</small>{alreadyAdded && <small className="add-benefit-already-added">Bereits hinzugefügt</small>}<span>{block.description}</span>{block.material_logistics && <small className="add-benefit-logistics">Sachleistung: {block.material_logistics}</small>}</span></label>
+              {selected && !alreadyAdded && <div className="add-benefit-assignment-fields"><label className="settings-field"><span>Anzahl</span><input type="number" min="1" step="1" required value={benefitQuantities[key] ?? "1"} onChange={(event) => setBenefitQuantities((current) => ({ ...current, [key]: event.target.value }))}/></label></div>}
+            </div>
+            {selected && !alreadyAdded && <div className="add-benefit-subtasks"><b>{block.subtasks?.length ? "Unteraufgaben · werden in dieser Reihenfolge bearbeitet" : "Aufgabe"}</b>{(() => { const blockTasks = tasksForBlock(block); const firstInternalTaskIndex = blockTasks.findIndex((task) => task.completion_type !== "sponsor_approval"); return blockTasks.map((task, index) => {
+              const taskKey = subtaskKey(block, task);
+              const sponsorCompletesTask = task.completion_type === "sponsor_approval" || task.completion_type === "sponsor_upload";
+              const completionLabel = task.completion_type === "sponsor_approval" ? "Sponsorfreigabe" : task.completion_type === "sponsor_upload" ? "Upload durch Sponsor" : task.completion_type === "organizer_approval" ? "Bestätigung durch Veranstalter" : "Datei erforderlich";
+              return <div className={`add-benefit-subtask-row ${sponsorCompletesTask ? "sponsor-assigned-subtask" : ""}`} key={task.id}><span>{task.title}<small>{completionLabel}</small>{index > 0 && <small className="subtask-dependency-hint">Startet nach Abschluss von: {blockTasks[index - 1].title}</small>}</span><label className="settings-field"><span>{(block.benefit_type === "in_kind" || Boolean(block.material_logistics?.trim())) && index === firstInternalTaskIndex ? "Benötigt am" : "Fällig am"}</span><input type="date" value={subtaskDueDates[taskKey] ?? eventEndDate} onChange={(event) => setSubtaskDueDates((current) => ({ ...current, [taskKey]: event.target.value }))}/></label>{!sponsorCompletesTask && <label className="settings-field"><span>Bearbeiter / Login</span><select value={subtaskAssignees[taskKey] ?? ""} onChange={(event) => setSubtaskAssignees((current) => ({ ...current, [taskKey]: event.target.value }))}><option value="">Nicht zugewiesen</option><option value={SPONSOR_ASSIGNEE}>Sponsor</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label>}</div>;
+            }); })()}</div>}
+          </div>;
         }) : <EmptyState title="Noch keine Bausteine" description="Erstelle zuerst wiederverwendbare Leistungen in der Bausteinbibliothek." action={<Link className="btn btn-primary" href="/bausteine">Zur Bausteinbibliothek</Link>} />}</div>
         <div className="create-modal-actions"><button className="btn" type="button" onClick={closeAddBenefits}>Abbrechen</button><button className="btn btn-primary" type="button" onClick={addSelectedBlocks} disabled={selectedBlocks.length === 0}>Auswahl hinzufügen</button></div>
       </section>

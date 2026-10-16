@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthorizedPlatformAdmin } from "@/lib/supabase/admin";
+import { formatSponsoId } from "@/lib/sponso-id";
 
 export async function GET() {
   const auth = await getAuthorizedPlatformAdmin();
@@ -14,31 +15,37 @@ export async function GET() {
   } catch {
     return NextResponse.json({ error: "Die Benutzer konnten nicht geladen werden." }, { status: 500 });
   }
-  const [{ data: members, error: memberError }, { data: organizations, error: organizationError }, { data: admins, error: adminsError }] = await Promise.all([
+  const [{ data: members, error: memberError }, { data: organizations, error: organizationError }, { data: admins, error: adminsError }, { data: sponsorMembers, error: sponsorMembersError }] = await Promise.all([
     admin.from("organization_members").select("user_id, organization_id, role"),
-    admin.from("organizations").select("id, name"),
+    admin.from("organizations").select("id, name, sponso_id"),
     admin.from("platform_admins").select("user_id"),
+    admin.from("sponsor_account_members").select("user_id"),
   ]);
 
-  if (memberError || organizationError || adminsError) {
+  if (memberError || organizationError || adminsError || sponsorMembersError) {
     return NextResponse.json({ error: "Die Benutzer konnten nicht geladen werden." }, { status: 500 });
   }
 
   const organizationNames = new Map((organizations ?? []).map((organization) => [organization.id, organization.name]));
+  const organizationSponsoIds = new Map((organizations ?? []).map((organization) => [organization.id, formatSponsoId(organization.sponso_id)]));
   const memberByUser = new Map((members ?? []).map((member) => [member.user_id, member]));
   const platformAdminIds = new Set((admins ?? []).map((entry) => entry.user_id));
+  const sponsorUserIds = new Set((sponsorMembers ?? []).map((entry) => entry.user_id));
 
   return NextResponse.json({ users: users.map((user) => {
     const member = memberByUser.get(user.id);
+    const isPlatformAdmin = platformAdminIds.has(user.id);
     return {
       id: user.id,
+      accountType: isPlatformAdmin ? "admin" : user.user_metadata?.account_type === "sponsor" || sponsorUserIds.has(user.id) ? "sponsor" : "organizer",
       email: user.email ?? "",
       firstName: String(user.user_metadata?.first_name ?? ""),
       lastName: String(user.user_metadata?.last_name ?? ""),
       organizationId: member?.organization_id ?? null,
       organizationName: member ? organizationNames.get(member.organization_id) ?? "Veranstalterbereich" : "Kein Veranstalterbereich",
+      organizationSponsoId: member ? organizationSponsoIds.get(member.organization_id) ?? null : null,
       workspaceRole: member?.role ?? null,
-      platformAdmin: platformAdminIds.has(user.id),
+      platformAdmin: isPlatformAdmin,
       suspended: Boolean(user.banned_until && new Date(user.banned_until).getTime() > Date.now()),
       lastSignInAt: user.last_sign_in_at,
     };

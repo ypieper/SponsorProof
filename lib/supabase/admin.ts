@@ -51,3 +51,17 @@ export async function getAuthorizedPlatformAdmin() {
   if (!data) return { user, admin: null, responseStatus: 403 as const };
   return { user, admin, responseStatus: null };
 }
+
+export async function getAuthorizedSalesPartner() {
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return { user: null, partner: null, responseStatus: 401 as const };
+  if (!isPlatformAdminConfigured()) return { user, partner: null, responseStatus: 503 as const };
+  const admin = createAdminClient();
+  const { data: partner, error: lookupError } = await admin.from("sales_partners")
+    .select("id,user_id,referral_code,is_active,created_at")
+    .eq("user_id", user.id).maybeSingle();
+  if (lookupError) return { user, partner: null, responseStatus: 503 as const };
+  if (!partner || !partner.is_active) return { user, partner: null, responseStatus: 403 as const };
+  return { user, partner, responseStatus: null };
+}

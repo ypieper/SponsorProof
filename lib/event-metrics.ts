@@ -9,7 +9,7 @@ export type EventMetricValues = {
   contractsCreated: number; contractsSigned: number; reportsCreated: number; reportsSent: number; evidenceTasks: number; completedEvidenceTasks: number;
 };
 type Assignment = { event_id: string; sponsor_id: string };
-type Contract = { id: string; event_id: string; sponsor_id: string; value_cents: number };
+type Contract = { id: string; event_id: string; sponsor_id: string; value_cents: number; signature_status?: string; signed_at?: string | null };
 type Benefit = { id: string; event_id: string; sponsor_id: string | null; contract_id: string | null; title: string; status: string; evidence_summary: string | null };
 
 function emptyMetrics(): EventMetricValues {
@@ -22,15 +22,14 @@ export async function fetchEventMetrics(eventIds: string[]) {
   if (!ids.length) return result;
   if (!isSupabaseConfigured) throw new Error("Supabase ist nicht eingerichtet.");
   const supabase = createClient();
-  const [assignmentResult, contractResult, benefitResult, taskResult, evidenceResult, reportResult] = await Promise.all([
+  const [assignmentResult, contractResult, benefitResult, taskResult, evidenceResult] = await Promise.all([
     supabase.from("event_sponsors").select("event_id, sponsor_id").in("event_id", ids),
-    supabase.from("contracts").select("id, event_id, sponsor_id, value_cents").in("event_id", ids),
+    supabase.from("contracts").select("id, event_id, sponsor_id, value_cents, signature_status, signed_at").in("event_id", ids),
     supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, status, evidence_summary").in("event_id", ids),
-    supabase.from("tasks").select("id, event_id, status").in("event_id", ids),
+    supabase.from("tasks").select("id, event_id, benefit_id, status").in("event_id", ids),
     supabase.from("evidence_files").select("event_id, benefit_id, task_id").in("event_id", ids),
-    supabase.from("contract_reports").select("contract_id, generated_at, sent_at"),
   ]);
-  for (const query of [assignmentResult, contractResult, benefitResult, taskResult, evidenceResult, reportResult]) if (query.error) throw query.error;
+  for (const query of [assignmentResult, contractResult, benefitResult, taskResult, evidenceResult]) if (query.error) throw query.error;
   const assignments = (assignmentResult.data ?? []) as Assignment[];
   const contracts = (contractResult.data ?? []) as Contract[];
   const benefits = (benefitResult.data ?? []) as Benefit[];
@@ -42,11 +41,15 @@ export async function fetchEventMetrics(eventIds: string[]) {
   Object.entries(result).forEach(([id, metrics]) => { metrics.sponsors = sponsorCounts.get(id)?.size ?? 0; });
 
   const contractIds = contracts.map((contract) => contract.id);
-  const documentResult = contractIds.length
-    ? await supabase.from("contract_documents").select("contract_id, kind").in("contract_id", contractIds)
-    : { data: [], error: null };
+  const [documentResult, reportResult] = contractIds.length
+    ? await Promise.all([
+      supabase.from("contract_documents").select("contract_id, kind").in("contract_id", contractIds),
+      supabase.from("contract_reports").select("contract_id, generated_at, sent_at").in("contract_id", contractIds),
+    ])
+    : [{ data: [], error: null }, { data: [], error: null }];
   if (documentResult.error) throw documentResult.error;
-  const generatedIds = new Set((documentResult.data ?? []).filter((item) => item.kind === "generated_pdf" || item.kind === "generated_docx").map((item) => item.contract_id));
+  if (reportResult.error) throw reportResult.error;
+  const generatedIds = new Set((documentResult.data ?? []).filter((item) => item.kind === "generated_pdf" || item.kind === "generated_docx" || item.kind === "uploaded_pdf").map((item) => item.contract_id));
   const signedIds = new Set((documentResult.data ?? []).filter((item) => item.kind === "signed").map((item) => item.contract_id));
   const reports = new Map((reportResult.data ?? []).map((item) => [item.contract_id, item]));
   contracts.forEach((contract) => {
@@ -55,12 +58,18 @@ export async function fetchEventMetrics(eventIds: string[]) {
     metrics.sponsorship += Number(contract.value_cents ?? 0) / 100;
     metrics.contracts += 1;
     if (generatedIds.has(contract.id)) metrics.contractsCreated += 1;
-    if (signedIds.has(contract.id)) metrics.contractsSigned += 1;
+    if (contract.signature_status === "signed" || contract.signed_at || signedIds.has(contract.id)) metrics.contractsSigned += 1;
     if (reports.get(contract.id)?.generated_at) metrics.reportsCreated += 1;
     if (reports.get(contract.id)?.sent_at) metrics.reportsSent += 1;
   });
 
-  const evidenceKeys = new Set((evidenceResult.data ?? []).map((item) => item.benefit_id ? `benefit-${item.benefit_id}` : item.task_id).filter(Boolean));
+  const evidenceKeys = new Set((evidenceResult.data ?? []).flatMap((item) => [item.task_id, item.benefit_id ? `benefit-${item.benefit_id}` : null]).filter(Boolean));
+  const taskRows = taskResult.data ?? [];
+  const tasksByBenefit = new Map<string, typeof taskRows>();
+  for (const task of taskRows) {
+    if (!task.benefit_id) continue;
+    tasksByBenefit.set(task.benefit_id, [...(tasksByBenefit.get(task.benefit_id) ?? []), task]);
+  }
   const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
   const counted = new Set<string>();
   benefits.forEach((benefit) => {
@@ -70,7 +79,13 @@ export async function fetchEventMetrics(eventIds: string[]) {
     if (counted.has(key)) return;
     counted.add(key);
     const metrics = result[benefit.event_id];
-    metrics.benefits += 1; metrics.evidenceTasks += 1;
+    metrics.benefits += 1;
+    const subtasks = tasksByBenefit.get(benefit.id) ?? [];
+    if (subtasks.length) {
+      if (subtasks.every((task) => task.status === "Erledigt" || evidenceKeys.has(task.id))) metrics.completed += 1;
+      return;
+    }
+    metrics.evidenceTasks += 1;
     const complete = benefit.status === "Erfüllt" || benefit.status === "Erledigt" || Boolean(benefit.evidence_summary && benefit.evidence_summary !== "Noch kein Nachweis") || evidenceKeys.has(`benefit-${benefit.id}`);
     if (complete) { metrics.completed += 1; metrics.completedEvidenceTasks += 1; }
   });

@@ -31,14 +31,19 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
   const { ensureFeature } = useEventEntitlements();
   const [reports, setReports] = useState<SponsorReport[]>([]);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
   const [message, setMessage] = useState("");
   const [selectedReport, setSelectedReport] = useState<SponsorReport | null>(null);
+  const [pendingSentReport, setPendingSentReport] = useState<SponsorReport | null>(null);
   const [updatingReportId, setUpdatingReportId] = useState<string | null>(null);
   const [reportAction, setReportAction] = useState<"download" | "share" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function loadProgress() {
+      setReady(false);
+      setLoadError("");
       try {
         if (!isSupabaseConfigured) throw new Error("Supabase ist nicht eingerichtet.");
         const [evidenceResult, storedBenefitResult, taskResult, reportResult] = await Promise.all([fetchStoredEvidence(), fetchStoredBenefits(eventId), fetchStoredTasks(eventId), fetchContractReportStates(contracts.filter((contract) => contract.eventId === eventId).map((contract) => contract.id))]);
@@ -50,26 +55,28 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
           const sponsor = sponsors.find((item) => item.id === contract.sponsorId);
           if (!sponsor) return [];
           const contractedBenefits = (storedBenefitResult.data ?? []).filter((benefit) => benefit.eventId === eventId && benefit.sponsorId === sponsor.id);
-          const benefitTasks: ReportTask[] = contractedBenefits.map((benefit) => {
+          const sponsorTasks = (taskResult.data ?? []).filter((task) => task.event_id === eventId && (task.sponsor_id === sponsor.id || (!task.sponsor_id && task.sponsor_name === sponsor.name)));
+          const benefitsWithTasks = new Set(sponsorTasks.filter((task) => task.source === "Leistung" && task.benefit_id).map((task) => task.benefit_id));
+          const legacyBenefitTasks: ReportTask[] = contractedBenefits.filter((benefit) => !benefitsWithTasks.has(benefit.id)).map((benefit) => {
             const id = taskIdForBenefit(eventId, benefit);
             return { id, title: benefit.title, evidence: evidenceById.get(id)?.name ?? (benefit.evidence !== "Noch kein Nachweis" ? benefit.evidence : "") };
           });
-          const sponsorManualTasks: ReportTask[] = (taskResult.data ?? []).filter((task) => task.event_id === eventId && task.source === "Manuell" && (task.sponsor_id === sponsor.id || (!task.sponsor_id && task.sponsor_name === sponsor.name))).map((task) => ({ id: task.id, title: task.title, evidence: evidenceById.get(task.id)?.name ?? "" }));
-          const tasks = [...benefitTasks, ...sponsorManualTasks];
+          const storedTasks: ReportTask[] = sponsorTasks.filter((task) => task.source === "Leistung" || task.source === "Manuell").map((task) => ({ id: task.id, title: task.title, evidence: evidenceById.get(task.id)?.name ?? (task.requires_sponsor_approval && task.sponsor_approval_status === "approved" ? "Vom Sponsor freigegeben" : "") }));
+          const tasks = [...legacyBenefitTasks, ...storedTasks];
           const completed = tasks.filter((task) => evidenceById.has(task.id) || Boolean(task.evidence)).length;
           const report = reportStates.get(contract.id);
           return [{ sponsor, contract: { ...contract, title: "Sponsoringvertrag", value: formatContractValue(parseContractValue(contract.value)) }, tasks, completed, ready: tasks.length > 0 && completed === tasks.length, sent: Boolean(report?.sent_at) }];
         });
         if (!cancelled) setReports(data);
       } catch {
-        if (!cancelled) setMessage("Der Aufgabenfortschritt konnte nicht geladen werden.");
+        if (!cancelled) setLoadError("Der Aufgabenfortschritt konnte nicht geladen werden.");
       } finally {
         if (!cancelled) setReady(true);
       }
     }
     void loadProgress();
     return () => { cancelled = true; };
-  }, [eventId, contracts, sponsors, benefits]);
+  }, [eventId, contracts, sponsors, benefits, retryKey]);
 
   function downloadPdf(file: File) {
     const url = URL.createObjectURL(file);
@@ -130,16 +137,16 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
       };
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share(shareData);
-        setMessage(`${saved ? "Die PDF wurde erstellt" : "Die PDF wurde erstellt, ihr Status konnte aber nicht gespeichert werden"} und zum Teilen übergeben. Bitte wähle deine E-Mail-App und bestätige dort den Versand.`);
+        setMessage(`${saved ? "Die PDF wurde erstellt" : "Die PDF wurde erstellt, ihr Status konnte aber nicht gespeichert werden"} und zum Teilen übergeben. Schließe den Versand in deiner E-Mail-App ab und bestätige ihn anschließend in der Übersicht.`);
       } else {
         downloadPdf(file);
         if (report.sponsor.email) {
           const subject = encodeURIComponent(`Abschlussreport – ${eventTitle}`);
           const body = encodeURIComponent(`Hallo,\n\nanbei findest du den Abschlussreport für ${eventTitle}.\n\nViele Grüße`);
           window.location.href = `mailto:${encodeURIComponent(report.sponsor.email)}?subject=${subject}&body=${body}`;
-          setMessage(`${saved ? "Die PDF wurde erstellt" : "Die PDF wurde erstellt, ihr Status konnte aber nicht gespeichert werden"} und heruntergeladen. Eine E-Mail an ${report.sponsor.email} ist vorbereitet; bitte hänge die PDF an und sende die Nachricht.`);
+          setMessage(`${saved ? "Die PDF wurde erstellt" : "Die PDF wurde erstellt, ihr Status konnte aber nicht gespeichert werden"} und heruntergeladen. Eine E-Mail an ${report.sponsor.email} ist vorbereitet. Hänge die PDF an, sende die Nachricht und bestätige danach den Versand in der Übersicht.`);
         } else {
-          setMessage("Die PDF wurde heruntergeladen. Für diesen Sponsor ist keine E-Mail-Adresse hinterlegt; hänge die Datei an eine E-Mail an.");
+        setMessage("Die PDF wurde heruntergeladen. Für diesen Sponsor ist keine E-Mail-Adresse hinterlegt. Sende sie manuell und bestätige anschließend den Versand in der Übersicht.");
         }
       }
     } catch (error) {
@@ -177,7 +184,8 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
 
   return <>
     <section className="metric-grid"><Metric label="Erfüllte Aufgaben" value={ready ? `${totalCompleted}` : "—"} note={`von ${totalTasks}`} icon="check"/><Metric label="Offene Aufgaben" value={ready ? `${Math.max(0, totalTasks - totalCompleted)}` : "—"} note="Nachweis ausstehend" icon="clock"/><Metric label="Gesamtfortschritt" value={ready ? `${progress} %` : "—"} note="über alle Sponsoren" icon="layers"/><Metric label="Abschlussreports bereit" value={ready ? `${reports.filter((report) => report.ready).length}` : "—"} note={`von ${reports.length} Sponsoren`} icon="file"/></section>
-    <section className="panel table-panel event-reports-panel"><div className="table-head"><div><h2>Fortschritt je Sponsor</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Ein Abschlussreport wird verfügbar, sobald alle Aufgaben eines Sponsors durch Nachweise abgeschlossen sind.</p></div></div>{!ready ? <p className="task-empty">Reports werden geladen …</p> : reports.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Reports" description="Reports erscheinen, sobald für dieses Event Sponsoren und Verträge angelegt sind." action={<Link className="btn" href={`/events/${eventId}?tab=sponsoren`}>Zu den Sponsoren</Link>} /> : <table className="table"><thead><tr><th>SPONSOR</th><th>AUFGABEN ERFÜLLT</th><th>FORTSCHRITT</th><th>STATUS</th><th>VERSANDSTATUS</th><th>REPORT</th></tr></thead><tbody>{reports.map((report) => <tr key={report.contract.id}><td><b className="report-sponsor-name">{report.sponsor.name}</b><div className="task-caption">{report.contract.title} · {report.contract.value}</div></td><td>{report.completed} von {report.tasks.length}</td><td><Progress value={report.tasks.length ? Math.round(report.completed / report.tasks.length * 100) : 0}/></td><td><Status value={report.ready ? "Erledigt" : "Offen"}/></td><td><span className={`status ${report.sent ? "status-done" : report.ready ? "status-progress" : "status-open"}`}>{report.sent ? "Versendet" : report.ready ? "Bereit" : "Nicht bereit"}</span></td><td><div className="event-report-actions"><button className="btn btn-primary" type="button" onClick={async () => { if (await ensureFeature(eventId, eventTitle, "reports")) setSelectedReport(report); }} disabled={!ready || !report.ready}><Icon name="file" size={14}/> Abschlussreport erstellen</button><button className={`btn event-report-sent-button${report.sent ? " is-sent" : ""}`} type="button" onClick={() => updateReportSentStatus(report, !report.sent)} disabled={!ready || !report.ready || updatingReportId === report.contract.id}>{updatingReportId === report.contract.id ? "Speichert …" : report.sent ? "Versand zurücknehmen" : "Als versendet markieren"}</button></div></td></tr>)}</tbody></table>}{message && <p className="task-feedback" role="status">{message}</p>}</section>
+    <section className="panel table-panel event-reports-panel"><div className="table-head"><div><h2>Fortschritt je Sponsor</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Ein Abschlussreport wird verfügbar, sobald alle Aufgaben eines Sponsors durch Nachweise abgeschlossen sind. Teile die PDF und bestätige den Versand anschließend hier.</p></div></div>{!ready ? <p className="task-empty">Reports werden geladen …</p> : loadError ? <EmptyState className="empty-state-compact" title="Reports gerade nicht verfügbar" description={loadError} action={<button className="btn" type="button" onClick={() => setRetryKey((key) => key + 1)}>Erneut laden</button>} /> : reports.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Reports" description="Reports erscheinen, sobald für dieses Event Sponsoren und Verträge angelegt sind." action={<Link className="btn" href={`/events/${eventId}?tab=sponsoren`}>Zu den Sponsoren</Link>} /> : <table className="table"><thead><tr><th>SPONSOR</th><th>AUFGABEN ERFÜLLT</th><th>FORTSCHRITT</th><th>STATUS</th><th>VERSANDSTATUS</th><th>REPORT</th></tr></thead><tbody>{reports.map((report) => <tr key={report.contract.id}><td><b className="report-sponsor-name">{report.sponsor.name}</b><div className="task-caption">{report.contract.title} · {report.contract.value}</div></td><td>{report.completed} von {report.tasks.length}</td><td><Progress value={report.tasks.length ? Math.round(report.completed / report.tasks.length * 100) : 0}/></td><td><Status value={report.ready ? "Erledigt" : "Offen"}/></td><td><span className={`status ${report.sent ? "status-done" : report.ready ? "status-progress" : "status-open"}`}>{report.sent ? "Versendet" : report.ready ? "Bereit" : "Nicht bereit"}</span></td><td><div className="event-report-actions"><button className="btn btn-primary" type="button" onClick={async () => { if (await ensureFeature(eventId, eventTitle, "reports")) setSelectedReport(report); }} disabled={!ready || !report.ready}><Icon name="file" size={14}/> Abschlussreport erstellen</button><button className={`btn event-report-sent-button${report.sent ? " is-sent" : ""}`} type="button" onClick={() => report.sent ? void updateReportSentStatus(report, false) : setPendingSentReport(report)} disabled={!ready || !report.ready || updatingReportId === report.contract.id}>{updatingReportId === report.contract.id ? "Speichert …" : report.sent ? "Versand zurücknehmen" : "Versand bestätigen"}</button></div></td></tr>)}</tbody></table>}{message && <p className="task-feedback" role="status">{message}</p>}</section>
+    {pendingSentReport && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !updatingReportId) setPendingSentReport(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="report-sent-confirm-title"><div className="create-modal-head"><div><h2 id="report-sent-confirm-title">Versand bestätigen?</h2><p>Wurde der Abschlussreport für {pendingSentReport.sponsor.name} tatsächlich an den Sponsor versendet? Der Status wird erst nach deiner Bestätigung aktualisiert.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(updatingReportId)} onClick={() => setPendingSentReport(null)}><Icon name="close" size={16}/></button></div><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(updatingReportId)} onClick={() => setPendingSentReport(null)}>Noch nicht</button><button className="btn btn-primary" type="button" disabled={Boolean(updatingReportId)} onClick={async () => { await updateReportSentStatus(pendingSentReport, true); setPendingSentReport(null); }}>{updatingReportId === pendingSentReport.contract.id ? "Speichert …" : "Versand bestätigen"}</button></div></section></div>}
     {selectedReport && <div className="modal-backdrop completion-report-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedReport(null); }}><section className="create-modal completion-report-modal" role="dialog" aria-modal="true" aria-labelledby="completion-report-title">
       <div className="completion-report-document">
         <header className="completion-report-brand-row">
@@ -196,7 +204,7 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
         <div className="completion-report-items">{selectedReport.tasks.map((task, index) => <article className="completion-report-item" key={task.id}><span className="completion-report-item-number">{String(index + 1).padStart(2, "0")}</span><div className="completion-report-item-content"><h4>{task.title}</h4><div className="completion-report-evidence"><Icon name="file" size={15}/><span><small>NACHWEIS</small><strong>{task.evidence || "Nachweis erbracht"}</strong></span></div></div><span className="completion-report-item-check" aria-label="Nachgewiesen">✓</span></article>)}</div>
         <footer className="completion-report-footer"><span>Erstellt mit <strong>sponso</strong></span><span>{selectedReport.sponsor.name} · {eventTitle}</span></footer>
       </div>
-      <div className="create-modal-actions completion-report-actions"><button className="btn" type="button" onClick={() => setSelectedReport(null)}>Schließen</button><button className="btn" type="button" onClick={downloadReportPdf} disabled={reportAction !== null}>{reportAction === "download" ? "PDF wird erstellt …" : "PDF herunterladen"}</button><button className="btn btn-primary" type="button" onClick={sendReportToSponsor} disabled={reportAction !== null}>{reportAction === "share" ? "Wird vorbereitet …" : "An Sponsor senden"}</button></div>
+      <div className="create-modal-actions completion-report-actions"><button className="btn" type="button" onClick={() => setSelectedReport(null)}>Schließen</button><button className="btn" type="button" onClick={downloadReportPdf} disabled={reportAction !== null}>{reportAction === "download" ? "PDF wird erstellt …" : "PDF herunterladen"}</button><button className="btn btn-primary" type="button" onClick={sendReportToSponsor} disabled={reportAction !== null}>{reportAction === "share" ? "Wird vorbereitet …" : "PDF teilen"}</button></div>
       {message && <p className="task-feedback completion-report-feedback" role="status">{message}</p>}
     </section></div>}
   </>;

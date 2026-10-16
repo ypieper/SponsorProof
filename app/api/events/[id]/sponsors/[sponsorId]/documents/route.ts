@@ -4,7 +4,8 @@ import { authorizeEventSponsor, isUuid, sponsorUploadBucket, validateSponsorUplo
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ id: string; sponsorId: string }> };
-type DocumentRequest = { action?: unknown; documentId?: unknown; fileName?: unknown; contentType?: unknown; size?: unknown };
+type DocumentRequest = { action?: unknown; documentId?: unknown; fileName?: unknown; contentType?: unknown; size?: unknown; category?: unknown; published?: unknown };
+const documentCategories = ["tickets", "event_info", "other"] as const;
 
 export async function GET(_request: Request, context: Context) {
   const { id: eventId, sponsorId } = await context.params;
@@ -15,7 +16,7 @@ export async function GET(_request: Request, context: Context) {
   if (auth.error) return NextResponse.json({ error: "Der Zugriff konnte nicht geprüft werden." }, { status: auth.error === "server" ? 503 : 500 });
   const admin = createAdminClient();
   const { data, error } = await admin.from("sponsor_documents")
-    .select("id, storage_path, file_name, content_type, size_bytes, uploaded_at, uploaded_by_type, uploaded_by_name, uploaded_by_user_id")
+    .select("id, storage_path, file_name, content_type, size_bytes, uploaded_at, uploaded_by_type, uploaded_by_name, uploaded_by_user_id, document_role, document_category, published_to_sponsor, contract_id")
     .eq("event_id", eventId).eq("sponsor_id", sponsorId).eq("status", "uploaded")
     .order("uploaded_at", { ascending: false });
   if (error) return NextResponse.json({ error: "Sponsorendokumente konnten nicht geladen werden. Prüfe die Datenbankmigration." }, { status: 500 });
@@ -55,12 +56,30 @@ export async function POST(request: Request, context: Context) {
   if (!body) return NextResponse.json({ error: "Bitte prüfe die Datei und versuche es erneut." }, { status: 400 });
   const admin = createAdminClient();
 
+  if (body.action === "publication") {
+    if (typeof body.documentId !== "string" || !isUuid(body.documentId) || typeof body.published !== "boolean") {
+      return NextResponse.json({ error: "Ungültige Dokumentenfreigabe." }, { status: 400 });
+    }
+    const { data: document, error: documentError } = await admin.from("sponsor_documents")
+      .select("id, document_role")
+      .eq("id", body.documentId).eq("event_id", eventId).eq("sponsor_id", sponsorId)
+      .eq("uploaded_by_type", "organizer").eq("status", "uploaded").maybeSingle();
+    if (documentError) return NextResponse.json({ error: "Das Dokument konnte nicht geprüft werden." }, { status: 500 });
+    if (!document || document.document_role === "signed_contract") return NextResponse.json({ error: "Dieses Dokument kann hier nicht veröffentlicht werden." }, { status: 404 });
+    const { error: updateError } = await admin.from("sponsor_documents")
+      .update({ published_to_sponsor: body.published })
+      .eq("id", document.id).eq("event_id", eventId).eq("sponsor_id", sponsorId);
+    if (updateError) return NextResponse.json({ error: "Der Veröffentlichungsstatus konnte nicht gespeichert werden." }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (body.action === "prepare") {
     if (typeof body.fileName !== "string" || typeof body.contentType !== "string" || typeof body.size !== "number") {
       return NextResponse.json({ error: "Dateiinformationen fehlen." }, { status: 400 });
     }
     const file = validateSponsorUploadFile({ name: body.fileName, contentType: body.contentType, size: body.size });
     if (!file) return NextResponse.json({ error: "Erlaubt sind PDF-, Word- und Bilddateien bis 25 MB." }, { status: 400 });
+    const category = documentCategories.find((option) => option === body.category) ?? "other";
     const { data: event, error: eventError } = await admin.from("events").select("organization_id").eq("id", eventId).maybeSingle();
     if (eventError || !event?.organization_id) return NextResponse.json({ error: "Die Veranstaltungsdaten konnten nicht geladen werden." }, { status: 500 });
 
@@ -84,6 +103,8 @@ export async function POST(request: Request, context: Context) {
       uploaded_by_user_id: auth.user!.id,
       uploaded_by_name: String(userName).slice(0, 180),
       uploaded_by_email: null,
+      document_category: category,
+      published_to_sponsor: false,
       status: "pending",
     });
     if (insertError) return NextResponse.json({ error: "Der Upload konnte nicht vorbereitet werden." }, { status: 500 });

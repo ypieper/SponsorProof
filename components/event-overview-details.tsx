@@ -5,7 +5,7 @@ import { Icon } from "@/components/ui";
 import { updateStoredEventDetails } from "@/lib/events-storage";
 import { createClient } from "@/lib/supabase/client";
 
-type EventDetails = { title: string; startDate: string; endDate: string; location: string; responsible: string; organizerLogoPath: string | null; organizerLogoUrl?: string | null };
+type EventDetails = { title: string; startDate: string; endDate: string; location: string; responsible: string; contactFirstName: string; contactLastName: string; contactEmail: string; contactPhone: string; organizerLogoPath: string | null; organizerLogoUrl?: string | null };
 const maxLogoSize = 5 * 1024 * 1024;
 
 function formatDate(value: string) {
@@ -30,7 +30,7 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
     setLogoFile(null);
     setRemoveLogo(false);
     setReady(true);
-  }, [eventId, initialDetails.title, initialDetails.startDate, initialDetails.endDate, initialDetails.location, initialDetails.responsible, initialDetails.organizerLogoPath, initialDetails.organizerLogoUrl]);
+  }, [eventId, initialDetails.title, initialDetails.startDate, initialDetails.endDate, initialDetails.location, initialDetails.responsible, initialDetails.contactFirstName, initialDetails.contactLastName, initialDetails.contactEmail, initialDetails.contactPhone, initialDetails.organizerLogoPath, initialDetails.organizerLogoUrl]);
 
   useEffect(() => {
     if (!logoFile) { setLogoFilePreview(""); return; }
@@ -77,7 +77,7 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
         if (uploadError) throw uploadError;
         organizerLogoPath = uploadedLogoPath;
       }
-      const savedDraft = { ...draft, title, location: draft.location.trim(), responsible: draft.responsible.trim(), organizerLogoPath };
+      const savedDraft = { ...draft, title, location: draft.location.trim(), contactFirstName: draft.contactFirstName.trim(), contactLastName: draft.contactLastName.trim(), contactEmail: draft.contactEmail.trim(), contactPhone: draft.contactPhone.trim(), organizerLogoPath };
       const { error } = await updateStoredEventDetails(eventId, savedDraft);
       if (error) throw error;
       let organizerLogoUrl: string | null = removeLogo ? null : draft.organizerLogoUrl ?? null;
@@ -105,10 +105,50 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
 
   return <>
     <section className="panel event-overview-details">
-      <div className="event-details-heading"><div><div className="eyebrow">VERANSTALTUNG</div><h2>Event-Details</h2><p>Zeitraum, Veranstaltungsort, verantwortliche Person und Logo.</p></div><button className="btn btn-primary" type="button" onClick={() => { setDraft(details); setLogoFile(null); setRemoveLogo(false); setEditing(true); }}><Icon name="settings" size={15}/> Details bearbeiten</button></div>
-      <div className="event-details-grid"><div><span>Zeitraum</span><b>{formatDate(details.startDate)} – {formatDate(details.endDate)}</b></div><div><span>Veranstaltungsort</span><b>{details.location || "Noch nicht hinterlegt"}</b></div><div><span>Verantwortlich</span><b>{details.responsible || "Noch nicht hinterlegt"}</b></div></div>
+      <div className="event-details-heading"><div><div className="eyebrow">VERANSTALTUNG</div><h2>Event-Details</h2><p>Zeitraum, Veranstaltungsort, Ansprechperson und Logo.</p></div><button className="btn btn-primary" type="button" onClick={() => { setDraft(details); setLogoFile(null); setRemoveLogo(false); setEditing(true); }}><Icon name="settings" size={15}/> Details bearbeiten</button></div>
+      <div className="event-details-grid"><div><span>Zeitraum</span><b>{formatDate(details.startDate)} – {formatDate(details.endDate)}</b></div><div><span>Veranstaltungsort</span><b>{details.location || "Noch nicht hinterlegt"}</b></div><div><span>Ansprechperson</span><b>{[details.contactFirstName, details.contactLastName].filter(Boolean).join(" ") || "Noch nicht hinterlegt"}</b><small>{[details.contactEmail, details.contactPhone].filter(Boolean).join(" · ")}</small></div></div>
       {message && <p className="event-details-message" role="status">{message}</p>}
     </section>
-    {editing && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditing(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="event-details-title"><div className="create-modal-head"><div><h2 id="event-details-title">Event-Stammdaten bearbeiten</h2><p>Eventname und Veranstaltungsdetails aktualisieren.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setEditing(false)}><Icon name="close" size={16}/></button></div><form onSubmit={save}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Event-Name *</span><input autoFocus required maxLength={100} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label className="settings-field"><span>Beginn</span><input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} required /></label><label className="settings-field"><span>Ende</span><input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} required /></label><label className="settings-field settings-field-full"><span>Veranstaltungsort</span><input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} required /></label><label className="settings-field settings-field-full"><span>Verantwortlich</span><input value={draft.responsible} onChange={(event) => setDraft({ ...draft, responsible: event.target.value })} required /></label><div className="settings-field settings-field-full event-logo-editor"><span>Veranstalter-Logo</span><div className="event-logo-editor-body"><div className="event-logo-preview">{!removeLogo && (logoFilePreview || draft.organizerLogoUrl) ? <img src={logoFilePreview || draft.organizerLogoUrl || ""} alt="Vorschau Veranstalter-Logo"/> : <Icon name="file" size={22}/>}</div><div className="event-logo-controls"><label className="btn" htmlFor={`event-logo-${eventId}`}>{logoFile || (!removeLogo && draft.organizerLogoPath) ? "Logo ersetzen" : "Logo auswählen"}<input id={`event-logo-${eventId}`} type="file" accept="image/png,image/jpeg,image/webp" disabled={saving} onChange={chooseLogo}/></label>{(logoFile || (!removeLogo && draft.organizerLogoPath)) && <button className="btn" type="button" disabled={saving} onClick={() => { setLogoFile(null); setRemoveLogo(true); }}>Logo entfernen</button>}<small>Empfohlen: 1200 × 400 Pixel im Querformat. PNG, JPG oder WebP · maximal 5 MB.</small></div></div></div></div>{message && <p className="field-message error" role="alert" style={{ marginTop: 12 }}>{message}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setEditing(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={!ready || saving}>{saving ? "Wird gespeichert …" : "Speichern"}</button></div></form></section></div>}
+    {editing && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditing(false); }}>
+      <section className="create-modal event-details-edit-modal" role="dialog" aria-modal="true" aria-labelledby="event-details-title">
+        <div className="create-modal-head">
+          <div><h2 id="event-details-title">Event-Stammdaten bearbeiten</h2><p>Veranstaltungsdaten und Kontakt für Sponsoren aktualisieren.</p></div>
+          <button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setEditing(false)}><Icon name="close" size={16}/></button>
+        </div>
+        <form onSubmit={save}>
+          <section className="event-edit-section">
+            <div className="event-edit-section-heading"><h3>Veranstaltung</h3><p>Name, Zeitraum und Ort</p></div>
+            <div className="settings-grid">
+              <label className="settings-field settings-field-full"><span>Event-Name *</span><input autoFocus autoComplete="off" required maxLength={100} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+              <label className="settings-field"><span>Beginn</span><input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} required /></label>
+              <label className="settings-field"><span>Ende</span><input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} required /></label>
+              <label className="settings-field settings-field-full"><span>Veranstaltungsort</span><input autoComplete="off" value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} required /></label>
+            </div>
+          </section>
+          <section className="event-edit-section event-edit-contact-section">
+            <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="users" size={16}/></span><div><h3>Ansprechperson für Sponsoren</h3><p>Diese Kontaktdaten sehen Sponsoren, wenn sie das Event öffnen.</p></div></div>
+            <div className="settings-grid">
+              <label className="settings-field"><span>Vorname *</span><input autoComplete="given-name" required value={draft.contactFirstName} onChange={(event) => setDraft({ ...draft, contactFirstName: event.target.value })} /></label>
+              <label className="settings-field"><span>Nachname *</span><input autoComplete="family-name" required value={draft.contactLastName} onChange={(event) => setDraft({ ...draft, contactLastName: event.target.value })} /></label>
+              <label className="settings-field"><span>E-Mail *</span><input type="email" autoComplete="email" required value={draft.contactEmail} onChange={(event) => setDraft({ ...draft, contactEmail: event.target.value })} /></label>
+              <label className="settings-field"><span>Telefon</span><input type="tel" autoComplete="tel" value={draft.contactPhone} onChange={(event) => setDraft({ ...draft, contactPhone: event.target.value })} /></label>
+            </div>
+          </section>
+          <section className="event-edit-section event-edit-logo-section">
+            <div className="event-edit-section-heading"><h3>Veranstalter-Logo</h3><p>Wird im Sponsorenbereich bei diesem Event angezeigt.</p></div>
+            <div className="event-logo-editor-body">
+              <div className="event-logo-preview">{!removeLogo && (logoFilePreview || draft.organizerLogoUrl) ? <img src={logoFilePreview || draft.organizerLogoUrl || ""} alt="Vorschau Veranstalter-Logo"/> : <Icon name="file" size={22}/>}</div>
+              <div className="event-logo-controls">
+                <label className="btn" htmlFor={`event-logo-${eventId}`}>{logoFile || (!removeLogo && draft.organizerLogoPath) ? "Logo ersetzen" : "Logo auswählen"}<input id={`event-logo-${eventId}`} type="file" accept="image/png,image/jpeg,image/webp" disabled={saving} onChange={chooseLogo}/></label>
+                {(logoFile || (!removeLogo && draft.organizerLogoPath)) && <button className="btn" type="button" disabled={saving} onClick={() => { setLogoFile(null); setRemoveLogo(true); }}>Logo entfernen</button>}
+                <small>Empfohlen: 1200 × 400 Pixel im Querformat · PNG, JPG oder WebP · maximal 5 MB.</small>
+              </div>
+            </div>
+          </section>
+          {message && <p className="field-message error" role="alert" style={{ marginTop: 12 }}>{message}</p>}
+          <div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setEditing(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={!ready || saving}>{saving ? "Wird gespeichert …" : "Speichern"}</button></div>
+        </form>
+      </section>
+    </div>}
   </>;
 }

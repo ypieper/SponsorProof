@@ -32,9 +32,16 @@ export type ContractRow = {
   gross_value_cents?: number;
   status: string;
   signed_at: string | null;
+  signature_status?: SponsorContract["signatureStatus"];
+  sponsor_signed_at?: string | null;
+  organizer_signed_at?: string | null;
+  signing_document_id?: string | null;
 };
 
 export type SponsorRecord = { sponsor: Sponsor; contracts: SponsorContract[] };
+
+const sponsorColumns = "id, name, initials, sponsorship_value_cents, status, color, legal_form, street, street_number, postal_code, city, contact_first_name, contact_last_name, email, phone, vat_id, iban, bic, bank";
+const contractColumns = "id, event_id, sponsor_id, title, value_cents, gross_value_cents, status, signed_at, signature_status, sponsor_signed_at, organizer_signed_at, signing_document_id";
 
 export function formatCents(cents: number) {
   return `${new Intl.NumberFormat("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(cents / 100)} €`;
@@ -90,20 +97,29 @@ export function contractFromRow(row: ContractRow): SponsorContract {
     progress: 0,
     status: displayStatus(row.status),
     signedAt: displaySignedAt(row.signed_at),
+    signatureStatus: row.signed_at ? "signed" : row.signature_status ?? "draft",
+    sponsorSignedAt: row.sponsor_signed_at ?? null,
+    organizerSignedAt: row.organizer_signed_at ?? null,
+    signingDocumentId: row.signing_document_id ?? null,
   };
 }
 
-export async function updateContractRecord(id: string, details: { netValueCents: number; grossValueCents: number; signedAt: string | null }) {
+export async function updateContractRecord(id: string, details: { netValueCents: number; grossValueCents: number }) {
   const { createClient } = await import("@/lib/supabase/client");
-  return createClient().from("contracts").update({ value_cents: details.netValueCents, gross_value_cents: details.grossValueCents, signed_at: details.signedAt || null, status: details.signedAt ? "In Arbeit" : "Offen" }).eq("id", id);
+  return createClient().from("contracts").update({ value_cents: details.netValueCents, gross_value_cents: details.grossValueCents }).eq("id", id);
+}
+
+export async function setContractSigningDocument(id: string, documentId: string) {
+  const { createClient } = await import("@/lib/supabase/client");
+  return createClient().from("contracts").update({ signing_document_id: documentId }).eq("id", id);
 }
 
 export async function fetchSponsorRecords() {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const [sponsorResult, contractResult, assignmentResult] = await Promise.all([
-    supabase.from("sponsors").select("*").order("name"),
-    supabase.from("contracts").select("*").order("created_at", { ascending: false }),
+    supabase.from("sponsors").select(sponsorColumns).order("name"),
+    supabase.from("contracts").select(contractColumns).order("created_at", { ascending: false }),
     supabase.from("event_sponsors").select("event_id, sponsor_id"),
   ]);
   if (sponsorResult.error) return { data: null, error: sponsorResult.error };
@@ -128,8 +144,8 @@ export async function fetchSponsorRecord(id: string) {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const [sponsorResult, contractResult, assignmentResult] = await Promise.all([
-    supabase.from("sponsors").select("*").eq("id", id).maybeSingle(),
-    supabase.from("contracts").select("*").eq("sponsor_id", id).order("created_at", { ascending: false }),
+    supabase.from("sponsors").select(sponsorColumns).eq("id", id).maybeSingle(),
+    supabase.from("contracts").select(contractColumns).eq("sponsor_id", id).order("created_at", { ascending: false }),
     supabase.from("event_sponsors").select("event_id").eq("sponsor_id", id),
   ]);
   if (sponsorResult.error) return { data: null, error: sponsorResult.error };
@@ -148,8 +164,8 @@ export async function fetchSponsorRecordsForEvent(eventId: string) {
   const sponsorIds = (assignments ?? []).map((row) => row.sponsor_id);
   if (!sponsorIds.length) return { data: [], error: null };
   const [sponsorResult, contractResult] = await Promise.all([
-    supabase.from("sponsors").select("*").in("id", sponsorIds).order("name"),
-    supabase.from("contracts").select("*").eq("event_id", eventId).order("created_at", { ascending: false }),
+    supabase.from("sponsors").select(sponsorColumns).in("id", sponsorIds).order("name"),
+    supabase.from("contracts").select(contractColumns).eq("event_id", eventId).order("created_at", { ascending: false }),
   ]);
   if (sponsorResult.error) return { data: null, error: sponsorResult.error };
   if (contractResult.error) return { data: null, error: contractResult.error };
@@ -197,7 +213,7 @@ export async function createSponsorRecord(input: {
     contact_last_name: input.contactLastName || null,
     email: input.email || null,
     phone: input.phone || null,
-  }).select("*").single();
+  }).select(sponsorColumns).single();
   if (error || !row) return { data: null, error };
 
   if (!input.eventId) {
@@ -216,7 +232,7 @@ export async function createSponsorRecord(input: {
 
   const contracts: SponsorContract[] = [];
   if (typeof contractId === "string") {
-    const { data: contractRow, error: contractError } = await supabase.from("contracts").select("*").eq("id", contractId).single();
+    const { data: contractRow, error: contractError } = await supabase.from("contracts").select(contractColumns).eq("id", contractId).single();
     if (contractError || !contractRow) return { data: null, error: contractError ?? new Error("Vertrag konnte nicht geladen werden.") };
     contracts.push(contractFromRow(contractRow as ContractRow));
   }
@@ -233,8 +249,8 @@ export async function addExistingSponsorToEventRecord(eventId: string, sponsorId
   });
   if (assignmentError) return { data: null, error: assignmentError };
   const [sponsorResult, contractResult] = await Promise.all([
-    supabase.from("sponsors").select("*").eq("id", sponsorId).single(),
-    typeof contractId === "string" ? supabase.from("contracts").select("*").eq("id", contractId).single() : Promise.resolve({ data: null, error: null }),
+    supabase.from("sponsors").select(sponsorColumns).eq("id", sponsorId).single(),
+    typeof contractId === "string" ? supabase.from("contracts").select(contractColumns).eq("id", contractId).single() : Promise.resolve({ data: null, error: null }),
   ]);
   if (sponsorResult.error) return { data: null, error: sponsorResult.error };
   if (contractResult.error) return { data: null, error: contractResult.error };
@@ -250,7 +266,7 @@ export async function createSponsorContractRecord(eventId: string, sponsorId: st
     title: "Sponsoringvertrag",
     value_cents: valueCents,
     status: "Offen",
-  }).select("*").single();
+  }).select(contractColumns).single();
   return { data: data ? contractFromRow(data as ContractRow) : null, error };
 }
 

@@ -17,8 +17,10 @@ const paths: Record<string, React.ReactNode> = {
   clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
   spark: <><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-2-5.8L4 11l6-2.2L12 3Z"/><path d="m19 14 1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2Z"/></>,
   file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></>,
+  search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
   download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></>,
   trash: <><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"/></>,
+  refresh: <><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.4-3"/></>,
 };
 
 export const iconNames = Object.keys(paths);
@@ -39,8 +41,9 @@ export function SponsoLogo({ markSize = 32 }: { markSize?: number }) {
 }
 
 export function Status({ value }: { value: string }) {
-  const kind = value === "Erfüllt" || value === "Erledigt" ? "status-done" : value === "In Arbeit" ? "status-progress" : "status-open";
-  return <span className={`status ${kind}`}>{value}</span>;
+  const kind = value === "Erfüllt" || value === "Erledigt" || value === "Abgeschlossen" ? "status-done" : value === "In Arbeit" || value === "In Bearbeitung" ? "status-progress" : value === "Warte auf Sponsor" ? "status-waiting" : "status-open";
+  const label = value === "Erfüllt" || value === "Erledigt" ? "Abgeschlossen" : value;
+  return <span className={`status ${kind}`}>{label}</span>;
 }
 
 export function Progress({ value }: { value: number }) {

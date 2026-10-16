@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Icon } from "@/components/ui";
 
-type Organization = { id: string; name: string };
+type Organization = { id: string; name: string; sponso_id: string };
 type EnterpriseAccess = {
-  organization_id: string; organization_name: string; is_active: boolean; activated_at: string; expires_at: string;
+  organization_id: string; organization_name: string; sponso_id: string | null; is_active: boolean; activated_at: string; expires_at: string;
   annual_fee_cents: number; invoice_reference: string | null; internal_note: string; created_at: string; updated_at: string;
 };
 
@@ -19,6 +19,8 @@ export function AdminEnterpriseAccess() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [entitlements, setEntitlements] = useState<EnterpriseAccess[]>([]);
   const [organizationId, setOrganizationId] = useState("");
+  const [organizationQuery, setOrganizationQuery] = useState("");
+  const [organizationOptionsOpen, setOrganizationOptionsOpen] = useState(false);
   const [annualFee, setAnnualFee] = useState("");
   const [expiresAt, setExpiresAt] = useState(nextYearDate);
   const [invoiceReference, setInvoiceReference] = useState("");
@@ -47,9 +49,17 @@ export function AdminEnterpriseAccess() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const organizationOptionLabel = (item: Organization) => `${item.name} · ${item.sponso_id}`;
+  const selectedOrganization = organizations.find((item) => item.id === organizationId);
+  const matchingOrganizations = organizations.filter((item) => organizationOptionLabel(item).toLocaleLowerCase("de-DE").includes(organizationQuery.trim().toLocaleLowerCase("de-DE")));
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
+    if (!organizationId) {
+      setError("Bitte wähle einen Veranstalterbereich aus der Liste aus.");
+      return;
+    }
     setSaving(true); setMessage(""); setError("");
     try {
       const response = await fetch("/api/admin/enterprise-access", {
@@ -94,7 +104,27 @@ export function AdminEnterpriseAccess() {
     <section className="panel admin-code-create"><div className="panel-heading"><div><h2>Enterprise freischalten</h2><p>Die Freischaltung gilt bis zum eingetragenen Datum. Bei Verlängerung werden Gebühr und Laufzeit aktualisiert.</p></div></div>
       {loading && organizations.length === 0 ? <p className="task-empty">Veranstalterbereiche werden geladen …</p> : organizations.length === 0 ? <p className="task-empty">Es wurden noch keine Veranstalterbereiche angelegt.</p> : <form onSubmit={(event) => void save(event)}>
         <div className="settings-grid">
-          <label className="settings-field"><span>Veranstalterbereich</span><select required value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}><option value="" disabled>Auswählen …</option>{organizations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <div className="settings-field admin-organization-picker">
+            <label htmlFor="enterprise-organization-query">Veranstalterbereich</label>
+            <input
+              id="enterprise-organization-query"
+              role="combobox"
+              aria-expanded={organizationOptionsOpen}
+              aria-controls="enterprise-organizations"
+              aria-autocomplete="list"
+              aria-invalid={!organizationId && Boolean(organizationQuery.trim())}
+              value={selectedOrganization ? organizationOptionLabel(selectedOrganization) : organizationQuery}
+              onFocus={() => setOrganizationOptionsOpen(true)}
+              onBlur={() => window.setTimeout(() => setOrganizationOptionsOpen(false), 120)}
+              onChange={(event) => { setOrganizationQuery(event.target.value); setOrganizationId(""); setOrganizationOptionsOpen(true); setError(""); }}
+              placeholder="Name oder Sponso-ID suchen"
+            />
+            {organizationOptionsOpen && <div className="admin-organization-options" id="enterprise-organizations" role="listbox">
+              {matchingOrganizations.map((item) => <button key={item.id} type="button" role="option" aria-selected={organizationId === item.id} onMouseDown={(event) => event.preventDefault()} onClick={() => { setOrganizationId(item.id); setOrganizationQuery(""); setOrganizationOptionsOpen(false); setError(""); }}>{organizationOptionLabel(item)}</button>)}
+              {matchingOrganizations.length === 0 && <span className="task-caption">Kein Veranstalterbereich gefunden.</span>}
+            </div>}
+            <small className="task-caption">Name und Sponso-ID sind sichtbar und durchsuchbar.</small>
+          </div>
           <label className="settings-field"><span>Jahresgebühr (€)</span><input required type="number" min="0.01" step="0.01" inputMode="decimal" value={annualFee} onChange={(event) => setAnnualFee(event.target.value)} placeholder="Betrag laut Rechnung" /></label>
           <label className="settings-field"><span>Gültig bis</span><input required type="date" min={new Date().toISOString().slice(0, 10)} value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></label>
           <label className="settings-field"><span>Rechnungsnummer (optional)</span><input maxLength={120} value={invoiceReference} onChange={(event) => setInvoiceReference(event.target.value)} placeholder="z. B. RE-2026-1042" /></label>
@@ -102,14 +132,14 @@ export function AdminEnterpriseAccess() {
         </div>
         {error && <p className="field-message error" role="alert">{error}</p>}
         {message && <p className="field-message success" role="status">{message}</p>}
-        <div className="create-modal-actions"><button className="btn btn-primary" type="submit" disabled={saving || !organizationId}>{saving ? "Wird gespeichert …" : "Enterprise freischalten"}</button></div>
+        <div className="create-modal-actions"><button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Wird gespeichert …" : "Enterprise freischalten"}</button></div>
       </form>}
     </section>
     {entitlements.length > 0 && <section className="panel table-panel admin-code-list"><div className="panel-heading"><div><h2>Freischaltungen</h2><p>Aktive und abgelaufene Enterprise-Zugänge für alle Veranstalterbereiche.</p></div></div>
-      <div className="admin-code-table-wrap"><table className="table"><thead><tr><th>VERANSTALTERBEREICH</th><th>JAHRESGEBÜHR</th><th>STATUS</th><th>GÜLTIG BIS</th><th>RECHNUNG</th><th>NOTIZ</th><th>AKTION</th></tr></thead><tbody>{entitlements.map((item) => {
+      <div className="admin-code-table-wrap"><table className="table"><thead><tr><th>VERANSTALTERBEREICH</th><th>SPONSO-ID</th><th>JAHRESGEBÜHR</th><th>STATUS</th><th>GÜLTIG BIS</th><th>RECHNUNG</th><th>NOTIZ</th><th>AKTION</th></tr></thead><tbody>{entitlements.map((item) => {
         const expired = new Date(item.expires_at).getTime() <= Date.now();
         const active = item.is_active && !expired;
-        return <tr key={item.organization_id}><td><b>{item.organization_name}</b></td><td>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(item.annual_fee_cents / 100)}</td><td><span className={`status ${active ? "status-done" : "status-open"}`}>{active ? "Aktiv" : item.is_active ? "Abgelaufen" : "Deaktiviert"}</span></td><td>{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(item.expires_at))}</td><td>{item.invoice_reference || "—"}</td><td>{item.internal_note || "—"}</td><td>{active && <button className="btn btn-danger-soft" type="button" disabled={deactivating === item.organization_id} onClick={() => void deactivate(item.organization_id)}>{deactivating === item.organization_id ? "Wird deaktiviert …" : "Deaktivieren"}</button>}</td></tr>;
+        return <tr key={item.organization_id}><td><b>{item.organization_name}</b></td><td><code>{item.sponso_id ?? "—"}</code></td><td>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(item.annual_fee_cents / 100)}</td><td><span className={`status ${active ? "status-done" : "status-open"}`}>{active ? "Aktiv" : item.is_active ? "Abgelaufen" : "Deaktiviert"}</span></td><td>{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(item.expires_at))}</td><td>{item.invoice_reference || "—"}</td><td>{item.internal_note || "—"}</td><td>{active && <button className="btn btn-danger-soft" type="button" disabled={deactivating === item.organization_id} onClick={() => void deactivate(item.organization_id)}>{deactivating === item.organization_id ? "Wird deaktiviert …" : "Deaktivieren"}</button>}</td></tr>;
       })}</tbody></table></div>
     </section>}
     {error && !loading && organizations.length > 0 && <p className="admin-feedback" role="alert">{error}</p>}

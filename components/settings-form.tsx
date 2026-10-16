@@ -10,7 +10,7 @@ import { formatIban, lookupGermanBank, normalizeIban, validateIban } from "@/lib
 import { normalizeCityName } from "@/lib/location";
 import { fetchOrganizerSettings, saveOrganizerSettings } from "@/lib/organization-settings-storage";
 
-type TabName = "Stammdaten" | "Ansprechperson" | "Vertragsvorlage" | "Tarife & Events" | "Meine Daten" | "Team";
+type TabName = "Stammdaten" | "Vertragsvorlage" | "Tarife & Events" | "Meine Daten" | "Team";
 type Settings = {
   organization: string;
   street: string;
@@ -20,10 +20,6 @@ type Settings = {
   iban: string;
   bic: string;
   bank: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
 };
 
 const initialSettings: Settings = {
@@ -35,10 +31,6 @@ const initialSettings: Settings = {
   iban: "",
   bic: "",
   bank: "",
-  firstName: "",
-  lastName: "",
-  email: "",
-  phone: "",
 };
 
 function Field({ label, value, onChange, type = "text", placeholder, required = false, readOnly = false, autoComplete, onBlur, message, messageKind = "hint" }: {
@@ -71,6 +63,7 @@ export function SettingsForm() {
   const [postalCodeTouched, setPostalCodeTouched] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [sponsoId, setSponsoId] = useState<string | null>(null);
   const ibanStatus = validateIban(settings.iban);
 
   useEffect(() => {
@@ -78,7 +71,6 @@ export function SettingsForm() {
       const selected = new URLSearchParams(window.location.search).get("tab");
       const tabByUrl: Record<string, TabName> = {
         stammdaten: "Stammdaten",
-        ansprechperson: "Ansprechperson",
         vertragsvorlage: "Vertragsvorlage",
         tarife: "Tarife & Events",
         profile: "Meine Daten",
@@ -96,7 +88,6 @@ export function SettingsForm() {
     event.preventDefault();
     const tabParam: Record<TabName, string> = {
       Stammdaten: "stammdaten",
-      Ansprechperson: "ansprechperson",
       Vertragsvorlage: "vertragsvorlage",
       "Tarife & Events": "tarife",
       "Meine Daten": "profile",
@@ -146,9 +137,10 @@ export function SettingsForm() {
 
   useEffect(() => {
     let active = true;
-    void fetchOrganizerSettings().then(({ data, error }) => {
+    void fetchOrganizerSettings().then(({ data, error, sponsoId: loadedSponsoId }) => {
       if (!active) return;
       if (error) setSaveMessage("Veranstalterdaten konnten nicht aus Supabase geladen werden.");
+      setSponsoId(loadedSponsoId);
       const loaded = { ...initialSettings, ...(data ?? {}), city: normalizeCityName(data?.city ?? "") };
       setSettings(loaded);
       setIbanDisplay(formatIban(loaded.iban));
@@ -213,8 +205,8 @@ export function SettingsForm() {
       setSaveMessage("");
       return;
     }
-    if (postalCodeStatus !== "valid") {
-      setSaveMessage(postalCodeStatus === "unavailable" ? "Die PLZ konnte gerade nicht geprüft werden. Bitte versuche es erneut." : "Die PLZ wird geprüft. Bitte warte kurz.");
+    if (postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && settings.city.trim())) {
+      setSaveMessage(postalCodeStatus === "unavailable" ? "Bitte trage den Ort manuell ein, wenn die PLZ-Prüfung gerade nicht verfügbar ist." : "Die PLZ wird geprüft. Bitte warte kurz.");
       return;
     }
     void saveOrganizerSettings(settings).then(({ error }) => {
@@ -239,31 +231,32 @@ export function SettingsForm() {
   const postalCodeMessage = postalCodeStatus === "invalid" && postalCodeTouched
     ? "Bitte gib eine gültige PLZ ein."
     : postalCodeStatus === "unavailable" && postalCodeTouched
-      ? "Die PLZ konnte gerade nicht geprüft werden. Bitte versuche es erneut."
+      ? "PLZ-Prüfung nicht verfügbar. Ort bitte manuell eintragen."
       : postalCodeStatus === "loading" && postalCodeTouched
         ? "PLZ wird geprüft …"
         : undefined;
 
   return <section className="settings-card panel">
     <div className="settings-tabs" role="tablist" aria-label="Einstellungsbereiche">
-      {(["Stammdaten", "Ansprechperson", "Vertragsvorlage", "Meine Daten", "Tarife & Events", "Team"] as const).map((tab) => {
+      {(["Stammdaten", "Vertragsvorlage", "Meine Daten", "Tarife & Events", "Team"] as const).map((tab) => {
         const tabId = tab === "Meine Daten" ? "meine-daten" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Tarife & Events" ? "tarife" : tab;
         const panelId = `settings-panel-${tabId}`;
-        const tabParam = tab === "Meine Daten" ? "profile" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Tarife & Events" ? "tarife" : tab === "Ansprechperson" ? "ansprechperson" : "stammdaten";
+        const tabParam = tab === "Meine Daten" ? "profile" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Tarife & Events" ? "tarife" : "stammdaten";
         return <a key={tab} href={`/einstellungen?tab=${tabParam}`} role="tab" id={`settings-tab-${tabId}`} aria-selected={activeTab === tab} aria-controls={panelId} aria-current={activeTab === tab ? "page" : undefined} className={`settings-tab ${activeTab === tab ? "active" : ""}`} onClick={(event) => openSettingsTab(tab, event)}>{tab}</a>;
       })}
     </div>
 
     {activeTab === "Team" ? <div id="settings-panel-team" role="tabpanel" aria-labelledby="settings-tab-team"><TeamSettings /></div> : activeTab === "Meine Daten" ? <div id="settings-panel-meine-daten" role="tabpanel" aria-labelledby="settings-tab-meine-daten"><AccountSettings /></div> : activeTab === "Tarife & Events" ? <div id="settings-panel-tarife" role="tabpanel" aria-labelledby="settings-tab-tarife" className="settings-panel-content"><AccountEventTariffs /></div> : activeTab === "Vertragsvorlage" ? <ContractTemplateSettings /> : <form className="settings-form" onSubmit={saveSettings}>
-    {activeTab === "Stammdaten" ? <div id="settings-panel-Stammdaten" role="tabpanel" aria-labelledby="settings-tab-Stammdaten" className="settings-panel-content">
+    <div id="settings-panel-Stammdaten" role="tabpanel" aria-labelledby="settings-tab-Stammdaten" className="settings-panel-content">
       <div className="settings-section">
         <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="pin" size={16}/></span><div><h2>Anschrift</h2><p>Bezeichnung und offizielle Anschrift des Veranstalters.</p></div></div>
+        {sponsoId && <div className="settings-sponso-id"><span>Sponso-ID</span><code>{sponsoId}</code></div>}
         <div className="settings-grid">
           <div className="settings-field-full"><Field label="Bezeichnung" value={settings.organization} onChange={(value) => update("organization", value)} required autoComplete="organization" /></div>
           <Field label="Straße" value={settings.street} onChange={(value) => update("street", value)} required autoComplete="address-line1" />
           <Field label="Nr." value={settings.streetNumber} onChange={(value) => update("streetNumber", value)} required autoComplete="address-line2" />
-          <Field label="PLZ" value={settings.postalCode} onChange={handlePostalCodeChange} message={postalCodeMessage} messageKind={postalCodeStatus === "invalid" || postalCodeStatus === "unavailable" ? "error" : "hint"} required autoComplete="postal-code" />
-          <Field label="Ort" value={settings.city} required readOnly placeholder={postalCodeStatus === "loading" ? "Wird ermittelt …" : "Wird aus der PLZ übernommen"} autoComplete="address-level2" />
+          <Field label="PLZ" value={settings.postalCode} onChange={handlePostalCodeChange} message={postalCodeMessage} messageKind={postalCodeStatus === "invalid" ? "error" : "hint"} required autoComplete="postal-code" />
+          <Field label="Ort" value={settings.city} onChange={(value) => update("city", value)} required placeholder={postalCodeStatus === "loading" ? "Wird ermittelt …" : "Ort"} autoComplete="address-level2" />
         </div>
       </div>
 
@@ -278,17 +271,7 @@ export function SettingsForm() {
           <Field label="BIC" value={settings.bic} onChange={(value) => update("bic", value.toUpperCase())} placeholder={bankPlaceholder} autoComplete="off" />
         </div>
       </div>
-    </div> : <div id="settings-panel-Ansprechperson" role="tabpanel" aria-labelledby="settings-tab-Ansprechperson" className="settings-panel-content">
-      <div className="settings-section">
-        <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="users" size={16}/></span><div><h2>Ansprechperson</h2><p>Kontakt für Rückfragen und Vertragsunterlagen.</p></div></div>
-        <div className="settings-grid">
-          <Field label="Vorname" value={settings.firstName} onChange={(value) => update("firstName", value)} required autoComplete="given-name" />
-          <Field label="Nachname" value={settings.lastName} onChange={(value) => update("lastName", value)} required autoComplete="family-name" />
-          <Field label="E-Mail" value={settings.email} onChange={(value) => update("email", value)} type="email" required autoComplete="email" />
-          <Field label="Telefon" value={settings.phone} onChange={(value) => update("phone", value)} type="tel" autoComplete="tel" />
-        </div>
-      </div>
-    </div>}
+    </div>
     <div className="settings-save-row"><p role="status" aria-live="polite">{saveMessage || (settingsReady ? "Wird im gemeinsamen Veranstalterbereich gespeichert." : "Einstellungen werden geladen …")}</p><button className="btn btn-primary" type="submit" disabled={!settingsReady}><Icon name="check" size={15}/>Speichern</button></div>
     </form>}
   </section>;

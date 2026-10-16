@@ -1,26 +1,30 @@
 import { createClient } from "@/lib/supabase/client";
+import { formatSponsoId } from "@/lib/sponso-id";
 
 export type OrganizerSettings = {
   organization: string; street: string; streetNumber: string; postalCode: string; city: string;
-  iban: string; bic: string; bank: string; firstName: string; lastName: string; email: string; phone: string;
+  iban: string; bic: string; bank: string;
 };
 
-const columns = "organization_name, street, street_number, postal_code, city, iban, bic, bank, contact_first_name, contact_last_name, contact_email, contact_phone";
+const columns = "organization_name, street, street_number, postal_code, city, iban, bic, bank";
 
 function fromRow(row: Record<string, string>): OrganizerSettings {
   return {
     organization: row.organization_name ?? "", street: row.street ?? "", streetNumber: row.street_number ?? "",
     postalCode: row.postal_code ?? "", city: row.city ?? "", iban: row.iban ?? "", bic: row.bic ?? "", bank: row.bank ?? "",
-    firstName: row.contact_first_name ?? "", lastName: row.contact_last_name ?? "", email: row.contact_email ?? "", phone: row.contact_phone ?? "",
   };
 }
 
 export async function fetchOrganizerSettings() {
   const supabase = createClient();
   const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
-  if (organizationError || typeof organizationId !== "string") return { data: null, error: organizationError ?? new Error("Veranstalterbereich nicht gefunden.") };
-  const { data, error } = await supabase.from("organization_settings").select(columns).eq("organization_id", organizationId).maybeSingle();
-  return { data: data ? fromRow(data as Record<string, string>) : null, error };
+  if (organizationError || typeof organizationId !== "string") return { data: null, sponsoId: null, error: organizationError ?? new Error("Veranstalterbereich nicht gefunden.") };
+  const [{ data, error }, { data: organization, error: organizationLookupError }] = await Promise.all([
+    supabase.from("organization_settings").select(columns).eq("organization_id", organizationId).maybeSingle(),
+    supabase.from("organizations").select("sponso_id").eq("id", organizationId).maybeSingle(),
+  ]);
+  if (error || organizationLookupError) return { data: null, sponsoId: null, error: error ?? organizationLookupError };
+  return { data: data ? fromRow(data as Record<string, string>) : null, sponsoId: organization?.sponso_id ? formatSponsoId(organization.sponso_id) : null, error: null };
 }
 
 export async function saveOrganizerSettings(settings: OrganizerSettings) {
@@ -37,10 +41,6 @@ export async function saveOrganizerSettings(settings: OrganizerSettings) {
     iban: settings.iban,
     bic: settings.bic,
     bank: settings.bank,
-    contact_first_name: settings.firstName,
-    contact_last_name: settings.lastName,
-    contact_email: settings.email,
-    contact_phone: settings.phone,
     updated_at: new Date().toISOString(),
   });
   if (settingsError) return { error: settingsError };

@@ -4,7 +4,7 @@ import type { Sponsor, SponsorContract } from "@/lib/sponsor-types";
 import { formatContractValue } from "@/lib/event-contract-values";
 import type { StoredEvent } from "@/lib/events-storage";
 
-type Benefit = { title: string; category: string; description: string; dueAt?: string };
+type Benefit = { title: string; category: string; description: string; quantity?: number; dueAt?: string };
 type Organizer = { organization: string; street: string; streetNumber: string; postalCode: string; city: string; iban: string; bic: string; bank: string; firstName: string; lastName: string; email: string; phone: string };
 
 function escapeXml(value: string) {
@@ -34,7 +34,8 @@ function benefitsXml(benefits: Benefit[], paragraphProperties: string) {
     return paragraph(`<w:r><w:t xml:space="preserve">Für diesen Vertrag sind noch keine einzelnen Leistungen erfasst.</w:t></w:r>`);
   }
   return benefits.map((benefit, index) => {
-    const title = paragraph(`<w:r><w:rPr><w:b/></w:rPr>${xmlTextRuns(benefit.title)}</w:r>`);
+    const label = (benefit.quantity ?? 1) > 1 ? `${benefit.quantity} × ${benefit.title}` : benefit.title;
+    const title = paragraph(`<w:r><w:rPr><w:b/></w:rPr>${xmlTextRuns(label)}</w:r>`);
     const description = benefit.description
       ? paragraph(`<w:r><w:rPr><w:b w:val="0"/></w:rPr>${xmlTextRuns(benefit.description)}</w:r>`)
       : "";
