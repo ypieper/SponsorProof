@@ -80,11 +80,14 @@ export async function createStoredTasks(inputs: TaskInput[]) {
   return { data: (data ?? []) as StoredTaskRecord[], error };
 }
 
-export async function updateStoredTask(id: string, changes: { title?: string; dueAt?: string | null; status?: string; eventId?: string | null; assignedTo?: string | null; assignedToSponsor?: boolean }) {
+export async function updateStoredTask(id: string, changes: { title?: string; sponsorId?: string | null; sponsorName?: string; dueAt?: string | null; status?: string; sponsorApprovalStatus?: string; eventId?: string | null; assignedTo?: string | null; assignedToSponsor?: boolean }) {
   const update: Record<string, unknown> = {};
   if (changes.title !== undefined) update.title = changes.title;
+  if (changes.sponsorId !== undefined) update.sponsor_id = changes.sponsorId;
+  if (changes.sponsorName !== undefined) update.sponsor_name = changes.sponsorName;
   if (changes.dueAt !== undefined) update.due_at = changes.dueAt;
   if (changes.status !== undefined) update.status = changes.status;
+  if (changes.sponsorApprovalStatus !== undefined) update.sponsor_approval_status = changes.sponsorApprovalStatus;
   if (changes.assignedTo !== undefined) update.assigned_to = changes.assignedTo;
   if (changes.assignedToSponsor !== undefined) update.assigned_to_sponsor = changes.assignedToSponsor;
   if (changes.eventId !== undefined) {

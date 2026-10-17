@@ -1,22 +1,22 @@
 import { createClient } from "@/lib/supabase/client";
 
-export type StoredEvidence = { id: string; taskId: string; benefitId?: string; name: string; type: string; storagePath: string; eventId?: string; sponsorVisible?: boolean };
-type EvidenceRow = { id: string; event_id: string | null; benefit_id: string | null; task_id: string | null; storage_path: string; file_name: string; content_type: string; sponsor_visible?: boolean };
+export type StoredEvidence = { id: string; taskId: string; benefitId?: string; name: string; type: string; storagePath: string; eventId?: string; sponsorVisible?: boolean; createdAt?: string };
+type EvidenceRow = { id: string; event_id: string | null; benefit_id: string | null; task_id: string | null; storage_path: string; file_name: string; content_type: string; sponsor_visible?: boolean; created_at?: string };
 
 function taskKey(row: EvidenceRow) {
   return row.task_id ?? (row.benefit_id ? `benefit-${row.benefit_id}` : "");
 }
 
 function fromRow(row: EvidenceRow): StoredEvidence {
-  return { id: row.id, taskId: taskKey(row), benefitId: row.benefit_id ?? undefined, name: row.file_name, type: row.content_type, storagePath: row.storage_path, eventId: row.event_id ?? undefined, sponsorVisible: row.sponsor_visible ?? false };
+  return { id: row.id, taskId: taskKey(row), benefitId: row.benefit_id ?? undefined, name: row.file_name, type: row.content_type, storagePath: row.storage_path, eventId: row.event_id ?? undefined, sponsorVisible: row.sponsor_visible ?? false, createdAt: row.created_at };
 }
 
 export async function fetchStoredEvidence() {
-  const { data, error } = await createClient().from("evidence_files").select("id, event_id, benefit_id, task_id, storage_path, file_name, content_type, sponsor_visible").order("created_at", { ascending: true });
+  const { data, error } = await createClient().from("evidence_files").select("id, event_id, benefit_id, task_id, storage_path, file_name, content_type, sponsor_visible, created_at").order("created_at", { ascending: true });
   return { data: (data ?? []).map((row) => fromRow(row as EvidenceRow)), error };
 }
 
-export async function uploadStoredEvidence(input: { file: File; eventId?: string; taskId: string; benefitId?: string }) {
+export async function uploadStoredEvidence(input: { file: File; eventId?: string; taskId: string; benefitId?: string; sponsorVisible?: boolean }) {
   if (!input.eventId) return { data: null, error: new Error("EVIDENCE_REQUIRES_EVENT") };
   const supabase = createClient();
   const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
@@ -35,7 +35,8 @@ export async function uploadStoredEvidence(input: { file: File; eventId?: string
     storage_path: storagePath,
     file_name: input.file.name,
     content_type: input.file.type || "application/octet-stream",
-  }).select("id, event_id, benefit_id, task_id, storage_path, file_name, content_type, sponsor_visible").single();
+    sponsor_visible: input.sponsorVisible ?? false,
+  }).select("id, event_id, benefit_id, task_id, storage_path, file_name, content_type, sponsor_visible, created_at").single();
   if (error || !data) {
     await supabase.storage.from("sponsorproof-files").remove([storagePath]);
     return { data: null, error: error ?? new Error("Nachweis-Metadaten konnten nicht gespeichert werden.") };

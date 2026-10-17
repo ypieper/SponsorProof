@@ -91,7 +91,7 @@ async function authorize(context: Context) {
     if (membershipsError) throw membershipsError;
     const accountIds = (memberships ?? []).map((membership) => membership.account_id);
     const { data: assignment, error: assignmentError } = accountIds.length
-      ? await admin.from("sponsor_event_accounts").select("account_id").eq("event_id", eventId).eq("sponsor_id", sponsorId).in("account_id", accountIds).maybeSingle()
+      ? await admin.from("sponsor_event_accounts").select("account_id").eq("event_id", eventId).eq("sponsor_id", sponsorId).in("account_id", accountIds).limit(1).maybeSingle()
       : { data: null, error: null };
     if (assignmentError) throw assignmentError;
     const sponsorMember = Boolean(assignment);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { EmptyState, Icon, PageHeading, Status } from "@/components/ui";
 import { fetchSponsorRecords } from "@/lib/sponsors-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -37,6 +37,7 @@ function applyWorkflowDependencies(tasks: Task[]): Task[] {
 }
 type Evidence = StoredEvidence;
 const emptyDraft = { title: "", sponsor: "", sponsorId: "", assigneeId: "", due: "", eventId: "", completionType: "file_required" as CompletionType };
+const SPONSOR_TASK_ASSIGNEE = "__sponsor__";
 function formatDue(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return value;
@@ -53,7 +54,28 @@ function TaskFeedbackNotice({ feedback, decision, collapsed = false }: { feedbac
   return <span className="task-sponsor-feedback"><b>{label}<time dateTime={feedback.created_at}>{formatFeedbackDate(feedback.created_at)}</time></b><span>{feedback.comment}</span></span>;
 }
 
-function TaskProofControl({ task, evidence, disabled, mobileMode = false, onProofAdded, onProofDeleted }: { task: Task; evidence?: Evidence; disabled: boolean; mobileMode?: boolean; onProofAdded: (task: Task, file: File) => Promise<boolean>; onProofDeleted: (task: Task) => Promise<void> }) {
+function TaskVersionHistory({ versions, feedback, onDownloadError }: { versions: Evidence[]; feedback: Array<{ feedback: SponsorTaskFeedback | OrganizerTaskFeedback; decision: "sponsor_return" | "organizer_return" }>; onDownloadError: () => void }) {
+  if (!versions.length && !feedback.length) return null;
+  const historyCount = versions.length + feedback.length;
+  return <details className="task-version-history">
+    <summary><span>Versionsverlauf</span><small>{historyCount}</small><Icon name="chevron" size={13}/></summary>
+    <div className="task-version-history-content">
+      {feedback.map(({ feedback: entry, decision }) => <TaskFeedbackNotice feedback={entry} decision={decision} key={`${decision}-${entry.id}`}/>)}
+      {versions.map((version) => <button className="btn task-version-file" type="button" key={version.id} onClick={async () => {
+        const { data, error } = await downloadStoredEvidence(version);
+        if (error || !data) { onDownloadError(); return; }
+        const url = URL.createObjectURL(data);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = version.name;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }}><Icon name="file" size={13}/><span>{version.name}</span><time>{version.createdAt ? formatFeedbackDate(version.createdAt) : ""}</time></button>)}
+    </div>
+  </details>;
+}
+
+function TaskProofControl({ task, evidence, disabled, mobileMode = false, actionMenu = false, extraActions, onProofAdded, onProofDeleted }: { task: Task; evidence?: Evidence; disabled: boolean; mobileMode?: boolean; actionMenu?: boolean; extraActions?: ReactNode; onProofAdded: (task: Task, file: File) => Promise<boolean>; onProofDeleted: (task: Task) => Promise<void> }) {
   const uploadRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
@@ -109,11 +131,14 @@ function TaskProofControl({ task, evidence, disabled, mobileMode = false, onProo
   return <div className={`task-proof-control ${evidence ? "has-evidence" : ""} ${mobileMode ? "mobile-proof-control" : ""}`}>
     <input ref={uploadRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" hidden onChange={handleFile} />
     <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={handleFile} />
-    {evidence && <span className="task-proof-file" title={evidence.name}><Icon name="check" size={13}/>{evidence.name}</span>}
-    <div className={`task-proof-actions ${evidence ? "compact" : ""}`}>
-      <button className={`btn task-proof-upload ${evidence ? "task-proof-icon-button" : ""}`} type="button" onClick={() => uploadRef.current?.click()} disabled={disabled || saving || !task.eventId} aria-label={evidence ? "Nachweis ersetzen" : undefined} title={evidence ? "Nachweis ersetzen" : undefined}><Icon name="file" size={14}/>{!evidence && "Datei hochladen"}</button>
-      <button className={`btn task-proof-camera ${evidence ? "task-proof-icon-button" : ""}`} type="button" onClick={() => cameraRef.current?.click()} disabled={disabled || saving || !task.eventId} aria-label={evidence ? "Foto aufnehmen" : undefined} title={evidence ? "Foto aufnehmen" : undefined}><Icon name="camera" size={14}/>{!evidence && (mobileMode ? "Foto aufnehmen" : "Kamera")}</button>
-      {evidence && <><button className="btn task-proof-icon-button" type="button" onClick={downloadEvidence} disabled={saving} aria-label="Nachweis herunterladen" title="Herunterladen"><Icon name="download" size={14}/></button><button className="btn task-proof-delete task-proof-icon-button" type="button" onClick={() => { void removeEvidence(); }} disabled={disabled || saving} aria-label="Nachweis löschen" title="Löschen"><Icon name="trash" size={14}/></button></>}
+    {evidence && <span className="task-proof-file" title={`${evidence.name}${evidence.createdAt ? ` · ${new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(evidence.createdAt))}` : ""}`}><Icon name="check" size={13}/>{evidence.name}{evidence.createdAt && ` · ${new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(evidence.createdAt))}`}</span>}
+    <div className={`task-proof-actions ${evidence ? "compact" : ""} ${actionMenu ? "task-proof-actions-menu-mode" : ""}`}>
+      {(() => {
+        const returned = task.status !== "Erledigt" && Boolean(task.sponsorApprovalStatus === "changes_requested" || task.sponsorFeedback?.length || task.organizerFeedback?.some((feedback) => feedback.decision === "organizer_changes_requested"));
+        const replaceLabel = evidence || returned ? "Datei ersetzen" : "Datei hochladen";
+        return <button className={`btn task-proof-upload ${evidence && !returned && !actionMenu ? "task-proof-icon-button" : ""} ${returned ? "btn-primary task-proof-replace-prominent" : ""}`} type="button" onClick={() => uploadRef.current?.click()} disabled={disabled || saving || !task.eventId} aria-label={evidence || returned ? replaceLabel : undefined} title={evidence || returned ? replaceLabel : undefined}><Icon name="file" size={14}/>{!evidence || returned || actionMenu ? replaceLabel : null}</button>;
+      })()}
+      {actionMenu ? <details className="task-overflow-menu task-proof-overflow-menu"><summary className="btn" aria-label="Weitere Aufgabenaktionen" title="Weitere Aufgabenaktionen"><Icon name="menu" size={15}/></summary><div className="task-overflow-menu-items"><button className="btn task-overflow-menu-item" type="button" onClick={() => cameraRef.current?.click()} disabled={disabled || saving || !task.eventId}><Icon name="camera" size={14}/> Foto aufnehmen</button>{evidence && <><button className="btn task-overflow-menu-item" type="button" onClick={() => void downloadEvidence()} disabled={saving}><Icon name="download" size={14}/> Datei herunterladen</button><button className="btn task-overflow-menu-item" type="button" onClick={() => { void removeEvidence(); }} disabled={disabled || saving}><Icon name="trash" size={14}/> Datei löschen</button></>}{extraActions}</div></details> : <><button className={`btn task-proof-camera ${evidence ? "task-proof-icon-button" : ""}`} type="button" onClick={() => cameraRef.current?.click()} disabled={disabled || saving || !task.eventId} aria-label={evidence ? "Foto aufnehmen" : undefined} title={evidence ? "Foto aufnehmen" : undefined}><Icon name="camera" size={14}/>{!evidence && (mobileMode ? "Foto aufnehmen" : "Kamera")}</button>{evidence && <><button className="btn task-proof-icon-button" type="button" onClick={downloadEvidence} disabled={saving} aria-label="Datei herunterladen" title="Herunterladen"><Icon name="download" size={14}/></button><button className="btn task-proof-delete task-proof-icon-button" type="button" onClick={() => { void removeEvidence(); }} disabled={disabled || saving} aria-label="Datei löschen" title="Löschen"><Icon name="trash" size={14}/></button></>}</>}
     </div>
     {!task.eventId && <span className="task-proof-error">Ordne die Aufgabe zuerst einem Event zu, um einen Nachweis hinzuzufügen.</span>}
     {mobileMode && proofSaved && <span className="task-proof-success" role="status"><Icon name="check" size={14}/> Nachweis gespeichert</span>}
@@ -139,7 +164,7 @@ function OrganizerApprovalControl({ task, previousEvidence, sponsorApprovalFollo
     }
     void onApprove(task, false);
   }
-  return <div className="organizer-approval-control">{completed ? <><span className="task-sponsor-approved"><Icon name="check" size={13}/> Bestätigt</span>{canRevoke && <button className="btn organizer-approval-revoke" type="button" disabled={disabled || busy} onClick={() => { setComment(""); setDialog("revoke"); }}>Freigabe zurücknehmen</button>}</> : <div className="organizer-approval-actions"><button className="btn" type="button" disabled={disabled || busy} onClick={() => { setComment(""); setDialog("reject"); }}>Ablehnen</button><button className="btn btn-primary" type="button" disabled={disabled || busy} onClick={startApproval}>{busy ? "Wird gespeichert …" : "Bestätigen"}</button></div>}
+  return <div className="organizer-approval-control">{completed ? <div className="organizer-approval-completed"><span className="task-sponsor-approved"><Icon name="check" size={13}/> Bestätigt</span>{canRevoke && <button className="btn organizer-approval-revoke" type="button" disabled={disabled || busy} onClick={() => { setComment(""); setDialog("revoke"); }}>Freigabe zurücknehmen</button>}</div> : <div className="organizer-approval-actions"><button className="btn" type="button" disabled={disabled || busy} onClick={() => { setComment(""); setDialog("reject"); }}>Ablehnen</button><button className="btn btn-primary" type="button" disabled={disabled || busy} onClick={startApproval}>{busy ? "Wird gespeichert …" : "Bestätigen"}</button></div>}
     {dialog && <div className="modal-backdrop organizer-task-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setDialog(null); }}><section className="create-modal organizer-task-modal" role="dialog" aria-modal="true" aria-labelledby={`organizer-task-dialog-${task.id}`}><div className="create-modal-head"><div><h2 id={`organizer-task-dialog-${task.id}`}>{dialog === "approve" ? "Aufgabe bestätigen" : dialog === "reject" ? "Aufgabe ablehnen" : "Freigabe zurücknehmen"}</h2><p>{dialog === "approve" ? "Für die folgende Sponsorenfreigabe muss der Nachweis bereitgestellt werden." : dialog === "reject" ? "Der Kommentar wird beim vorherigen Arbeitsschritt angezeigt, damit die Änderung umgesetzt werden kann." : "Der vorherige Nachweis wird gelöscht und die folgenden Schritte werden zurückgesetzt. Eine Sponsorenfreigabe wird dadurch wieder ausgeblendet."}</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={busy} onClick={() => setDialog(null)}><Icon name="close" size={16}/></button></div>
       {dialog === "approve" ? previousEvidence ? <label className="organizer-task-share-choice"><input type="checkbox" checked={sharePreviousFile} onChange={(event) => setSharePreviousFile(event.target.checked)}/><span><b>Nachweis für die Sponsorenfreigabe bereitstellen *</b><small>{previousEvidence.name}</small></span></label> : <p className="organizer-task-no-file">Für die folgende Sponsorenfreigabe muss zuerst ein Nachweis in der vorherigen Aufgabe hochgeladen werden.</p> : <label className="settings-field organizer-task-reject-comment"><span>{dialog === "revoke" ? "Grund für die Rücknahme *" : "Grund für die Ablehnung *"}</span><textarea autoFocus rows={4} required maxLength={2000} value={comment} onChange={(event) => setComment(event.target.value)} placeholder={dialog === "revoke" ? "Warum wird die Freigabe zurückgenommen?" : "Was muss geändert werden?"} /></label>}
       <div className="create-modal-actions"><button className="btn" type="button" disabled={busy} onClick={() => setDialog(null)}>Abbrechen</button><button className={`btn ${dialog === "approve" ? "btn-primary" : "organizer-task-reject-button"}`} type="button" disabled={disabled || busy || (dialog !== "approve" && !comment.trim()) || (dialog === "approve" && sponsorApprovalFollows && (!previousEvidence || !sharePreviousFile))} onClick={() => void submit()}>{busy ? "Wird gespeichert …" : dialog === "approve" ? "Bestätigung speichern" : dialog === "revoke" ? "Freigabe zurücknehmen" : "Ablehnung senden"}</button></div></section></div>}
@@ -154,6 +179,11 @@ function SponsorApprovalStatus({ task }: { task: Task }) {
 
 function isSponsorApprovalTask(task: Task) {
   return task.completionType === "sponsor_approval" || task.requiresSponsorApproval;
+}
+
+function SponsorProofPendingNotice({ task, evidence }: { task: Task; evidence?: Evidence }) {
+  if (task.source !== "Manuell" || task.benefitId || !isSponsorApprovalTask(task) || evidence) return null;
+  return <span className="sponsor-proof-pending-notice">Nachweis noch nicht hochgeladen · für den Sponsor erst nach dem Upload sichtbar.</span>;
 }
 
 function workflowStatus(tasks: Task[]) {
@@ -178,8 +208,12 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
   const [events, setEvents] = useState<Array<{ id: string; title: string }>>([]);
   const [organizerMembers, setOrganizerMembers] = useState<Array<{ user_id: string; email: string; role: string }>>([]);
   const [evidenceByTask, setEvidenceByTask] = useState<Record<string, Evidence>>({});
+  const [evidenceVersionsByTask, setEvidenceVersionsByTask] = useState<Record<string, Evidence[]>>({});
   const [ready, setReady] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingTaskDraft, setEditingTaskDraft] = useState({ title: "", sponsorId: "", assigneeId: "", due: "" });
+  const [savingTaskEdit, setSavingTaskEdit] = useState(false);
   const [draft, setDraft] = useState(() => ({ ...emptyDraft, sponsor: sponsorName ?? "", eventId: eventFilter !== "all" ? eventFilter : emptyDraft.eventId }));
   const [message, setMessage] = useState("");
   const [organizerApprovalBusyId, setOrganizerApprovalBusyId] = useState("");
@@ -212,6 +246,11 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
         setEvents((eventResult.data ?? []).map((event) => ({ id: event.id, title: event.title })));
         const evidenceMap = Object.fromEntries((evidenceResult.data ?? []).map((entry) => [entry.taskId, entry]));
         setEvidenceByTask(evidenceMap);
+        const evidenceVersions = (evidenceResult.data ?? []).reduce<Record<string, Evidence[]>>((versions, evidence) => {
+          versions[evidence.taskId] = [...(versions[evidence.taskId] ?? []), evidence];
+          return versions;
+        }, {});
+        setEvidenceVersionsByTask(evidenceVersions);
         const storedTasks = taskResult.data ?? [];
         const assignedBenefitIds = new Set(storedTasks.filter((task) => task.source === "Leistung" && task.benefit_id).map((task) => task.benefit_id as string));
         const legacyBenefitTasks: Task[] = (benefitResult.data ?? []).filter((benefit) => !assignedBenefitIds.has(benefit.id)).map((benefit) => ({ id: `benefit-${benefit.id}`, title: benefit.title, sponsor: sponsorNameMap[benefit.sponsorId ?? ""] ?? "—", sponsorId: benefit.sponsorId ?? "", due: benefit.dueAt ? formatDue(benefit.dueAt) : "—", dueAt: benefit.dueAt, status: (evidenceMap[`benefit-${benefit.id}`] || benefit.status === "Erfüllt" || benefit.status === "Erledigt" ? "Erledigt" : "Offen"), eventId: benefit.eventId, eventTitle: eventNameMap[benefit.eventId] ?? "Event nicht gefunden", source: "Leistung", benefitType: benefit.benefitType }));
@@ -255,9 +294,18 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
     }
     if (!(await ensureFeature(task.eventId, task.eventTitle, "evidence"))) return false;
     const benefitId = task.source === "Leistung" ? task.storedTask ? task.benefitId : task.id.slice("benefit-".length) : undefined;
-    const { data, error } = await uploadStoredEvidence({ file, eventId: task.eventId || undefined, taskId: task.id, benefitId });
-    if (error || !data) throw error ?? new Error("Nachweis konnte nicht gespeichert werden.");
     const needsSponsorApproval = task.completionType === "sponsor_approval" || task.requiresSponsorApproval;
+    const standaloneSponsorApproval = needsSponsorApproval && (!task.benefitId || task.workflowOrder == null);
+    const { data, error } = await uploadStoredEvidence({ file, eventId: task.eventId || undefined, taskId: task.id, benefitId, sponsorVisible: standaloneSponsorApproval });
+    if (error || !data) throw error ?? new Error("Nachweis konnte nicht gespeichert werden.");
+    const isResubmission = needsSponsorApproval && task.sponsorApprovalStatus === "changes_requested";
+    if (isResubmission) {
+      const { error: approvalError } = await updateStoredTask(task.id, { sponsorApprovalStatus: "pending" });
+      if (approvalError) {
+        await deleteStoredEvidenceRecord(data);
+        throw approvalError;
+      }
+    }
     if (task.source === "Leistung" && !task.storedTask) {
       const { error } = await updateStoredBenefit(task.id.slice("benefit-".length), { status: "Erfüllt", evidence: file.name });
       if (error) throw error;
@@ -265,8 +313,12 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
     if (task.storedTask && task.benefitId && !needsSponsorApproval) await syncBenefitStatus(task.benefitId);
     window.dispatchEvent(new Event("sponso:event-timeline-updated"));
     setEvidenceByTask((current) => ({ ...current, [task.id]: data }));
+    setEvidenceVersionsByTask((current) => ({ ...current, [task.id]: [...(current[task.id] ?? []), data].sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "")) }));
     if (!needsSponsorApproval) setItems((current) => applyWorkflowDependencies(current.map((item) => item.id === task.id ? { ...item, status: "Erledigt" as Task["status"] } : item)));
-    if (!mobileMode) setMessage(needsSponsorApproval ? `Datei für „${task.title}“ bereitgestellt. Die Sponsorfreigabe ist noch offen.` : `Nachweis für „${task.title}“ gespeichert. Aufgabe abgeschlossen.`);
+    else if (isResubmission) setItems((current) => current.map((item) => item.id === task.id ? { ...item, sponsorApprovalStatus: "pending" } : item));
+    if (!mobileMode) setMessage(needsSponsorApproval
+      ? isResubmission ? `Die neue Datei für „${task.title}“ wurde hochgeladen und ist wieder zur Sponsorfreigabe bereit.` : `Datei für „${task.title}“ bereitgestellt. Die Sponsorfreigabe ist noch offen.`
+      : `Nachweis für „${task.title}“ gespeichert. Aufgabe abgeschlossen.`);
     return true;
   }
 
@@ -285,6 +337,7 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
       delete updated[task.id];
       return updated;
     });
+    if (evidence) setEvidenceVersionsByTask((current) => ({ ...current, [task.id]: (current[task.id] ?? []).filter((version) => version.id !== evidence.id) }));
     if (!needsSponsorApproval) setItems((current) => applyWorkflowDependencies(current.map((item) => item.id === task.id ? { ...item, status: "Offen" as const } : item)));
     setMessage(needsSponsorApproval ? `Datei für „${task.title}“ gelöscht. Die Sponsorfreigabe bleibt offen.` : `Nachweis für „${task.title}“ gelöscht. Die Aufgabe ist wieder offen.`);
   }
@@ -371,12 +424,21 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
       setMessage(sharePreviousFile ? `„${task.title}“ wurde bestätigt. Der vorherige Nachweis ist jetzt für den Sponsor sichtbar.` : `„${task.title}“ wurde durch den Veranstalter bestätigt.`);
       return true;
     } catch (reason) {
-      const details = reason instanceof Error ? reason.message : "";
+      const error = reason as { message?: string; details?: string; hint?: string; code?: string };
+      const details = [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(" ");
       setMessage(details.includes("ORGANIZER_TASK_SPONSOR_FILE_REQUIRED")
         ? "Für die folgende Sponsorenfreigabe muss der Nachweis bereitgestellt werden."
         : details.includes("ORGANIZER_TASK_FILE_NOT_FOUND")
           ? "Lade zuerst einen Nachweis in der vorherigen Aufgabe hoch."
-          : "Die Freigabe durch den Veranstalter konnte nicht gespeichert werden.");
+          : details.includes("ORGANIZER_TASK_PREVIOUS_STEPS_INCOMPLETE")
+            ? "Schließe zuerst die vorherigen Aufgaben dieser Leistung ab."
+            : details.includes("ORGANIZER_TASK_NOT_APPROVAL")
+              ? "Diese Aufgabe ist nicht als Veranstalter-Bestätigung eingerichtet."
+              : details.includes("ORGANIZER_TASK_ACCESS_DENIED") || error?.code === "42501"
+                ? "Du hast keine Berechtigung, diese Aufgabe zu bestätigen."
+                : details.includes("respond_to_organizer_task") || error?.code === "PGRST202"
+                  ? "Die Bestätigungsfunktion fehlt in der Datenbank. Wende die aktuellen Supabase-Migrationen an."
+                  : `Die Bestätigung konnte nicht gespeichert werden${details ? `: ${details}` : "."}`);
       return false;
     } finally {
       setOrganizerApprovalBusyId("");
@@ -488,19 +550,66 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
     }
   }
 
+  function startEditingManualTask(task: Task) {
+    if (task.source !== "Manuell") return;
+    setEditingTask(task);
+    setEditingTaskDraft({ title: task.title, sponsorId: task.sponsorId, assigneeId: task.assignedToSponsor ? SPONSOR_TASK_ASSIGNEE : task.assigneeId ?? "", due: task.dueAt ?? "" });
+    setMessage("");
+  }
+
+  async function saveManualTaskEdit(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    if (!editingTask || editingTask.source !== "Manuell") return;
+    setSavingTaskEdit(true);
+    const selectedSponsor = sponsorOptions.find((sponsor) => sponsor.id === editingTaskDraft.sponsorId && (!editingTask.eventId || sponsor.eventIds.includes(editingTask.eventId)));
+    const assigneeIsSponsor = editingTaskDraft.assigneeId === SPONSOR_TASK_ASSIGNEE;
+    try {
+      const { error } = await updateStoredTask(editingTask.id, {
+        title: editingTaskDraft.title.trim(),
+        sponsorId: selectedSponsor?.id || null,
+        sponsorName: selectedSponsor?.name || "",
+        dueAt: editingTaskDraft.due || null,
+        assignedTo: assigneeIsSponsor ? null : editingTaskDraft.assigneeId || null,
+        assignedToSponsor: assigneeIsSponsor,
+      });
+      if (error) throw error;
+      setItems((current) => current.map((task) => task.id === editingTask.id ? {
+        ...task,
+        title: editingTaskDraft.title.trim(),
+        sponsorId: selectedSponsor?.id ?? "",
+        sponsor: selectedSponsor?.name ?? "—",
+        dueAt: editingTaskDraft.due || undefined,
+        due: editingTaskDraft.due ? formatDue(editingTaskDraft.due) : "—",
+        assigneeId: assigneeIsSponsor ? undefined : editingTaskDraft.assigneeId || undefined,
+        assignee: assigneeIsSponsor ? "Sponsor" : organizerMembers.find((member) => member.user_id === editingTaskDraft.assigneeId)?.email,
+        assignedToSponsor: assigneeIsSponsor,
+      } : task));
+      window.dispatchEvent(new Event("sponso:event-timeline-updated"));
+      setMessage(`Aufgabe „${editingTaskDraft.title.trim()}“ gespeichert.`);
+      setEditingTask(null);
+    } catch {
+      setMessage("Die Aufgabe konnte nicht gespeichert werden.");
+    } finally {
+      setSavingTaskEdit(false);
+    }
+  }
+
   async function createTask(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     const eventId = draft.eventId || (eventFilter !== "all" ? eventFilter : "");
-    const selectedSponsorId = draft.completionType === "sponsor_approval" ? draft.sponsorId || (selectedSponsor !== "all" ? selectedSponsor : "") : selectedSponsor !== "all" ? selectedSponsor : "";
-    const selectedSponsorRecord = items.find((task) => task.sponsorId === selectedSponsorId && (!eventId || task.eventId === eventId));
+    const selectedSponsorId = draft.sponsorId || (selectedSponsor !== "all" ? selectedSponsor : "");
+    const selectedSponsorRecord = sponsorOptions.find((item) => item.id === selectedSponsorId && (!eventId || item.eventIds.includes(eventId)));
     try {
       const sponsorId = selectedSponsorId;
-      const sponsor = selectedSponsorRecord?.sponsor || sponsorOptions.find((item) => item.id === sponsorId)?.name || sponsorName || draft.sponsor.trim() || "—";
-      if (draft.completionType === "sponsor_approval" && (!eventId || !sponsorId)) {
-        setMessage("Wähle für eine Sponsorfreigabe ein Event und einen zugeordneten Sponsor aus.");
+      const sponsor = selectedSponsorRecord?.name || sponsorName || draft.sponsor.trim() || "—";
+      if ((draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload") && (!eventId || !sponsorId || !selectedSponsorRecord)) {
+        setMessage(draft.completionType === "sponsor_upload"
+          ? "Wähle für einen Sponsor-Upload ein Event und einen zugeordneten Sponsor aus."
+          : "Wähle für eine Sponsorfreigabe ein Event und einen zugeordneten Sponsor aus.");
         return;
       }
-      const { data, error } = await createStoredTask({ title: draft.title.trim(), eventId: eventId && eventId !== "all" ? eventId : undefined, sponsorId, sponsorName: sponsor, dueAt: draft.due.trim() || undefined, completionType: draft.completionType, assignedTo: draft.completionType === "sponsor_approval" ? undefined : draft.assigneeId || undefined });
+      const isSponsorAssigned = draft.completionType === "sponsor_upload" || draft.completionType === "sponsor_approval";
+      const { data, error } = await createStoredTask({ title: draft.title.trim(), eventId: eventId && eventId !== "all" ? eventId : undefined, sponsorId, sponsorName: sponsor, dueAt: draft.due.trim() || undefined, completionType: draft.completionType, assignedTo: isSponsorAssigned ? undefined : draft.assigneeId || undefined, assignedToSponsor: draft.completionType === "sponsor_upload" });
       if (error || !data) throw error ?? new Error("Aufgabe konnte nicht gespeichert werden.");
       const manualTask: Task = { id: data.id, title: data.title, sponsor, sponsorId, due: data.due_at ? formatDue(data.due_at) : "—", dueAt: data.due_at ?? undefined, status: "Offen", eventId: data.event_id ?? "", eventTitle: eventNames[data.event_id ?? ""] ?? "Keinem Event zugeordnet", source: "Manuell", storedTask: true, completionType: data.completion_type, assignee: data.assigned_to_sponsor ? "Sponsor" : organizerMembers.find((member) => member.user_id === data.assigned_to)?.email, assigneeId: data.assigned_to ?? undefined, sponsorApprovalStatus: data.sponsor_approval_status, requiresSponsorApproval: data.requires_sponsor_approval };
       setItems((current) => [...current, manualTask]);
@@ -533,19 +642,36 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
   const completionSummary = `${visibleCompleted} von ${filteredItems.length} abgeschlossen`;
   const noTasksYet = !embedded && ready && items.length === 0 && selectedStatus === "all" && selectedEvent === eventFilter;
   function renderStandaloneTaskCard(task: Task) {
-    const feedbackNotices = <>{task.sponsorFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision="sponsor_return" collapsed={task.sponsorApprovalStatus === "approved"} key={`sponsor-${feedback.id}`}/>)}{task.organizerFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision={feedback.decision === "organizer_changes_requested" ? "organizer_return" : "organizer_revoked"} collapsed={feedback.decision === "organizer_changes_requested" && Boolean(evidenceByTask[task.id])} key={`organizer-${feedback.id}`}/>)}</>;
+    const sponsorFeedback = task.sponsorFeedback ?? [];
+    const organizerFeedback = task.organizerFeedback ?? [];
+    const versionFeedback = task.source === "Manuell" ? [
+      ...sponsorFeedback.filter((feedback) => feedback.decision === "changes_requested").map((feedback) => ({ feedback, decision: "sponsor_return" as const })),
+      ...organizerFeedback.filter((feedback) => feedback.decision === "organizer_changes_requested").map((feedback) => ({ feedback, decision: "organizer_return" as const })),
+    ] : [];
+    const activeEvidence = evidenceByTask[task.id];
+    const previousVersions = (evidenceVersionsByTask[task.id] ?? []).filter((version) => version.id !== activeEvidence?.id).slice().sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+    const showVersionHistory = task.source === "Manuell" && (versionFeedback.length > 0 || previousVersions.length > 0);
+    const otherSponsorFeedback = sponsorFeedback.filter((feedback) => !(task.source === "Manuell" && feedback.decision === "changes_requested"));
+    const otherOrganizerFeedback = organizerFeedback.filter((feedback) => !(task.source === "Manuell" && feedback.decision === "organizer_changes_requested"));
+    const hasFeedback = otherSponsorFeedback.length > 0 || otherOrganizerFeedback.length > 0;
+    const feedbackNotices = <>{otherSponsorFeedback.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision="sponsor_return" collapsed={task.sponsorApprovalStatus === "approved"} key={`sponsor-${feedback.id}`}/>)}{otherOrganizerFeedback.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision={feedback.decision === "organizer_changes_requested" ? "organizer_return" : "organizer_revoked"} collapsed={feedback.decision === "organizer_changes_requested" && Boolean(evidenceByTask[task.id])} key={`organizer-${feedback.id}`}/>)}</>;
+    const recordActions = task.source === "Manuell" ? <><button className="btn task-overflow-menu-item" type="button" onClick={() => { startEditingManualTask(task); }}><Icon name="settings" size={14}/> Bearbeiten</button><button className="btn task-overflow-menu-item task-overflow-delete" type="button" onClick={() => { void deleteManualTask(task); }}><Icon name="trash" size={14}/> Löschen</button></> : undefined;
+    const proofMenuOwnsActions = !mobileMode && !task.blockedBy && !task.assignedToSponsor && task.completionType !== "organizer_approval" && !(isSponsorApprovalTask(task) && task.benefitId && task.workflowOrder != null);
     const taskControl = task.blockedBy ? <span className="task-caption task-dependency-blocked">Wartet auf: {task.blockedBy}</span>
       : task.assignedToSponsor ? sponsorAssignedTaskControl(task)
       : task.completionType === "organizer_approval" ? <OrganizerApprovalControl task={task} canRevoke={canRevokeOrganizerTask(task)} sponsorApprovalFollows={hasFollowingSponsorApproval(task)} disabled={!ready} busy={organizerApprovalBusyId === task.id} previousEvidence={(() => { const previous = previousWorkflowTask(task); return previous ? evidenceByTask[previous.id] : undefined; })()} onApprove={approveOrganizerTask} onReject={rejectOrganizerTask} onRevoke={revokeOrganizerTask}/>
-        : isSponsorApprovalTask(task) ? <SponsorApprovalStatus task={task}/>
-          : <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} mobileMode={mobileMode} onProofAdded={addProof} onProofDeleted={deleteProof}/>;
+        : isSponsorApprovalTask(task) && task.benefitId && task.workflowOrder != null ? <SponsorApprovalStatus task={task}/>
+          : <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} mobileMode={mobileMode} actionMenu={!mobileMode} extraActions={recordActions} onProofAdded={addProof} onProofDeleted={deleteProof}/>;
     return <section className="benefit-task-group standalone-task-group" key={task.id} aria-label={`Aufgabe ${task.title}`}>
       <header className="benefit-task-group-heading"><div><span className={`task-source ${task.source === "Leistung" ? "derived" : "manual"}`}>{task.source === "Leistung" ? task.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung" : "Aufgabe"}</span><h3>{task.title}</h3><small>{sponsorNames[task.sponsorId] ?? (task.sponsor === task.sponsorId ? "Sponsor" : task.sponsor)}{task.eventTitle ? ` · ${task.eventTitle}` : ""}</small></div><Status value={taskStatus(task)}/></header>
-      <div className="benefit-task-instances"><div className="benefit-task-subtasks"><article className={`benefit-task-subtask ${task.status === "Erledigt" ? "task-completed-row" : ""}`}>
-        <div className="benefit-task-subtask-info"><span>Bearbeiter: {task.assignee ?? "Nicht zugewiesen"}</span>{!embedded && task.source === "Manuell" && <label className="standalone-task-event"><span>Event</span><select className="task-event-select" aria-label={`Event für ${task.title}`} value={task.eventId} onChange={(event) => { void updateTaskEvent(task, event.target.value); }} disabled={!ready}><option value="">Keinem Event zugeordnet</option>{eventOptions.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>}{task.blockedBy && <span className="task-dependency-blocked">Wartet auf Abschluss: {task.blockedBy}</span>}{!task.assignee && !task.blockedBy && <span className="standalone-task-kind"><Icon name="file" size={13}/> Einzelaufgabe</span>}{feedbackNotices}</div>
+      <div className="benefit-task-instances"><details className="benefit-task-instance"><summary><span>Details</span></summary><div className="benefit-task-subtasks"><article className={`benefit-task-subtask ${task.status === "Erledigt" ? "task-completed-row" : ""}`}>
+        <div className="benefit-task-subtask-info"><b>Einzelaufgabe</b><span>Bearbeiter: {task.assignee ?? "Nicht zugewiesen"}</span>{!embedded && task.source === "Manuell" && <label className="standalone-task-event"><span>Event</span><select className="task-event-select" aria-label={`Event für ${task.title}`} value={task.eventId} onChange={(event) => { void updateTaskEvent(task, event.target.value); }} disabled={!ready}><option value="">Keinem Event zugeordnet</option>{eventOptions.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>}{task.blockedBy && <span className="task-dependency-blocked">Wartet auf Abschluss: {task.blockedBy}</span>}</div>
         <label className="benefit-task-due"><span>Fällig</span><input className="task-due-input" aria-label={`Fälligkeit für ${task.title}`} type="date" value={task.dueAt ?? ""} onChange={(event) => { void updateTaskDueDate(task, event.target.value); }} disabled={!ready}/></label>
-        <Status value={taskStatus(task)}/><div className="standalone-task-actions">{taskControl}{!embedded && task.source === "Manuell" && <button className="btn task-delete-button" type="button" onClick={() => { void deleteManualTask(task); }} aria-label={`Aufgabe ${task.title} löschen`} title="Aufgabe löschen"><Icon name="trash" size={14}/></button>}</div>
-      </article></div></div>
+        <div className="standalone-task-actions">{taskControl}{recordActions && !proofMenuOwnsActions && <details className="task-overflow-menu task-record-overflow-menu"><summary className="btn" aria-label="Weitere Aufgabenaktionen" title="Weitere Aufgabenaktionen"><Icon name="menu" size={15}/></summary><div className="task-overflow-menu-items">{recordActions}</div></details>}</div>
+        <SponsorProofPendingNotice task={task} evidence={evidenceByTask[task.id]}/>
+        {showVersionHistory && <TaskVersionHistory versions={previousVersions} feedback={versionFeedback} onDownloadError={() => setMessage("Eine ältere Datei konnte nicht geladen werden.")}/>}
+        {hasFeedback && <div className="benefit-task-subtask-feedback">{feedbackNotices}</div>}
+      </article></div></details></div>
     </section>;
   }
   async function syncBenefitStatus(benefitId: string) {
@@ -571,12 +697,12 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
           <div className="benefit-task-instances">{instances.map((instance) => {
             const instanceTasks = group.tasks.filter((task) => (task.workflowInstance ?? 1) === instance).sort((a, b) => (a.workflowOrder ?? 0) - (b.workflowOrder ?? 0));
             const allInstanceTasks = allTasks.filter((task) => (task.workflowInstance ?? 1) === instance);
-            return <details className="benefit-task-instance" key={instance} open={group.quantity === 1}>
-              <summary><span>{group.quantity > 1 ? `Leistung ${instance} von ${group.quantity}` : "Details"}</span><Status value={workflowStatus(allInstanceTasks)}/></summary>
+            return <details className="benefit-task-instance" key={instance}>
+              <summary><span>{group.quantity > 1 ? `Leistung ${instance} von ${group.quantity}` : "Details"}</span>{allInstanceTasks.length > 1 && <Status value={workflowStatus(allInstanceTasks)}/>}</summary>
               <div className="benefit-task-subtasks">{instanceTasks.map((task) => {
                 const feedbackNotices = <>{task.sponsorFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision="sponsor_return" collapsed={task.sponsorApprovalStatus === "approved"} key={`sponsor-${feedback.id}`}/>)}{task.organizerFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision={feedback.decision === "organizer_changes_requested" ? "organizer_return" : "organizer_revoked"} collapsed={feedback.decision === "organizer_changes_requested" && Boolean(evidenceByTask[task.id])} key={`organizer-${feedback.id}`}/>)}</>;
                 const hasFeedback = Boolean(task.sponsorFeedback?.length || task.organizerFeedback?.length);
-                return <article className={`benefit-task-subtask ${task.status === "Erledigt" ? "task-completed-row" : ""}`} key={task.id}><div className="benefit-task-subtask-info"><b>{task.title}</b><span>Bearbeiter: {task.assignee ?? "Nicht zugewiesen"}</span>{task.blockedBy && <span className="task-dependency-blocked">Wartet auf Abschluss: {task.blockedBy}</span>}</div><label className="benefit-task-due"><span>Fällig</span><input className="task-due-input" aria-label={`Fälligkeit für ${task.title}`} type="date" value={task.dueAt ?? ""} onChange={(event) => { void updateTaskDueDate(task, event.target.value); }} disabled={!ready}/></label><Status value={taskStatus(task)}/>{task.blockedBy ? <span className="task-caption task-dependency-blocked">Wartet auf: {task.blockedBy}</span> : task.assignedToSponsor ? sponsorAssignedTaskControl(task) : task.completionType === "organizer_approval" ? <OrganizerApprovalControl task={task} canRevoke={canRevokeOrganizerTask(task)} sponsorApprovalFollows={hasFollowingSponsorApproval(task)} disabled={!ready} busy={organizerApprovalBusyId === task.id} previousEvidence={(() => { const previous = previousWorkflowTask(task); return previous ? evidenceByTask[previous.id] : undefined; })()} onApprove={approveOrganizerTask} onReject={rejectOrganizerTask} onRevoke={revokeOrganizerTask}/> : isSponsorApprovalTask(task) ? <SponsorApprovalStatus task={task}/> : <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} mobileMode={mobileMode} onProofAdded={addProof} onProofDeleted={deleteProof}/ >}{hasFeedback && <div className="benefit-task-subtask-feedback">{feedbackNotices}</div>}</article>;
+                return <article className={`benefit-task-subtask ${task.status === "Erledigt" ? "task-completed-row" : ""}`} key={task.id}><div className="benefit-task-subtask-info"><b>{task.title}</b><span>Bearbeiter: {task.assignee ?? "Nicht zugewiesen"}</span>{task.blockedBy && <span className="task-dependency-blocked">Wartet auf Abschluss: {task.blockedBy}</span>}</div><label className="benefit-task-due"><span>Fällig</span><input className="task-due-input" aria-label={`Fälligkeit für ${task.title}`} type="date" value={task.dueAt ?? ""} onChange={(event) => { void updateTaskDueDate(task, event.target.value); }} disabled={!ready}/></label>{task.blockedBy ? <span className="task-caption task-dependency-blocked">Wartet auf: {task.blockedBy}</span> : task.assignedToSponsor ? sponsorAssignedTaskControl(task) : task.completionType === "organizer_approval" ? <OrganizerApprovalControl task={task} canRevoke={canRevokeOrganizerTask(task)} sponsorApprovalFollows={hasFollowingSponsorApproval(task)} disabled={!ready} busy={organizerApprovalBusyId === task.id} previousEvidence={(() => { const previous = previousWorkflowTask(task); return previous ? evidenceByTask[previous.id] : undefined; })()} onApprove={approveOrganizerTask} onReject={rejectOrganizerTask} onRevoke={revokeOrganizerTask}/> : isSponsorApprovalTask(task) ? <SponsorApprovalStatus task={task}/> : <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} mobileMode={mobileMode} onProofAdded={addProof} onProofDeleted={deleteProof}/ >}{hasFeedback && <div className="benefit-task-subtask-feedback">{feedbackNotices}</div>}</article>;
               })}</div>
             </details>;
           })}</div>
@@ -584,14 +710,15 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
       })}{standaloneItems.map(renderStandaloneTaskCard)}</div>}
       {mobileMode && visibleItems.length > 0 && <div className="mobile-proof-list">{visibleItems.map((task) => <article className="mobile-task" key={task.id}>
         <div className="mobile-task-top"><div className="mobile-task-heading"><h3>{task.title}</h3>{task.source === "Leistung" && <span className="task-source derived">{task.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung"}</span>}{task.publishReady && <span className="task-publish-ready">Freigegeben · Veröffentlichung möglich</span>}{task.sponsorFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision="sponsor_return" collapsed={task.sponsorApprovalStatus === "approved"} key={feedback.id}/>)}{task.organizerFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision={feedback.decision === "organizer_changes_requested" ? "organizer_return" : "organizer_revoked"} collapsed={feedback.decision === "organizer_changes_requested" && Boolean(evidenceByTask[task.id])} key={feedback.id}/>)}<p>{sponsorNames[task.sponsorId] ?? task.sponsor}{task.dueAt || task.due !== "—" ? ` · Fällig ${formatDue(task.dueAt ?? task.due)}` : ""} · Bearbeiter: {task.assignee ?? "Nicht zugewiesen"}</p></div><Status value={taskStatus(task)} /></div>
-        {task.blockedBy && <span className="task-caption task-dependency-blocked">Wartet auf Abschluss: {task.blockedBy}</span>}{task.assignedToSponsor ? sponsorAssignedTaskControl(task) : task.completionType === "organizer_approval" ? !task.blockedBy && <OrganizerApprovalControl task={task} canRevoke={canRevokeOrganizerTask(task)} sponsorApprovalFollows={hasFollowingSponsorApproval(task)} disabled={!ready} busy={organizerApprovalBusyId === task.id} previousEvidence={(() => { const previous = previousWorkflowTask(task); return previous ? evidenceByTask[previous.id] : undefined; })()} onApprove={approveOrganizerTask} onReject={rejectOrganizerTask} onRevoke={revokeOrganizerTask}/> : isSponsorApprovalTask(task) ? <SponsorApprovalStatus task={task}/> : <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready || Boolean(task.blockedBy)} mobileMode={mobileMode} onProofAdded={addProof} onProofDeleted={deleteProof}/> }
+        {task.blockedBy && <span className="task-caption task-dependency-blocked">Wartet auf Abschluss: {task.blockedBy}</span>}{task.assignedToSponsor ? sponsorAssignedTaskControl(task) : task.completionType === "organizer_approval" ? !task.blockedBy && <OrganizerApprovalControl task={task} canRevoke={canRevokeOrganizerTask(task)} sponsorApprovalFollows={hasFollowingSponsorApproval(task)} disabled={!ready} busy={organizerApprovalBusyId === task.id} previousEvidence={(() => { const previous = previousWorkflowTask(task); return previous ? evidenceByTask[previous.id] : undefined; })()} onApprove={approveOrganizerTask} onReject={rejectOrganizerTask} onRevoke={revokeOrganizerTask}/> : isSponsorApprovalTask(task) && task.benefitId && task.workflowOrder != null ? <SponsorApprovalStatus task={task}/> : <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready || Boolean(task.blockedBy)} mobileMode={mobileMode} onProofAdded={addProof} onProofDeleted={deleteProof}/> }
       </article>)}</div>}
       {!mobileMode && visibleItems.length > 0 && <table className="table tasks-table"><thead><tr><th>AUFGABE</th><th>SPONSOR</th><th>EVENT</th><th>FÄLLIG</th><th>QUELLE</th><th>STATUS</th><th>NACHWEIS</th><th>AKTION</th></tr></thead><tbody>{visibleItems.map((task) => <tr key={task.id} className={task.status === "Erledigt" ? "task-completed-row" : undefined}>
-        <td><b style={{ color: "#3d4c5b" }}>{task.title}</b>{task.source === "Leistung" && <div className="task-caption">{task.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung"}</div>}{task.publishReady && <div className="task-publish-ready">Freigegeben · Veröffentlichung möglich</div>}{task.sponsorFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision="sponsor_return" collapsed={task.sponsorApprovalStatus === "approved"} key={feedback.id}/>)}{task.organizerFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision={feedback.decision === "organizer_changes_requested" ? "organizer_return" : "organizer_revoked"} collapsed={feedback.decision === "organizer_changes_requested" && Boolean(evidenceByTask[task.id])} key={feedback.id}/>)}{task.blockedBy && <div className="task-caption task-dependency-blocked">Wartet auf Abschluss: {task.blockedBy}</div>}<div className="task-caption">Bearbeiter: {task.assignee ?? "Nicht zugewiesen"}</div></td><td>{sponsorFilter && task.sponsorId === sponsorFilter ? sponsorName ?? sponsorNames[task.sponsorId] ?? "Sponsor" : sponsorNames[task.sponsorId] ?? (task.sponsor === task.sponsorId ? "Sponsor" : task.sponsor)}</td><td className="task-event-cell">{task.source === "Manuell" ? <select className="task-event-name task-event-select" aria-label={`Event für ${task.title}`} value={task.eventId} onChange={(event) => { void updateTaskEvent(task, event.target.value); }} disabled={!ready}><option value="">Keinem Event zugeordnet</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select> : <span className="task-event-name" title={task.eventTitle}>{task.eventTitle}</span>}</td><td><input className="task-due-input" aria-label={`Fälligkeit für ${task.title}`} type="date" value={task.dueAt ?? (/^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : "")} onChange={(event) => updateTaskDueDate(task, event.target.value)} disabled={!ready} /></td><td><span className={`task-source ${task.source === "Leistung" ? "derived" : "manual"}`}>{task.source === "Leistung" ? "Aus Vertrag" : "Manuell"}</span></td><td><Status value={taskStatus(task)} /></td><td>{task.blockedBy && <span className="task-caption task-dependency-blocked">Wartet auf: {task.blockedBy}</span>}{task.assignedToSponsor ? sponsorAssignedTaskControl(task) : task.completionType === "organizer_approval" ? !task.blockedBy && <OrganizerApprovalControl task={task} canRevoke={canRevokeOrganizerTask(task)} sponsorApprovalFollows={hasFollowingSponsorApproval(task)} disabled={!ready} busy={organizerApprovalBusyId === task.id} previousEvidence={(() => { const previous = previousWorkflowTask(task); return previous ? evidenceByTask[previous.id] : undefined; })()} onApprove={approveOrganizerTask} onReject={rejectOrganizerTask} onRevoke={revokeOrganizerTask}/> : isSponsorApprovalTask(task) ? <SponsorApprovalStatus task={task}/> : !task.blockedBy && <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} onProofAdded={addProof} onProofDeleted={deleteProof}/> }</td><td>{task.source === "Manuell" && <button className="btn task-delete-button" type="button" onClick={() => deleteManualTask(task)} aria-label={`Aufgabe ${task.title} löschen`} title="Aufgabe löschen"><Icon name="trash" size={14}/></button>}</td>
+        <td><b style={{ color: "#3d4c5b" }}>{task.title}</b>{task.source === "Leistung" && <div className="task-caption">{task.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung"}</div>}{task.publishReady && <div className="task-publish-ready">Freigegeben · Veröffentlichung möglich</div>}{task.sponsorFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision="sponsor_return" collapsed={task.sponsorApprovalStatus === "approved"} key={feedback.id}/>)}{task.organizerFeedback?.map((feedback) => <TaskFeedbackNotice feedback={feedback} decision={feedback.decision === "organizer_changes_requested" ? "organizer_return" : "organizer_revoked"} collapsed={feedback.decision === "organizer_changes_requested" && Boolean(evidenceByTask[task.id])} key={feedback.id}/>)}{task.blockedBy && <div className="task-caption task-dependency-blocked">Wartet auf Abschluss: {task.blockedBy}</div>}<div className="task-caption">Bearbeiter: {task.assignee ?? "Nicht zugewiesen"}</div></td><td>{sponsorFilter && task.sponsorId === sponsorFilter ? sponsorName ?? sponsorNames[task.sponsorId] ?? "Sponsor" : sponsorNames[task.sponsorId] ?? (task.sponsor === task.sponsorId ? "Sponsor" : task.sponsor)}</td><td className="task-event-cell">{task.source === "Manuell" ? <select className="task-event-name task-event-select" aria-label={`Event für ${task.title}`} value={task.eventId} onChange={(event) => { void updateTaskEvent(task, event.target.value); }} disabled={!ready}><option value="">Keinem Event zugeordnet</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select> : <span className="task-event-name" title={task.eventTitle}>{task.eventTitle}</span>}</td><td><input className="task-due-input" aria-label={`Fälligkeit für ${task.title}`} type="date" value={task.dueAt ?? (/^\d{4}-\d{2}-\d{2}$/.test(task.due) ? task.due : "")} onChange={(event) => updateTaskDueDate(task, event.target.value)} disabled={!ready} /></td><td><span className={`task-source ${task.source === "Leistung" ? "derived" : "manual"}`}>{task.source === "Leistung" ? "Aus Vertrag" : "Manuell"}</span></td><td><Status value={taskStatus(task)} /></td><td>{task.blockedBy && <span className="task-caption task-dependency-blocked">Wartet auf: {task.blockedBy}</span>}{task.assignedToSponsor ? sponsorAssignedTaskControl(task) : task.completionType === "organizer_approval" ? !task.blockedBy && <OrganizerApprovalControl task={task} canRevoke={canRevokeOrganizerTask(task)} sponsorApprovalFollows={hasFollowingSponsorApproval(task)} disabled={!ready} busy={organizerApprovalBusyId === task.id} previousEvidence={(() => { const previous = previousWorkflowTask(task); return previous ? evidenceByTask[previous.id] : undefined; })()} onApprove={approveOrganizerTask} onReject={rejectOrganizerTask} onRevoke={revokeOrganizerTask}/> : isSponsorApprovalTask(task) && task.benefitId && task.workflowOrder != null ? <SponsorApprovalStatus task={task}/> : !task.blockedBy && <TaskProofControl task={task} evidence={evidenceByTask[task.id]} disabled={!ready} onProofAdded={addProof} onProofDeleted={deleteProof}/> }</td><td>{task.source === "Manuell" && <button className="btn task-delete-button" type="button" onClick={() => deleteManualTask(task)} aria-label={`Aufgabe ${task.title} löschen`} title="Aufgabe löschen"><Icon name="trash" size={14}/></button>}</td>
       </tr>)}</tbody></table>}
       {ready && visibleItems.length === 0 && workflowGroups.length === 0 && standaloneItems.length === 0 && (items.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Aufgaben" description="Aufgaben erscheinen hier, sobald du Leistungen vereinbart oder Aufgaben ergänzt hast." /> : mobileMode && hideCompleted && filteredItems.length > 0 ? <EmptyState className="empty-state-compact" title="Keine offenen Aufgaben" description="Alle Aufgaben für dieses Event haben bereits einen Nachweis." action={<button className="btn" type="button" onClick={() => setHideCompleted(false)}>Erledigte Aufgaben anzeigen</button>} /> : <EmptyState className="empty-state-compact" title="Keine passenden Aufgaben" description="Passe die Filter an, um andere Aufgaben zu sehen." action={<button className="btn" type="button" onClick={() => { setSelectedSponsor("all"); setSelectedEvent(eventFilter); setSelectedStatus("all"); setHideCompleted(false); setOnlyMyTasks(false); }}>Filter zurücksetzen</button>} />)}
       {message && <p className="task-feedback" role="status">{message}</p>}
     </section>}
-    {allowCreate && showCreate && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowCreate(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-task-title"><div className="create-modal-head"><div><h2 id="create-task-title">Aufgabe anlegen</h2><p>Wähle, ob eine Datei benötigt wird oder die Aufgabe durch Veranstalter bestätigt oder durch Sponsor freigegeben wird.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => setShowCreate(false)}><Icon name="close" size={16}/></button></div><form onSubmit={createTask}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Aufgabe *</span><input autoFocus required maxLength={100} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Was muss erledigt werden?" /></label><label className="settings-field settings-field-full"><span>Abschlussart</span><select value={draft.completionType} onChange={(event) => setDraft({ ...draft, completionType: event.target.value as CompletionType, sponsorId: "" })}><option value="file_required">Datei erforderlich</option><option value="organizer_approval">Bestätigung durch Veranstalter</option><option value="sponsor_approval">Freigabe durch Sponsor</option></select></label><label className="settings-field settings-field-full"><span>Event</span><select value={draft.eventId || (eventFilter !== "all" ? eventFilter : "")} disabled={eventFilter !== "all"} onChange={(event) => setDraft({ ...draft, eventId: event.target.value, sponsorId: "" })}><option value="">Keinem Event zugeordnet</option>{eventOptions.map((option) => <option key={option.id} value={option.id}>{option.title}</option>)}</select></label>{draft.completionType === "sponsor_approval" ? <label className="settings-field settings-field-full"><span>Sponsor *</span><select required value={draft.sponsorId || (selectedSponsor !== "all" ? selectedSponsor : "")} onChange={(event) => setDraft({ ...draft, sponsorId: event.target.value })}><option value="">Sponsor auswählen</option>{sponsorOptions.filter((sponsor) => !draft.eventId || sponsor.eventIds.includes(draft.eventId)).map((sponsor) => <option key={sponsor.id} value={sponsor.id}>{sponsor.name}</option>)}</select></label> : <label className="settings-field"><span>Sponsor</span><input value={draft.sponsor} onChange={(event) => setDraft({ ...draft, sponsor: event.target.value })} placeholder="Optional" /></label>}{draft.completionType !== "sponsor_approval" && <label className="settings-field"><span>Bearbeiter / Login</span><select value={draft.assigneeId} onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })}><option value="">Nicht zugewiesen</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label>}<label className="settings-field"><span>Fällig</span><input type="date" lang="de" value={draft.due} onChange={(event) => setDraft({ ...draft, due: event.target.value })} /></label></div><div className="create-modal-actions"><button className="btn" type="button" onClick={() => setShowCreate(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={!ready}>Aufgabe speichern</button></div></form></section></div>}
+    {editingTask && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingTaskEdit) setEditingTask(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="edit-manual-task-title"><div className="create-modal-head"><div><h2 id="edit-manual-task-title">Manuelle Aufgabe bearbeiten</h2><p>Ändere Titel, Sponsor, Bearbeiter oder Fälligkeit.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={savingTaskEdit} onClick={() => setEditingTask(null)}><Icon name="close" size={16}/></button></div><form onSubmit={(event) => { void saveManualTaskEdit(event); }}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Aufgabe *</span><input autoFocus required maxLength={100} value={editingTaskDraft.title} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, title: event.target.value }))}/></label><label className="settings-field settings-field-full"><span>Sponsor</span><select value={editingTaskDraft.sponsorId} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, sponsorId: event.target.value }))}><option value="">Keinem Sponsor zugeordnet</option>{sponsorOptions.filter((sponsor) => !editingTask.eventId || sponsor.eventIds.includes(editingTask.eventId)).map((sponsor) => <option key={sponsor.id} value={sponsor.id}>{sponsor.name}</option>)}</select></label><label className="settings-field"><span>Bearbeiter</span><select value={editingTaskDraft.assigneeId} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, assigneeId: event.target.value }))}><option value="">Nicht zugewiesen</option><option value={SPONSOR_TASK_ASSIGNEE}>Sponsor</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label><label className="settings-field"><span>Fällig</span><input type="date" lang="de" value={editingTaskDraft.due} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, due: event.target.value }))}/></label></div><div className="create-modal-actions"><button className="btn" type="button" disabled={savingTaskEdit} onClick={() => setEditingTask(null)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingTaskEdit}>{savingTaskEdit ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></form></section></div>}
+    {allowCreate && showCreate && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowCreate(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-task-title"><div className="create-modal-head"><div><h2 id="create-task-title">Aufgabe anlegen</h2><p>Wähle, ob eine Datei benötigt wird, der Sponsor eine Datei hochlädt oder eine Aufgabe durch Veranstalter bzw. Sponsor bestätigt wird.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => setShowCreate(false)}><Icon name="close" size={16}/></button></div><form onSubmit={createTask}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Aufgabe *</span><input autoFocus required maxLength={100} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Was muss erledigt werden?" /></label><label className="settings-field settings-field-full"><span>Abschlussart</span><select value={draft.completionType} onChange={(event) => setDraft({ ...draft, completionType: event.target.value as CompletionType, sponsorId: "" })}><option value="file_required">Datei erforderlich</option><option value="organizer_approval">Bestätigung durch Veranstalter</option><option value="sponsor_approval">Freigabe durch Sponsor</option><option value="sponsor_upload">Upload durch Sponsor</option></select></label><label className="settings-field settings-field-full"><span>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Event *" : "Event"}</span><select required={draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload"} value={draft.eventId || (eventFilter !== "all" ? eventFilter : "")} disabled={eventFilter !== "all"} onChange={(event) => setDraft({ ...draft, eventId: event.target.value, sponsorId: "" })}><option value="">Keinem Event zugeordnet</option>{eventOptions.map((option) => <option key={option.id} value={option.id}>{option.title}</option>)}</select></label>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" || draft.eventId || eventFilter !== "all" ? <label className="settings-field settings-field-full"><span>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Sponsor *" : "Sponsor (optional)"}</span><select required={draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload"} value={draft.sponsorId || (selectedSponsor !== "all" ? selectedSponsor : "")} onChange={(event) => setDraft({ ...draft, sponsorId: event.target.value })}><option value="">{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Sponsor auswählen" : "Keinem Sponsor zugeordnet"}</option>{sponsorOptions.filter((sponsor) => !(draft.eventId || (eventFilter !== "all" ? eventFilter : "")) || sponsor.eventIds.includes(draft.eventId || eventFilter)).map((sponsor) => <option key={sponsor.id} value={sponsor.id}>{sponsor.name}</option>)}</select></label> : <label className="settings-field"><span>Sponsor</span><input value={draft.sponsor} onChange={(event) => setDraft({ ...draft, sponsor: event.target.value })} placeholder="Optional" /></label>}{draft.completionType !== "sponsor_approval" && draft.completionType !== "sponsor_upload" && <label className="settings-field"><span>Bearbeiter / Login</span><select value={draft.assigneeId} onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })}><option value="">Nicht zugewiesen</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label>}<label className="settings-field"><span>Fällig</span><input type="date" lang="de" value={draft.due} onChange={(event) => setDraft({ ...draft, due: event.target.value })} /></label></div><div className="create-modal-actions"><button className="btn" type="button" onClick={() => setShowCreate(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={!ready}>Aufgabe speichern</button></div></form></section></div>}
   </>;
 }

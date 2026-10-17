@@ -23,7 +23,7 @@ export async function middleware(request: NextRequest) {
   const isLoginPage = request.nextUrl.pathname === "/login" || request.nextUrl.pathname.startsWith("/login/") || isAdminLoginPage;
   const isAdminPage = request.nextUrl.pathname === "/admin" || request.nextUrl.pathname.startsWith("/admin/");
   const isAuthCallback = request.nextUrl.pathname === "/auth/confirm";
-  const publicPages = new Set(["/", "/landing", "/agb", "/impressum", "/datenschutz", "/kontakt"]);
+  const publicPages = new Set(["/", "/landing", "/demo", "/agb", "/impressum", "/datenschutz", "/kontakt"]);
   const isPublicPage = publicPages.has(request.nextUrl.pathname);
   const isPublicContactApi = request.nextUrl.pathname === "/api/contact";
   const isPublicReferralRoute = request.nextUrl.pathname.startsWith("/r/");

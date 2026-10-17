@@ -58,7 +58,7 @@ export async function authorizeSponsorAccountEvent(eventId: string, sponsorId: s
   const accountIds = (memberships ?? []).map((membership) => membership.account_id);
   if (!accountIds.length) return { user: null, error: "access" as const };
   const { data: assignment, error: assignmentError } = await admin.from("sponsor_event_accounts")
-    .select("event_id").eq("event_id", eventId).eq("sponsor_id", sponsorId).in("account_id", accountIds).maybeSingle();
+    .select("event_id").eq("event_id", eventId).eq("sponsor_id", sponsorId).in("account_id", accountIds).limit(1).maybeSingle();
   if (assignmentError) return { user: null, error: "database" as const };
   if (!assignment) return { user: null, error: "access" as const };
   return { user, error: null };

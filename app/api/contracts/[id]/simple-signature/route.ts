@@ -59,7 +59,7 @@ export async function POST(_request: Request, context: Context) {
       const accountIds = (memberships ?? []).map((row) => row.account_id);
       if (!accountIds.length) return NextResponse.json({ error: "Du hast keinen Zugriff auf diesen Vertrag." }, { status: 403 });
       const { data: link, error: linkError } = await admin.from("sponsor_event_accounts").select("event_id")
-        .eq("event_id", contract.event_id).eq("sponsor_id", contract.sponsor_id).in("account_id", accountIds).maybeSingle();
+        .eq("event_id", contract.event_id).eq("sponsor_id", contract.sponsor_id).in("account_id", accountIds).limit(1).maybeSingle();
       if (linkError) throw linkError;
       if (!link) return NextResponse.json({ error: "Du hast keinen Zugriff auf diesen Vertrag." }, { status: 403 });
       signerRole = "sponsor";

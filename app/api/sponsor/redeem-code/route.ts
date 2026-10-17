@@ -18,8 +18,9 @@ export async function POST(request: Request) {
     if (!/^[0-9a-f]{64}$/.test(code)) return NextResponse.json({ error: "Bitte gib den vollständigen, 64-stelligen Einladungscode ein." }, { status: 400 });
     const { data: memberships, error: membershipError } = await supabase.from("sponsor_account_members").select("account_id").eq("user_id", user.id).order("joined_at", { ascending: true });
     if (membershipError) return NextResponse.json({ error: "Dein Sponsor-Konto konnte nicht geladen werden." }, { status: 500 });
-    const accountId = memberships?.[0]?.account_id;
-    if (!accountId) return NextResponse.json({ error: "Zu deinem Login gehört noch kein Sponsor-Konto. Bitte registriere dich erneut oder wende dich an den Support." }, { status: 409 });
+    // A missing account is initialized atomically by the redemption RPC, only
+    // after it has verified the invitation code.
+    const accountId = memberships?.[0]?.account_id ?? null;
     const { error } = await supabase.rpc("redeem_sponsor_event_code", { invitation_code: code, target_account_id: accountId });
     if (error) {
       console.error("[sponsor/redeem-code] Redemption RPC failed", {

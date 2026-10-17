@@ -85,6 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       : path === "/event-modus" ? "Nachweise vor Ort"
       : path.startsWith("/login") ? "Anmelden"
       : path === "/landing" ? "Sponsoringmanagement für Veranstalter"
+      : path === "/demo" ? "Produktdemo"
       : path === "/passwort-zuruecksetzen" ? "Passwort zurücksetzen"
       : path === "/agb" ? "Allgemeine Geschäftsbedingungen"
       : path === "/impressum" ? "Impressum"
@@ -106,7 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [path]);
 
   if (path.startsWith("/login") || path === "/admin/login" || path === "/onboarding" || path === "/partner" || path === "/sponsor" || path.startsWith("/sponsor/")) return <>{children}</>;
-  if (["/", "/agb", "/impressum", "/datenschutz", "/kontakt", "/landing"].includes(path)) return <>{children}</>;
+  if (["/", "/demo", "/agb", "/impressum", "/datenschutz", "/kontakt", "/landing"].includes(path)) return <>{children}</>;
   const isMobileMode = path === "/event-modus";
   if (isMobileMode) return <>{children}</>;
   return <div className="app-frame">
