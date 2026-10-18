@@ -91,7 +91,7 @@ export default function LibraryPage() {
                 ? await supabase.from("benefit_template_tasks").select("id, benefit_template_id, title, sort_order, completion_type").in("benefit_template_id", templateIds).order("sort_order")
                 : { data: [], error: null };
               if (subtaskError) {
-                return { items: rows.map((block) => ({ ...block, icon: block.icon ?? undefined, origin: "custom" as const, subtasks: [] })), subtasksUnavailable: true };
+                return { items: rows.map((block) => ({ ...block, tasks_per_unit: block.tasks_per_unit !== false, icon: block.icon ?? undefined, origin: "custom" as const, subtasks: [] })), subtasksUnavailable: true };
               }
               const subtasksByTemplate = new Map<string, TemplateSubtask[]>();
               for (const task of subtaskRows ?? []) {
@@ -316,7 +316,112 @@ export default function LibraryPage() {
       </article>)}
       {ready && !libraryError && shown.length === 0 && <EmptyState className="empty-state-fill" title={category === "Alle Bausteine" ? "Noch keine Bausteine" : `Noch keine Bausteine in „${category}“`} description="Erstelle deinen ersten Baustein für wiederverwendbare Sponsoringleistungen." action={<button className="btn btn-primary" type="button" onClick={() => { setDraft({ ...emptyDraft, category: category === "Alle Bausteine" ? defaultCategories[0] : category, icon: defaultIconForCategory(category === "Alle Bausteine" ? defaultCategories[0] : category) }); setEditingBlockId(null); setShowCreate(true); }}><Icon name="plus" size={14}/> Baustein erstellen</button>} />}
     </div>
-    {showCreate && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setShowCreate(false); setEditingBlockId(null); setIconPickerOpen(false); } }}><section className="create-modal block-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-block-title"><div className="create-modal-head"><div><h2 id="create-block-title">{editingBlockId ? "Baustein bearbeiten" : "Baustein erstellen"}</h2><p>{editingBlockId ? "Passe die Angaben für diesen Baustein an." : "Lege eine wiederverwendbare Leistung mit passenden Aufgaben an oder markiere sie als aufgabenfrei."}</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => { setShowCreate(false); setEditingBlockId(null); setIconPickerOpen(false); }}><Icon name="close" size={16}/></button></div><form onSubmit={saveBlock}><aside className="library-info" aria-label="Information zu Vertragsbausteinen"><span className="library-info-icon"><Icon name="layers" size={16}/></span><p>Bei der Zuordnung zu einem Sponsor entstehen aus diesem Baustein die hier festgelegten Aufgaben. Wähle „Keine Aufgabe erforderlich“, wenn die Leistung keine Aufgaben oder Nachweise benötigt.</p></aside><div className="settings-grid"><label className="settings-field settings-field-full"><span>Name *</span><input autoFocus required maxLength={70} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="z. B. Logo auf Event-Website" /></label><label className="settings-field"><span>Kategorie *</span><select value={draft.category} onChange={(event) => { const nextCategory = event.target.value; setDraft({ ...draft, category: nextCategory, icon: defaultIconForCategory(nextCategory) }); }}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label><label className="settings-field"><span>Leistungsart *</span><select value={draft.benefitType} onChange={(event) => setDraft((current) => ({ ...current, benefitType: event.target.value as BenefitType }))}><option value="monetary">Geldleistung</option><option value="in_kind">Sachleistung</option></select></label><div className="settings-field"><span>Icon</span><div className="icon-picker" ref={iconPickerRef}><button className="icon-picker-trigger" type="button" aria-haspopup="true" aria-expanded={iconPickerOpen} aria-label={`Icon auswählen, aktuell ${blockIconLabels[draft.icon] ?? draft.icon}`} onClick={() => setIconPickerOpen((open) => !open)}><span className="icon-picker-current"><span className="block-icon"><Icon name={draft.icon} size={18}/></span><span>{blockIconLabels[draft.icon] ?? draft.icon}</span></span><Icon name="chevron" size={15}/></button>{iconPickerOpen && <div className="icon-picker-options" role="group" aria-label="Verfügbare Icons">{iconNames.map((iconName) => <button key={iconName} type="button" className={`icon-picker-option ${draft.icon === iconName ? "selected" : ""}`} aria-label={blockIconLabels[iconName] ?? iconName} aria-pressed={draft.icon === iconName} title={blockIconLabels[iconName] ?? iconName} onClick={() => { setDraft((current) => ({ ...current, icon: iconName })); setIconPickerOpen(false); }}><Icon name={iconName} size={18}/></button>)}</div>}</div></div><label className="settings-field settings-field-full"><span>Beschreibung *</span><textarea required maxLength={240} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Was beinhaltet diese Leistung?" /></label></div><label className="settings-field settings-field-full benefit-template-material-logistics"><span>Zusätzliche Sachleistung oder Materiallogistik (optional)</span><input maxLength={160} value={draft.materialLogistics} onChange={(event) => setDraft((current) => ({ ...current, materialLogistics: event.target.value }))} placeholder="z. B. Banner beim Sponsor abholen"/><small>Die Vertragsleistung bleibt ihrer Leistungsart zugeordnet. Dieser Eintrag erscheint zusätzlich im Reiter „Sachleistungen“; Bedarfstermin und Zuständigkeit werden bei der Zuordnung zum Event festgelegt.</small></label><label className="settings-field settings-field-full benefit-template-internal-comment"><span>Interner Kommentar (optional)</span><textarea maxLength={500} value={draft.internalComment} onChange={(event) => setDraft((current) => ({ ...current, internalComment: event.target.value }))} placeholder="Hinweis für die Auswahl im Event"/><small>Dieser Kommentar wird Veranstalterinnen und Veranstaltern bei der Auswahl der Leistung angezeigt.</small></label>{draft.subtasks.length === 0 && <div className="benefit-template-main-completion"><label className="settings-field"><span>Abschlussart</span><select value={draft.defaultCompletionType} onChange={(event) => setDraft((current) => ({ ...current, defaultCompletionType: event.target.value as DefaultCompletionType }))}><option value="file_required">Datei-Upload durch Veranstalter</option><option value="organizer_approval">Bestätigung durch Veranstalter</option><option value="none_required">Keine Aufgabe erforderlich</option></select></label></div>}<label className="settings-checkbox benefit-template-task-frequency"><input type="checkbox" checked={draft.tasksPerUnit} onChange={(event) => setDraft((current) => ({ ...current, tasksPerUnit: event.target.checked }))}/><span><b>Aufgabenfolge je Einheit erstellen</b><small>Aktiv: Für jede Anzahl wird eine eigene Aufgabenfolge angelegt. Deaktiviert: Eine Aufgabenfolge gilt für die gesamte vereinbarte Leistung, z. B. eine Aufgabe für 20 Freikarten.</small></span></label><section className="benefit-template-subtasks"><div className="benefit-template-subtasks-heading"><div><b>Unteraufgaben</b><p>Die Aufgaben laufen nacheinander: Jede startet, sobald die vorherige abgeschlossen ist. Bearbeiter und Fälligkeiten kannst du beim Zuordnen im Event für jede Unteraufgabe festlegen.</p><div className="benefit-template-workflow-warning"><b>Beachte bitte:</b><span>Auf eine Datei-Aufgabe des Veranstalters kann keine Sponsor-Freigabe folgen. Nach einer Sponsor-Aufgabe kann eine Veranstalter-Bestätigung oder ein Datei-Upload folgen. Ein Sponsor-Upload kann nicht direkt von einer weiteren Sponsor-Aufgabe gefolgt werden.</span></div></div><button className="btn" type="button" onClick={addDraftSubtask} disabled={subtasksUnavailable}><Icon name="plus" size={14}/> Aufgabe hinzufügen</button></div>{draft.subtasks.length > 0 && <div className="benefit-template-subtask-list">{draft.subtasks.map((task, index) => { const allowed = index === 0 ? completionOptions.filter((option) => option.value !== "sponsor_approval").map((option) => option.value) : allowedCompletionTypesAfter(draft.subtasks[index - 1].completionType); return <div className="benefit-template-subtask-row" key={task.key}><span>{index + 1}</span><div className="benefit-template-subtask-fields"><div className="benefit-template-subtask-title"><label className="settings-field"><span>Aufgabenbezeichnung</span><input aria-label={`Unteraufgabe ${index + 1}`} required maxLength={100} value={task.title} onChange={(event) => updateDraftSubtask(task.key, event.target.value)} placeholder="z. B. Reel abstimmen und veröffentlichen"/></label><small className="subtask-dependency-hint">{index === 0 ? "Startet sofort" : `Startet nach Abschluss von: ${draft.subtasks[index - 1].title || `Unteraufgabe ${index}`}`}</small></div><label className="settings-field"><span>Abschlussart</span><select value={task.completionType} onChange={(event) => setDraft((current) => ({ ...current, subtasks: current.subtasks.map((item) => item.key === task.key ? { ...item, completionType: event.target.value as CompletionType } : item) }))}>{completionOptions.map((option) => <option key={option.value} value={option.value} disabled={!allowed.includes(option.value)}>{option.label}{!allowed.includes(option.value) ? " (nicht möglich)" : ""}</option>)}</select></label></div><button className="icon-button" type="button" aria-label={`Unteraufgabe ${index + 1} entfernen`} onClick={() => removeDraftSubtask(task.key)}><Icon name="trash" size={14}/></button></div>})}{invalidWorkflowTransitionIndex(draft.subtasks) >= 0 && <p className="form-error" role="alert">{invalidWorkflowTransitionIndex(draft.subtasks) === 0 ? "Die erste Unteraufgabe kann keine Sponsor-Freigabe sein, da dafür zuerst ein Dokument vorliegen muss." : "Diese Aufgabenfolge ist nicht möglich. Nach einem Sponsor-Upload kann nur eine Veranstalter-Bestätigung oder ein Datei-Upload folgen."}</p>}</div>}</section><div className="create-modal-actions"><button className="btn" type="button" onClick={() => { setShowCreate(false); setEditingBlockId(null); setIconPickerOpen(false); }}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={!ready || saving}>{saving ? "Wird gespeichert …" : editingBlockId ? "Änderungen speichern" : "Baustein speichern"}</button></div></form></section></div>}
+    {showCreate && (
+      <div className="modal-backdrop" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          setShowCreate(false);
+          setEditingBlockId(null);
+          setIconPickerOpen(false);
+        }
+      }}>
+        <section className="create-modal block-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-block-title">
+          <div className="create-modal-head">
+            <div>
+              <h2 id="create-block-title">{editingBlockId ? "Baustein bearbeiten" : "Baustein erstellen"}</h2>
+              <p>{editingBlockId ? "Passe die Leistung und ihre Aufgabenfolge an." : "Lege eine wiederverwendbare Leistung für deine Sponsoringverträge an."}</p>
+            </div>
+            <button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => {
+              setShowCreate(false);
+              setEditingBlockId(null);
+              setIconPickerOpen(false);
+            }}><Icon name="close" size={16}/></button>
+          </div>
+
+          <form className="block-editor-form" onSubmit={saveBlock}>
+            <aside className="library-info" aria-label="Information zu Vertragsbausteinen">
+              <span className="library-info-icon"><Icon name="layers" size={16}/></span>
+              <p>Aus den Angaben hier entstehen später im Event die vereinbarte Leistung und ihre Aufgaben.</p>
+            </aside>
+
+            <section className="block-editor-section">
+              <header className="block-editor-section-heading">
+                <span>01</span><div><h3>Leistung</h3><p>Grundangaben, die im Vertrag und im Event angezeigt werden.</p></div>
+              </header>
+              <div className="settings-grid">
+                <label className="settings-field settings-field-full"><span>Name *</span><input autoFocus required maxLength={70} value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="z. B. Freikarten oder Logo auf der Event-Website" /></label>
+                <label className="settings-field"><span>Kategorie *</span><select value={draft.category} onChange={(event) => {
+                  const nextCategory = event.target.value;
+                  setDraft((current) => ({ ...current, category: nextCategory, icon: defaultIconForCategory(nextCategory) }));
+                }}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
+                <label className="settings-field"><span>Leistungsart *</span><select value={draft.benefitType} onChange={(event) => setDraft((current) => ({ ...current, benefitType: event.target.value as BenefitType }))}><option value="monetary">Geldleistung</option><option value="in_kind">Sachleistung</option></select></label>
+                <div className="settings-field">
+                  <span>Icon</span>
+                  <div className="icon-picker" ref={iconPickerRef}>
+                    <button className="icon-picker-trigger" type="button" aria-haspopup="true" aria-expanded={iconPickerOpen} aria-label={`Icon auswählen, aktuell ${blockIconLabels[draft.icon] ?? draft.icon}`} onClick={() => setIconPickerOpen((open) => !open)}>
+                      <span className="icon-picker-current"><span className="block-icon"><Icon name={draft.icon} size={18}/></span><span>{blockIconLabels[draft.icon] ?? draft.icon}</span></span><Icon name="chevron" size={15}/>
+                    </button>
+                    {iconPickerOpen && <div className="icon-picker-options" role="group" aria-label="Verfügbare Icons">{iconNames.map((iconName) => <button key={iconName} type="button" className={`icon-picker-option ${draft.icon === iconName ? "selected" : ""}`} aria-label={blockIconLabels[iconName] ?? iconName} aria-pressed={draft.icon === iconName} title={blockIconLabels[iconName] ?? iconName} onClick={() => {
+                      setDraft((current) => ({ ...current, icon: iconName }));
+                      setIconPickerOpen(false);
+                    }}><Icon name={iconName} size={18}/></button>)}</div>}
+                  </div>
+                </div>
+                <label className="settings-field settings-field-full"><span>Beschreibung *</span><textarea required maxLength={240} value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Was ist vereinbart und was erhält der Sponsor?" /></label>
+              </div>
+            </section>
+
+            <section className="block-editor-section block-editor-optional-section">
+              <header className="block-editor-section-heading">
+                <span>02</span><div><h3>Zusätzliche Angaben <small>optional</small></h3><p>Interne Hinweise und Materiallogistik für die spätere Planung.</p></div>
+              </header>
+              <div className="block-editor-extra-fields">
+                <label className="settings-field benefit-template-material-logistics"><span>Materiallogistik</span><input maxLength={160} value={draft.materialLogistics} onChange={(event) => setDraft((current) => ({ ...current, materialLogistics: event.target.value }))} placeholder="z. B. Banner beim Sponsor abholen"/><small>Wird zusätzlich zur Leistung für die interne Planung im Event angezeigt.</small></label>
+                <label className="settings-field benefit-template-internal-comment"><span>Interner Kommentar</span><textarea maxLength={500} value={draft.internalComment} onChange={(event) => setDraft((current) => ({ ...current, internalComment: event.target.value }))} placeholder="Hinweis für die Auswahl dieser Leistung im Event"/><small>Nur Veranstalter sehen diesen Kommentar.</small></label>
+              </div>
+            </section>
+
+            <section className="block-editor-section block-editor-workflow-section">
+              <header className="block-editor-section-heading">
+                <span>03</span><div><h3>Aufgaben &amp; Abschluss</h3><p>Lege fest, wie diese Leistung abgeschlossen und nachgewiesen wird.</p></div>
+              </header>
+              {draft.subtasks.length === 0 && <div className="benefit-template-main-completion block-editor-completion">
+                <label className="settings-field"><span>Abschlussart</span><select value={draft.defaultCompletionType} onChange={(event) => setDraft((current) => ({ ...current, defaultCompletionType: event.target.value as DefaultCompletionType }))}><option value="file_required">Datei-Upload durch Veranstalter</option><option value="organizer_approval">Bestätigung durch Veranstalter</option><option value="none_required">Keine Aufgabe erforderlich</option></select></label>
+                <small>Diese Abschlussart gilt für die gesamte Leistung, solange keine Unteraufgaben angelegt sind.</small>
+              </div>}
+              <label className="settings-checkbox benefit-template-task-frequency"><input type="checkbox" checked={draft.tasksPerUnit} onChange={(event) => setDraft((current) => ({ ...current, tasksPerUnit: event.target.checked }))}/><span><b>Aufgabenfolge je Einheit erstellen</b><small>Aktiv: Für jede vereinbarte Anzahl entsteht eine Aufgabenfolge. Deaktiviert: Eine Aufgabenfolge gilt für die gesamte Menge, z. B. eine Aufgabe für 20 Freikarten.</small></span></label>
+              <div className="benefit-template-subtasks">
+                <div className="benefit-template-subtasks-heading">
+                  <div><b>Unteraufgaben</b><p>Mehrere Schritte werden nacheinander gestartet. Bearbeiter und Fälligkeit legst du später im Event fest.</p></div>
+                  <button className="btn" type="button" onClick={addDraftSubtask} disabled={subtasksUnavailable}><Icon name="plus" size={14}/> Unteraufgabe hinzufügen</button>
+                </div>
+                {subtasksUnavailable && <p className="block-editor-migration-note">Unteraufgaben sind verfügbar, sobald die aktuelle Datenbankmigration eingespielt ist.</p>}
+                <div className="benefit-template-workflow-warning block-editor-workflow-warning"><b>Beachte bitte:</b><span>Datei-Uploads benötigen eine Veranstalter-Freigabe. Erst danach kann eine Sponsor-Freigabe folgen. Eine Sponsor-Freigabe-Aufgabe kann daher niemals direkt auf eine Datei-Aufgabe folgen.</span></div>
+                {draft.subtasks.length > 0 && <div className="benefit-template-subtask-list">{draft.subtasks.map((task, index) => {
+                  const allowed = index === 0 ? completionOptions.filter((option) => option.value !== "sponsor_approval").map((option) => option.value) : allowedCompletionTypesAfter(draft.subtasks[index - 1].completionType);
+                  return <div className="benefit-template-subtask-row" key={task.key}>
+                    <span className="block-editor-subtask-number">{index + 1}</span>
+                    <div className="benefit-template-subtask-fields">
+                      <div className="benefit-template-subtask-title">
+                        <label className="settings-field"><span>Aufgabenbezeichnung</span><input aria-label={`Unteraufgabe ${index + 1}`} required maxLength={100} value={task.title} onChange={(event) => updateDraftSubtask(task.key, event.target.value)} placeholder="z. B. Logo abstimmen und veröffentlichen"/></label>
+                        <small className="subtask-dependency-hint">{index === 0 ? "Startet sofort" : `Startet nach Abschluss von: ${draft.subtasks[index - 1].title || `Unteraufgabe ${index}`}`}</small>
+                      </div>
+                      <label className="settings-field"><span>Abschlussart</span><select value={task.completionType} onChange={(event) => setDraft((current) => ({ ...current, subtasks: current.subtasks.map((item) => item.key === task.key ? { ...item, completionType: event.target.value as CompletionType } : item) }))}>{completionOptions.map((option) => <option key={option.value} value={option.value} disabled={!allowed.includes(option.value)}>{option.label}{!allowed.includes(option.value) ? " (nicht möglich)" : ""}</option>)}</select></label>
+                    </div>
+                    <button className="icon-button" type="button" aria-label={`Unteraufgabe ${index + 1} entfernen`} onClick={() => removeDraftSubtask(task.key)}><Icon name="trash" size={14}/></button>
+                  </div>;
+                })}</div>}
+                {invalidWorkflowTransitionIndex(draft.subtasks) >= 0 && <p className="form-error" role="alert">{invalidWorkflowTransitionIndex(draft.subtasks) === 0 ? "Die erste Unteraufgabe kann keine Sponsor-Freigabe sein, da dafür zuerst ein Dokument vorliegen muss." : "Diese Aufgabenfolge ist nicht möglich. Nach einem Sponsor-Upload kann nur eine Veranstalter-Bestätigung oder ein Datei-Upload folgen."}</p>}
+              </div>
+            </section>
+
+            <div className="create-modal-actions block-editor-actions">
+              <button className="btn" type="button" onClick={() => { setShowCreate(false); setEditingBlockId(null); setIconPickerOpen(false); }}>Abbrechen</button>
+              <button className="btn btn-primary" type="submit" disabled={!ready || saving}>{saving ? "Wird gespeichert …" : editingBlockId ? "Änderungen speichern" : "Baustein speichern"}</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    )}
     {deletingBlock && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeletingBlock(null); }}><section className="create-modal block-delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-block-title"><div className="create-modal-head"><div><h2 id="delete-block-title">Baustein löschen?</h2><p>„{deletingBlock.title}“ wird aus der Bibliothek entfernt. Bereits erstellte Vertragsleistungen bleiben erhalten.</p></div></div><div className="create-modal-actions"><button className="btn" type="button" onClick={() => setDeletingBlock(null)}>Abbrechen</button><button className="btn block-delete-confirm" type="button" onClick={confirmDeleteBlock}>Baustein löschen</button></div></section></div>}
   </main>;
 }

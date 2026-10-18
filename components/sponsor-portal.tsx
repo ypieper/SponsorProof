@@ -58,6 +58,7 @@ const demoPortalEvent: PortalEvent = {
       material_logistics: null,
       description: "Platzierung des Sponsors auf der Event-Website",
       quantity: 1,
+      tasks_per_unit: true,
       due_at: "2027-06-01",
       status: "In Bearbeitung",
       units: [{ instance: 1, needed_at: "2027-06-01", status: "In Bearbeitung", hasSponsorApproval: true, tasks: [
