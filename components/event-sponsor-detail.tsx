@@ -22,8 +22,8 @@ import { EventSponsorInvoice } from "@/components/event-sponsor-invoice";
 type CompletionType = "file_required" | "organizer_approval" | "sponsor_approval" | "sponsor_upload";
 type BenefitType = "monetary" | "in_kind";
 type TemplateSubtask = { id: string; title: string; sort_order: number; completion_type: CompletionType };
-type Block = { id?: string; title: string; category: string; description: string; detail?: string; benefit_type?: BenefitType; material_logistics?: string | null; internal_comment?: string | null; default_completion_type?: "file_required" | "organizer_approval" | "none_required"; subtasks?: TemplateSubtask[] };
-type EventBenefit = { id?: string; title: string; category: string; description: string; detail?: string; benefitType?: BenefitType; materialLogistics?: string; quantity: number; status: string; evidence: string; completionRequired?: boolean; sponsorId: string; eventId: string; dueAt?: string };
+type Block = { id?: string; title: string; category: string; description: string; detail?: string; benefit_type?: BenefitType; material_logistics?: string | null; internal_comment?: string | null; default_completion_type?: "file_required" | "organizer_approval" | "none_required"; tasks_per_unit?: boolean; subtasks?: TemplateSubtask[] };
+type EventBenefit = { id?: string; title: string; category: string; description: string; detail?: string; benefitType?: BenefitType; materialLogistics?: string; quantity: number; tasksPerUnit: boolean; status: string; evidence: string; completionRequired?: boolean; sponsorId: string; eventId: string; dueAt?: string };
 type AssignedTask = { id: string; title: string; benefit_id: string | null; source: string; status: string; assigned_to: string | null; assigned_to_sponsor: boolean; due_at: string | null; completion_type: CompletionType; workflow_instance: number; workflow_order: number | null; template_task_id: string | null };
 type OrganizerMember = { user_id: string; email: string; first_name: string; last_name: string; full_name: string; role: "owner" | "member" };
 type StoredGeneratedContracts = { pdf?: ContractDocument; docx?: ContractDocument };
@@ -40,7 +40,7 @@ function normalizeBenefitTitle(title: string) {
 }
 
 function storedBenefitToEventBenefit(benefit: StoredBenefit): EventBenefit {
-  return { id: benefit.id, title: benefit.title, category: benefit.category, description: benefit.description, detail: benefit.detail, benefitType: benefit.benefitType ?? "monetary", materialLogistics: benefit.materialLogistics ?? "", quantity: benefit.quantity, status: benefit.status, evidence: benefit.evidence, completionRequired: benefit.completionRequired, sponsorId: benefit.sponsorId ?? "", eventId: benefit.eventId, dueAt: benefit.dueAt };
+  return { id: benefit.id, title: benefit.title, category: benefit.category, description: benefit.description, detail: benefit.detail, benefitType: benefit.benefitType ?? "monetary", materialLogistics: benefit.materialLogistics ?? "", quantity: benefit.quantity, tasksPerUnit: benefit.tasksPerUnit, status: benefit.status, evidence: benefit.evidence, completionRequired: benefit.completionRequired, sponsorId: benefit.sponsorId ?? "", eventId: benefit.eventId, dueAt: benefit.dueAt };
 }
 
 function storedTaskToAssignedTask(task: StoredTaskRecord): AssignedTask {
@@ -235,7 +235,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
         const supabase = createClient();
         const { data, error } = await supabase
           .from("benefit_templates")
-          .select("id, title, category, description, benefit_type, material_logistics, internal_comment, default_completion_type")
+          .select("id, title, category, description, benefit_type, material_logistics, internal_comment, default_completion_type, tasks_per_unit")
           .order("created_at", { ascending: true });
         if (error) throw error;
         const templateIds = (data ?? []).map((item) => item.id);
@@ -263,7 +263,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
           subtasksByTemplate.set(task.benefit_template_id, current);
         }
         if (!cancelled) {
-          const templates: Block[] = (data ?? []).map((item) => ({ ...item, benefit_type: item.benefit_type ?? "monetary", material_logistics: item.material_logistics ?? null, default_completion_type: item.default_completion_type ?? "file_required", subtasks: subtasksByTemplate.get(item.id) ?? [] }));
+          const templates: Block[] = (data ?? []).map((item) => ({ ...item, benefit_type: item.benefit_type ?? "monetary", material_logistics: item.material_logistics ?? null, default_completion_type: item.default_completion_type ?? "file_required", tasks_per_unit: item.tasks_per_unit !== false, subtasks: subtasksByTemplate.get(item.id) ?? [] }));
           setAvailableBlocks(templates);
           setBlocksLoadError("");
           setBlocksLoadWarning(warning);
@@ -289,7 +289,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   const filteredBenefits = benefits.filter((benefit) => benefitTypeFilter === "all" || (benefitTypeFilter === "in_kind" ? benefit.benefitType === "in_kind" || Boolean(benefit.materialLogistics?.trim()) : benefit.benefitType !== "in_kind" && !benefit.materialLogistics?.trim()));
   const quantityBoundAssignedTasks = assignedTasks.filter((task) => {
     const benefit = benefits.find((item) => item.id === task.benefit_id);
-    return !benefit || task.workflow_instance <= benefit.quantity;
+    return !benefit || task.workflow_instance <= (benefit.tasksPerUnit ? benefit.quantity : 1);
   });
   const existingBenefitTitles = new Set(benefits.map((benefit) => normalizeBenefitTitle(benefit.title)));
   const legacyBenefitTaskIds = benefits.filter((benefit) => benefit.completionRequired !== false && !quantityBoundAssignedTasks.some((task) => task.source === "Leistung" && task.benefit_id === benefit.id)).map((benefit) => benefitTaskId(eventId, benefit));
@@ -297,7 +297,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   const completedTasks = taskIds.filter((taskId) => evidenceTaskIds.includes(taskId) || quantityBoundAssignedTasks.some((task) => task.id === taskId && task.status === "Erledigt") || benefits.some((benefit) => benefitTaskId(eventId, benefit) === taskId && Boolean(benefit.evidence && benefit.evidence !== "Noch kein Nachweis"))).length;
   const taskProgress = taskIds.length ? Math.round(completedTasks / taskIds.length * 100) : 0;
   const contractStatus = !signedOn ? "Offen" : taskIds.length > 0 && completedTasks === taskIds.length ? "Erledigt" : "In Arbeit";
-  const editingTasks = editingBenefit ? assignedTasks.filter((task) => task.source === "Leistung" && task.benefit_id === editingBenefit.id && task.workflow_instance <= editingBenefit.quantity).sort((a, b) => (a.workflow_instance - b.workflow_instance) || (a.workflow_order ?? 0) - (b.workflow_order ?? 0)) : [];
+  const editingTasks = editingBenefit ? assignedTasks.filter((task) => task.source === "Leistung" && task.benefit_id === editingBenefit.id && task.workflow_instance <= (editingBenefit.tasksPerUnit ? editingBenefit.quantity : 1)).sort((a, b) => (a.workflow_instance - b.workflow_instance) || (a.workflow_order ?? 0) - (b.workflow_order ?? 0)) : [];
   const activeBlock = availableBlocks.find((block) => blockKey(block) === editingBlockKey && selectedBlocks.includes(editingBlockKey)) ?? availableBlocks.find((block) => selectedBlocks.includes(blockKey(block))) ?? null;
 
   function updateNetContractValue(value: string) {
@@ -427,8 +427,9 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       setMessage("Die Aufgaben konnten nicht mit der Leistungsanzahl abgeglichen werden. Bitte aktualisiere die Datenbankmigrationen und versuche es erneut.");
       return;
     }
-    const removedTasks = tasks.filter((task) => task.workflow_instance > nextQuantity);
-    const remainingTasks = tasks.filter((task) => task.workflow_instance <= nextQuantity);
+    const nextWorkflowCount = editingBenefit.tasksPerUnit ? nextQuantity : 1;
+    const removedTasks = tasks.filter((task) => task.workflow_instance > nextWorkflowCount);
+    const remainingTasks = tasks.filter((task) => task.workflow_instance <= nextWorkflowCount);
     const firstInstance = tasks.length ? Math.min(...tasks.map((task) => task.workflow_instance)) : null;
     const existingBlueprints = firstInstance === null ? [] : tasks
       .filter((task) => task.workflow_instance === firstInstance)
@@ -455,13 +456,13 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       assignedTo: null,
     })) : [];
     const taskBlueprints = existingBlueprints.length ? existingBlueprints : templateBlueprints;
-    if (editingBenefit.completionRequired !== false && !taskBlueprints.length && nextQuantity > editingBenefit.quantity) {
+    if (editingBenefit.completionRequired !== false && !taskBlueprints.length && nextWorkflowCount > (editingBenefit.tasksPerUnit ? editingBenefit.quantity : 1)) {
       setMessage("Die zugehörigen Aufgaben konnten nicht ermittelt werden. Bitte lade die Seite neu und versuche es erneut.");
       return;
     }
     const taskBlueprintKey = (task: { title: string; templateTaskId?: string; workflowOrder?: number }) => task.templateTaskId ? `template:${task.templateTaskId}` : `order:${task.workflowOrder ?? "none"}:${task.title}`;
     const existingTaskKeys = new Set(tasks.map((task) => `${task.workflow_instance}:${taskBlueprintKey({ title: task.title, templateTaskId: task.template_task_id ?? undefined, workflowOrder: task.workflow_order ?? undefined })}`));
-    const addedTaskInputs: TaskInput[] = editingBenefit.completionRequired === false ? [] : Array.from({ length: nextQuantity }, (_, index) => index + 1)
+    const addedTaskInputs: TaskInput[] = editingBenefit.completionRequired === false ? [] : Array.from({ length: nextWorkflowCount }, (_, index) => index + 1)
       .flatMap((workflowInstance) => taskBlueprints.filter((blueprint) => !existingTaskKeys.has(`${workflowInstance}:${taskBlueprintKey(blueprint)}`)).map((task) => {
         const value = task.id ? taskEditValues[task.id] ?? { dueAt: task.dueAt ?? "", assigneeId: task.assignedToSponsor ? SPONSOR_ASSIGNEE : task.assignedTo ?? "" } : { dueAt: task.dueAt ?? "", assigneeId: task.assignedToSponsor ? SPONSOR_ASSIGNEE : "" };
         const assignedToSponsor = task.completionType === "sponsor_upload" || (task.completionType !== "sponsor_approval" && value.assigneeId === SPONSOR_ASSIGNEE);
@@ -566,6 +567,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
         category: block.category,
         description: block.description,
         quantity: Number(benefitQuantities[blockKey(block)] ?? "1"),
+        tasksPerUnit: block.tasks_per_unit !== false,
         status: block.default_completion_type === "none_required" ? "Keine Aufgaben vorgesehen" : "Offen",
         evidence: "Noch kein Nachweis",
         completionRequired: block.default_completion_type !== "none_required",
@@ -595,6 +597,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
           evidence: benefit.evidence,
           completionRequired: benefit.completionRequired,
           quantity: benefit.quantity,
+          tasksPerUnit: benefit.tasksPerUnit,
           dueAt: benefit.dueAt,
       })));
       if (result.error) throw result.error;
@@ -602,7 +605,8 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       const taskInputs = eligible.flatMap((block) => {
         const benefit = savedAdditions.find((item) => normalizeBenefitTitle(item.title) === normalizeBenefitTitle(block.title));
         if (!benefit?.id) return [];
-        return Array.from({ length: benefit.quantity }, (_, instanceIndex) => tasksForBlock(block).map((task) => {
+        const workflowCount = benefit.tasksPerUnit ? benefit.quantity : 1;
+        return Array.from({ length: workflowCount }, (_, instanceIndex) => tasksForBlock(block).map((task) => {
           const key = subtaskKey(block, task);
           return {
             title: task.title,
@@ -1098,7 +1102,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
               <div className="add-benefit-picker-active-title"><b>{activeBlock.title}</b><span>{activeBlock.category} · {activeBlock.benefit_type === "in_kind" ? "Sachleistung" : "Geldleistung"}</span></div>
               {activeBlock.internal_comment && <p className="add-benefit-internal-comment">Interner Kommentar: {activeBlock.internal_comment}</p>}
               {activeBlock.material_logistics && <p className="add-benefit-logistics">Sachleistung: {activeBlock.material_logistics}</p>}
-              <div className="add-benefit-assignment-fields"><label className="settings-field"><span>Anzahl</span><input type="number" min="1" step="1" required value={benefitQuantities[blockKey(activeBlock)] ?? "1"} onChange={(event) => setBenefitQuantities((current) => ({ ...current, [blockKey(activeBlock)]: event.target.value }))}/></label></div>
+              <div className="add-benefit-assignment-fields"><label className="settings-field"><span>Anzahl</span><input type="number" min="1" step="1" required value={benefitQuantities[blockKey(activeBlock)] ?? "1"} onChange={(event) => setBenefitQuantities((current) => ({ ...current, [blockKey(activeBlock)]: event.target.value }))}/></label></div><small className="add-benefit-task-frequency-hint">{activeBlock.tasks_per_unit === false ? "Eine Aufgabenfolge gilt für die gesamte vereinbarte Anzahl." : "Für jede Einheit wird eine eigene Aufgabenfolge angelegt."}</small>
               <div className="add-benefit-subtasks"><b>{activeBlock.subtasks?.length ? "Unteraufgaben · werden nacheinander bearbeitet" : activeBlock.default_completion_type === "none_required" ? "Keine Aufgabe erforderlich" : "Aufgabe"}</b>{activeBlock.default_completion_type === "none_required" && !activeBlock.subtasks?.length ? <p>Diese Leistung wird ohne Aufgaben angelegt.</p> : (() => { const blockTasks = tasksForBlock(activeBlock); const firstInternalTaskIndex = blockTasks.findIndex((task) => task.completion_type !== "sponsor_approval"); return blockTasks.map((task, index) => {
                 const taskKey = subtaskKey(activeBlock, task);
                 const sponsorCompletesTask = task.completion_type === "sponsor_approval" || task.completion_type === "sponsor_upload";

@@ -24,7 +24,7 @@ type PortalContract = {
 type PortalFile = { id: string; file_name: string; content_type: string; created_at: string; url: string };
 type PortalTask = { id: string; benefit_id: string | null; title: string; due_at: string | null; planned_publish_date: string | null; status: string; completion_type: string; requires_sponsor_approval: boolean; assigned_to_sponsor: boolean; sponsor_approval_status: string; sponsor_approved_at: string | null; ready: boolean; workflow_order: number | null; workflow_instance: number; files: PortalFile[] };
 type PortalStandaloneTask = { id: string; title: string; due_at: string | null; status: string; completion_type: string; requires_sponsor_approval: boolean; sponsor_approval_status: string; sponsor_approved_at: string | null; ready: boolean; files: PortalFile[] };
-type PortalBenefit = { id: string; title: string; benefit_type: "monetary" | "in_kind"; material_logistics: string | null; description: string; quantity: number; due_at: string | null; status: "Offen" | "In Bearbeitung" | "Abgeschlossen"; units: Array<{ instance: number; needed_at: string | null; status: "Offen" | "In Bearbeitung" | "Abgeschlossen"; hasSponsorApproval: boolean; tasks: PortalTask[] }> };
+type PortalBenefit = { id: string; title: string; benefit_type: "monetary" | "in_kind"; material_logistics: string | null; description: string; quantity: number; tasks_per_unit: boolean; due_at: string | null; status: "Offen" | "In Bearbeitung" | "Abgeschlossen"; units: Array<{ instance: number; needed_at: string | null; status: "Offen" | "In Bearbeitung" | "Abgeschlossen"; hasSponsorApproval: boolean; tasks: PortalTask[] }> };
 type PortalApproval = PortalTask;
 type PortalPartnership = { sponsor_id: string; sponsor_name: string; tasks: PortalStandaloneTask[]; contracts: PortalContract[]; benefits: PortalBenefit[] };
 type PortalEvent = { id: string; title: string; start_date: string | null; end_date: string | null; location: string; organizer_logo_url: string | null; contact_first_name: string; contact_last_name: string; contact_email: string; contact_phone: string; signature_addon_enabled: boolean; sponsor_assignments: PortalPartnership[] };
@@ -92,13 +92,14 @@ function SponsorBenefits({ benefits }: { benefits: PortalBenefit[] }) {
     <div className="sponsor-portal-tab-heading"><h2>Leistungen</h2><p>Hier siehst du den Fortschritt deiner vereinbarten Leistungen.</p></div>
     <div className="sponsor-portal-agreed-benefits">{benefits.map((benefit) => {
       const quantity = Math.max(1, benefit.quantity || 1);
-      const units = benefit.units.slice(0, quantity);
-      const completed = Math.min(quantity, units.filter((unit) => unit.status === "Abgeschlossen").length);
-      const progress = Math.round(completed / quantity * 100);
+      const workflowCount = benefit.tasks_per_unit ? quantity : 1;
+      const units = benefit.units.slice(0, workflowCount);
+      const completed = Math.min(workflowCount, units.filter((unit) => unit.status === "Abgeschlossen").length);
+      const progress = Math.round(completed / workflowCount * 100);
       return <article className="sponsor-portal-agreed-benefit" key={benefit.id}>
-        <header><div><span className="sponsor-benefit-type">{benefit.benefit_type === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><b>{benefit.title}</b><span>{[benefit.description, `Anzahl: ${quantity}`].filter(Boolean).join(" · ")}</span></div><strong>{completed} von {quantity} abgeschlossen</strong></header>
-        <div className="sponsor-portal-benefit-progress" role="progressbar" aria-label={`Fortschritt ${benefit.title}`} aria-valuemin={0} aria-valuemax={quantity} aria-valuenow={completed}><span style={{ width: `${progress}%` }}/></div>
-        {quantity > 1 && <div className="sponsor-portal-benefit-progress-units">{units.map((unit) => <span className={unit.status === "Abgeschlossen" ? "done" : unit.status === "In Bearbeitung" ? "progress" : ""} key={unit.instance}>Leistung {unit.instance}: {unit.status}</span>)}</div>}
+        <header><div><span className="sponsor-benefit-type">{benefit.benefit_type === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><b>{benefit.title}</b><span>{[benefit.description, `Anzahl: ${quantity}`].filter(Boolean).join(" · ")}</span></div><strong>{completed} von {workflowCount} Aufgabenfolgen abgeschlossen</strong></header>
+        <div className="sponsor-portal-benefit-progress" role="progressbar" aria-label={`Fortschritt ${benefit.title}`} aria-valuemin={0} aria-valuemax={workflowCount} aria-valuenow={completed}><span style={{ width: `${progress}%` }}/></div>
+        {workflowCount > 1 && <div className="sponsor-portal-benefit-progress-units">{units.map((unit) => <span className={unit.status === "Abgeschlossen" ? "done" : unit.status === "In Bearbeitung" ? "progress" : ""} key={unit.instance}>Leistung {unit.instance}: {unit.status}</span>)}</div>}
       </article>;
     })}</div>
   </section>;

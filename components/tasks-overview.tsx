@@ -14,7 +14,7 @@ import { SponsorGroup } from "@/components/sponsor-group";
 
 type SponsorTaskFeedback = { id: string; decision: string; comment: string; created_at: string };
 type OrganizerTaskFeedback = { id: string; decision: string; comment: string; created_at: string };
-type Task = { id: string; title: string; sponsor: string; sponsorId: string; due: string; dueAt?: string; status: "Offen" | "Erledigt"; eventId: string; eventTitle: string; source: "Leistung" | "Manuell"; storedTask?: boolean; benefitId?: string; benefitTitle?: string; benefitQuantity?: number; benefitType?: "monetary" | "in_kind"; workflowOrder?: number; workflowInstance?: number; completionType?: CompletionType; blockedBy?: string; assignee?: string; assigneeId?: string; assignedToSponsor?: boolean; publishReady?: boolean; sponsorApprovalStatus?: string; requiresSponsorApproval?: boolean; sponsorFeedback?: SponsorTaskFeedback[]; organizerFeedback?: OrganizerTaskFeedback[] };
+type Task = { id: string; title: string; sponsor: string; sponsorId: string; due: string; dueAt?: string; status: "Offen" | "Erledigt"; eventId: string; eventTitle: string; source: "Leistung" | "Manuell"; storedTask?: boolean; benefitId?: string; benefitTitle?: string; benefitQuantity?: number; benefitTasksPerUnit?: boolean; benefitType?: "monetary" | "in_kind"; workflowOrder?: number; workflowInstance?: number; completionType?: CompletionType; blockedBy?: string; assignee?: string; assigneeId?: string; assignedToSponsor?: boolean; publishReady?: boolean; sponsorApprovalStatus?: string; requiresSponsorApproval?: boolean; sponsorFeedback?: SponsorTaskFeedback[]; organizerFeedback?: OrganizerTaskFeedback[] };
 
 function applyWorkflowDependencies(tasks: Task[]): Task[] {
   const blockers = new Map<string, string>();
@@ -266,7 +266,7 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
         const quantityBoundTasks = storedTasks.filter((task) => {
           if (task.source !== "Leistung" || !task.benefit_id) return true;
           const benefit = benefitsById.get(task.benefit_id);
-          return !benefit || task.workflow_instance <= benefit.quantity;
+          return !benefit || task.workflow_instance <= (benefit.tasksPerUnit ? benefit.quantity : 1);
         });
         const assignedBenefitIds = new Set(quantityBoundTasks.filter((task) => task.source === "Leistung" && task.benefit_id).map((task) => task.benefit_id as string));
         const legacyBenefitTasks: Task[] = (benefitResult.data ?? []).filter((benefit) => benefit.completionRequired !== false && !assignedBenefitIds.has(benefit.id)).map((benefit) => ({ id: `benefit-${benefit.id}`, title: benefit.title, sponsor: sponsorNameMap[benefit.sponsorId ?? ""] ?? "—", sponsorId: benefit.sponsorId ?? "", due: benefit.dueAt ? formatDue(benefit.dueAt) : "—", dueAt: benefit.dueAt, status: (evidenceMap[`benefit-${benefit.id}`] || benefit.status === "Erfüllt" || benefit.status === "Erledigt" ? "Erledigt" : "Offen"), eventId: benefit.eventId, eventTitle: eventNameMap[benefit.eventId] ?? "Event nicht gefunden", source: "Leistung", benefitType: benefit.benefitType }));
@@ -284,7 +284,7 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
         for (const feedback of feedbackResult.data ?? []) feedbackByTask.set(feedback.task_id, [...(feedbackByTask.get(feedback.task_id) ?? []), feedback as SponsorTaskFeedback]);
         const organizerFeedbackByTask: Record<string, OrganizerTaskFeedback[]> = {};
         for (const feedback of organizerFeedbackResult.data ?? []) organizerFeedbackByTask[feedback.task_id] = [...(organizerFeedbackByTask[feedback.task_id] ?? []), feedback as OrganizerTaskFeedback];
-        const mappedTasks: Task[] = quantityBoundTasks.filter((task) => task.source === "Leistung" || task.source === "Manuell").map((task) => ({ id: task.id, title: task.title, sponsor: sponsorNameMap[task.sponsor_id ?? ""] ?? task.sponsor_name ?? "—", sponsorId: task.sponsor_id ?? "", due: task.due_at ? formatDue(task.due_at) : "—", dueAt: task.due_at ?? undefined, status: task.status === "Erledigt" ? "Erledigt" : "Offen", eventId: task.event_id ?? "", eventTitle: eventNameMap[task.event_id ?? ""] ?? "Keinem Event zugeordnet", source: task.source as Task["source"], storedTask: true, benefitId: task.benefit_id ?? undefined, benefitTitle: task.benefit_id ? benefitsById.get(task.benefit_id)?.title : undefined, benefitQuantity: task.benefit_id ? benefitsById.get(task.benefit_id)?.quantity : undefined, benefitType: task.benefit_id ? benefitsById.get(task.benefit_id)?.benefitType : undefined, workflowOrder: task.workflow_order ?? undefined, workflowInstance: task.workflow_instance ?? undefined, completionType: task.completion_type, assignee: task.assigned_to_sponsor || task.completion_type === "sponsor_upload" || task.completion_type === "sponsor_approval" || task.requires_sponsor_approval ? "Sponsor" : task.assigned_to ? memberEmails.get(task.assigned_to) : undefined, assigneeId: task.assigned_to ?? undefined, assignedToSponsor: task.assigned_to_sponsor, publishReady: task.publish_ready, sponsorApprovalStatus: task.sponsor_approval_status, requiresSponsorApproval: task.requires_sponsor_approval, sponsorFeedback: feedbackByTask.get(task.id) ?? [], organizerFeedback: organizerFeedbackByTask[task.id] ?? [] }));
+        const mappedTasks: Task[] = quantityBoundTasks.filter((task) => task.source === "Leistung" || task.source === "Manuell").map((task) => ({ id: task.id, title: task.title, sponsor: sponsorNameMap[task.sponsor_id ?? ""] ?? task.sponsor_name ?? "—", sponsorId: task.sponsor_id ?? "", due: task.due_at ? formatDue(task.due_at) : "—", dueAt: task.due_at ?? undefined, status: task.status === "Erledigt" ? "Erledigt" : "Offen", eventId: task.event_id ?? "", eventTitle: eventNameMap[task.event_id ?? ""] ?? "Keinem Event zugeordnet", source: task.source as Task["source"], storedTask: true, benefitId: task.benefit_id ?? undefined, benefitTitle: task.benefit_id ? benefitsById.get(task.benefit_id)?.title : undefined, benefitQuantity: task.benefit_id ? benefitsById.get(task.benefit_id)?.quantity : undefined, benefitTasksPerUnit: task.benefit_id ? benefitsById.get(task.benefit_id)?.tasksPerUnit : undefined, benefitType: task.benefit_id ? benefitsById.get(task.benefit_id)?.benefitType : undefined, workflowOrder: task.workflow_order ?? undefined, workflowInstance: task.workflow_instance ?? undefined, completionType: task.completion_type, assignee: task.assigned_to_sponsor || task.completion_type === "sponsor_upload" || task.completion_type === "sponsor_approval" || task.requires_sponsor_approval ? "Sponsor" : task.assigned_to ? memberEmails.get(task.assigned_to) : undefined, assigneeId: task.assigned_to ?? undefined, assignedToSponsor: task.assigned_to_sponsor, publishReady: task.publish_ready, sponsorApprovalStatus: task.sponsor_approval_status, requiresSponsorApproval: task.requires_sponsor_approval, sponsorFeedback: feedbackByTask.get(task.id) ?? [], organizerFeedback: organizerFeedbackByTask[task.id] ?? [] }));
         setItems(applyWorkflowDependencies([...legacyBenefitTasks, ...mappedTasks]));
       } catch {
         setMessage("Gespeicherte Aufgaben konnten nicht geladen werden.");
@@ -641,11 +641,11 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
   const workflowItems = filteredItems.filter((task) => task.storedTask && task.benefitId && task.workflowOrder != null);
   const workflowGroups = [...workflowItems.reduce((groups, task) => {
     const key = task.benefitId!;
-    const group = groups.get(key) ?? { key, benefitId: task.benefitId!, title: task.benefitTitle ?? "Leistung", quantity: task.benefitQuantity ?? 1, benefitType: task.benefitType, tasks: [] as Task[] };
+    const group = groups.get(key) ?? { key, benefitId: task.benefitId!, title: task.benefitTitle ?? "Leistung", quantity: task.benefitQuantity ?? 1, tasksPerUnit: task.benefitTasksPerUnit !== false, benefitType: task.benefitType, tasks: [] as Task[] };
     group.tasks.push(task);
     groups.set(key, group);
     return groups;
-  }, new Map<string, { key: string; benefitId: string; title: string; quantity: number; benefitType?: Task["benefitType"]; tasks: Task[] }>()).values()].map((group) => ({ ...group, tasks: group.tasks.filter((task) => !hideCompleted || task.status !== "Erledigt") })).filter((group) => group.tasks.length > 0);
+  }, new Map<string, { key: string; benefitId: string; title: string; quantity: number; tasksPerUnit: boolean; benefitType?: Task["benefitType"]; tasks: Task[] }>()).values()].map((group) => ({ ...group, tasks: group.tasks.filter((task) => !hideCompleted || task.status !== "Erledigt") })).filter((group) => group.tasks.length > 0);
   const groupedTaskIds = new Set(workflowItems.map((task) => task.id));
   const standaloneItems = filteredItems.filter((task) => !groupedTaskIds.has(task.id) && (!hideCompleted || task.status !== "Erledigt"));
   const standaloneTaskIds = new Set(standaloneItems.map((task) => task.id));
@@ -698,11 +698,11 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
   async function syncBenefitStatus(benefitId: string) {
     const [{ data, error }, benefitResult] = await Promise.all([
       fetchStoredTasks(),
-      createClient().from("benefits").select("quantity").eq("id", benefitId).maybeSingle(),
+      createClient().from("benefits").select("quantity, tasks_per_unit").eq("id", benefitId).maybeSingle(),
     ]);
     if (error) throw error;
     if (benefitResult.error) throw benefitResult.error;
-    const quantity = benefitResult.data?.quantity ?? Number.MAX_SAFE_INTEGER;
+    const quantity = benefitResult.data?.tasks_per_unit === false ? 1 : benefitResult.data?.quantity ?? Number.MAX_SAFE_INTEGER;
     const benefitTasks = (data ?? []).filter((task) => task.benefit_id === benefitId && task.source === "Leistung" && task.workflow_instance <= quantity);
     if (!benefitTasks.length) return;
     const status = benefitTasks.every((task) => task.status === "Erledigt") ? "Erfüllt" : "Offen";
@@ -719,12 +719,12 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
         const allTasks = items.filter((task) => task.benefitId === group.benefitId && task.workflowOrder != null);
         const instances = [...new Set(group.tasks.map((task) => task.workflowInstance ?? 1))].sort((a, b) => a - b);
         return <section className="benefit-task-group" key={group.key} aria-label={`Aufgaben zu ${group.title}`}>
-          <header className="benefit-task-group-heading"><div><span className="task-source derived">{group.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><h3>{group.title}</h3>{group.quantity > 1 && <span className="benefit-task-quantity">{group.quantity} Einzelleistungen</span>}<small>{group.tasks[0]?.sponsor}{group.tasks[0]?.eventTitle ? ` · ${group.tasks[0].eventTitle}` : ""}</small></div><Status value={workflowStatus(allTasks)}/></header>
+          <header className="benefit-task-group-heading"><div><span className="task-source derived">{group.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><h3>{group.title}</h3>{group.quantity > 1 && <span className="benefit-task-quantity">{group.tasksPerUnit ? `${group.quantity} Einzelleistungen` : `Eine Aufgabenfolge für ${group.quantity} Einheiten`}</span>}<small>{group.tasks[0]?.sponsor}{group.tasks[0]?.eventTitle ? ` · ${group.tasks[0].eventTitle}` : ""}</small></div><Status value={workflowStatus(allTasks)}/></header>
           <div className="benefit-task-instances">{instances.map((instance) => {
             const instanceTasks = group.tasks.filter((task) => (task.workflowInstance ?? 1) === instance).sort((a, b) => (a.workflowOrder ?? 0) - (b.workflowOrder ?? 0));
             const allInstanceTasks = allTasks.filter((task) => (task.workflowInstance ?? 1) === instance);
             return <details className="benefit-task-instance" key={instance}>
-              <summary><span>{group.quantity > 1 ? `Leistung ${instance} von ${group.quantity}` : "Details"}</span>{allInstanceTasks.length > 1 && <Status value={workflowStatus(allInstanceTasks)}/>}</summary>
+              <summary><span>{group.tasksPerUnit && group.quantity > 1 ? `Leistung ${instance} von ${group.quantity}` : "Details"}</span>{allInstanceTasks.length > 1 && <Status value={workflowStatus(allInstanceTasks)}/>}</summary>
               <div className="benefit-task-subtasks">{instanceTasks.map((task) => {
                 return renderTaskDetailRow(task, false, allInstanceTasks.length > 1);
               })}</div>

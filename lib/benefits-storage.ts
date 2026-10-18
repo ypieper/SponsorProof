@@ -12,6 +12,7 @@ export type StoredBenefit = {
   description: string;
   detail: string;
   quantity: number;
+  tasksPerUnit: boolean;
   status: string;
   evidence: string;
   completionRequired: boolean;
@@ -30,13 +31,14 @@ type BenefitRow = {
   description: string;
   detail: string;
   quantity: number;
+  tasks_per_unit?: boolean | null;
   status: string;
   evidence_summary: string;
   completion_required?: boolean | null;
   due_at: string | null;
 };
 
-export type BenefitInput = Omit<StoredBenefit, "id" | "quantity" | "detail" | "benefitType" | "completionRequired"> & { detail?: string; quantity?: number; benefitType?: StoredBenefit["benefitType"]; completionRequired?: boolean };
+export type BenefitInput = Omit<StoredBenefit, "id" | "quantity" | "detail" | "benefitType" | "completionRequired" | "tasksPerUnit"> & { detail?: string; quantity?: number; benefitType?: StoredBenefit["benefitType"]; completionRequired?: boolean; tasksPerUnit?: boolean };
 export type LegacyBenefit = {
   id?: string;
   eventId: string;
@@ -65,6 +67,7 @@ export function benefitFromRow(row: BenefitRow): StoredBenefit {
     description: row.description,
     detail: row.detail,
     quantity: row.quantity ?? 1,
+    tasksPerUnit: row.tasks_per_unit !== false,
     status: row.status,
     evidence: row.evidence_summary,
     completionRequired: row.completion_required !== false,
@@ -84,6 +87,7 @@ function rowFromInput(benefit: BenefitInput) {
     description: benefit.description,
     detail: benefit.detail ?? "",
     quantity: benefit.quantity ?? 1,
+    tasks_per_unit: benefit.tasksPerUnit !== false,
     status: benefit.status,
     evidence_summary: benefit.evidence,
     completion_required: benefit.completionRequired !== false,
@@ -92,7 +96,7 @@ function rowFromInput(benefit: BenefitInput) {
 }
 
 export async function fetchStoredBenefits(eventId?: string) {
-  let query = createClient().from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, completion_required, due_at").order("created_at", { ascending: true });
+  let query = createClient().from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, tasks_per_unit, status, evidence_summary, completion_required, due_at").order("created_at", { ascending: true });
   if (eventId) query = query.eq("event_id", eventId);
   const { data, error } = await query;
   return { data: (data ?? []).map((row) => benefitFromRow(row as BenefitRow)), error };
@@ -103,7 +107,7 @@ export async function createStoredBenefits(benefits: BenefitInput[]) {
   const { data, error } = await createClient()
     .from("benefits")
     .insert(benefits.map(rowFromInput))
-    .select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, completion_required, due_at");
+    .select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, tasks_per_unit, status, evidence_summary, completion_required, due_at");
   return { data: (data ?? []).map((row) => benefitFromRow(row as BenefitRow)), error };
 }
 
@@ -114,7 +118,7 @@ export async function syncLegacyBenefitsToSupabase(legacyBenefits: LegacyBenefit
   const supabase = createClient();
   const eventIds = [...new Set(legacy.map((benefit) => benefit.eventId))];
   const [benefitResult, contractResult] = await Promise.all([
-    supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, completion_required, due_at").in("event_id", eventIds),
+    supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, tasks_per_unit, status, evidence_summary, completion_required, due_at").in("event_id", eventIds),
     supabase.from("contracts").select("id, event_id, sponsor_id").in("event_id", eventIds),
   ]);
   if (benefitResult.error) return { data: [] as StoredBenefit[], error: benefitResult.error, imported: 0 };

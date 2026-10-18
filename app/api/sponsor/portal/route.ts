@@ -25,14 +25,14 @@ export async function GET() {
       admin.from("sponsors").select("id, name").in("id", sponsorIds),
       admin.from("contracts").select("id, event_id, sponsor_id, title, value_cents, signature_status, sponsor_signed_at, organizer_signed_at, signed_at, signing_document_id").in("event_id", eventIds),
       admin.from("tasks").select("id, event_id, sponsor_id, sponsor_name, benefit_id, title, due_at, status, source, workflow_order, workflow_instance, completion_type, requires_sponsor_approval, assigned_to_sponsor, sponsor_approval_status, sponsor_approved_at").in("event_id", eventIds),
-      admin.from("benefits").select("id, event_id, sponsor_id, title, benefit_type, material_logistics, description, quantity, status, due_at").in("event_id", eventIds).in("sponsor_id", sponsorIds),
+      admin.from("benefits").select("id, event_id, sponsor_id, title, benefit_type, material_logistics, description, quantity, tasks_per_unit, status, due_at").in("event_id", eventIds).in("sponsor_id", sponsorIds),
     ]);
     if (eventsResult.error || sponsorsResult.error || contractsResult.error || taskResult.error || benefitResult.error) throw eventsResult.error ?? sponsorsResult.error ?? contractsResult.error ?? taskResult.error ?? benefitResult.error;
     const allowed = new Set(assignments.map((item) => `${item.event_id}:${item.sponsor_id}`));
     const sponsorNamesById = new Map((sponsorsResult.data ?? []).map((sponsor) => [sponsor.id, sponsor.name.trim().toLocaleLowerCase()]));
-    const benefitQuantities = new Map((benefitResult.data ?? []).map((benefit) => [benefit.id, benefit.quantity ?? 1]));
+    const benefitWorkflowCounts = new Map((benefitResult.data ?? []).map((benefit) => [benefit.id, benefit.tasks_per_unit === false ? 1 : benefit.quantity ?? 1]));
     const tasks = (taskResult.data ?? []).flatMap((task) => {
-      if (task.benefit_id && benefitQuantities.has(task.benefit_id) && task.workflow_instance > (benefitQuantities.get(task.benefit_id) ?? 1)) return [];
+      if (task.benefit_id && benefitWorkflowCounts.has(task.benefit_id) && task.workflow_instance > (benefitWorkflowCounts.get(task.benefit_id) ?? 1)) return [];
       if (task.sponsor_id) return allowed.has(`${task.event_id}:${task.sponsor_id}`) ? [task] : [];
       if (task.source !== "Manuell" || !task.sponsor_name.trim()) return [];
       const normalizedName = task.sponsor_name.trim().toLocaleLowerCase();
@@ -123,7 +123,8 @@ export async function GET() {
         : ["Erfüllt", "Erledigt", "Abgeschlossen"].includes(benefit.status)
           ? "Abgeschlossen"
           : benefit.status === "In Arbeit" ? "In Bearbeitung" : "Offen";
-      const units = Array.from({ length: Math.max(1, benefit.quantity ?? 1) }, (_, index) => {
+      const workflowCount = benefit.tasks_per_unit === false ? 1 : Math.max(1, benefit.quantity ?? 1);
+      const units = Array.from({ length: workflowCount }, (_, index) => {
         const instance = index + 1;
         const instanceTasks = allBenefitTasks.filter((task) => task.workflow_instance === instance);
         const instanceComplete = instanceTasks.length > 0 && instanceTasks.every((task) => task.status === "Erledigt");

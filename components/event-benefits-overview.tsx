@@ -61,7 +61,7 @@ export function EventBenefitsOverview({ eventId }: { eventId: string }) {
   })).filter((group) => group.benefits.length), [benefits, sponsors]);
   const quantityBoundTasks = useMemo(() => tasks.filter((task) => {
     const benefit = benefits.find((item) => item.id === task.benefit_id);
-    return !benefit || task.workflow_instance <= benefit.quantity;
+    return !benefit || task.workflow_instance <= (benefit.tasksPerUnit ? benefit.quantity : 1);
   }), [benefits, tasks]);
   const visibleSponsorGroups = selectedSponsor === "all" ? sponsorGroups : sponsorGroups.filter((group) => group.id === selectedSponsor);
 

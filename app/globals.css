@@ -2698,6 +2698,12 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
 }
 
 .benefit-template-subtasks { margin-top: 18px; padding: 15px; border: 1px solid #e9edf0; border-radius: 10px; background: #fbfcfd; }
+.benefit-template-task-frequency { display:flex; align-items:flex-start; gap:10px; margin-top:18px; padding:13px 15px; border:1px solid #e4eaf0; border-radius:10px; background:#f7f9fb; color:#354657; cursor:pointer; }
+.benefit-template-task-frequency input { flex:none; margin:3px 0 0; accent-color:#ef684f; }
+.benefit-template-task-frequency > span { display:grid; gap:4px; }
+.benefit-template-task-frequency b { font-size:12px; }
+.benefit-template-task-frequency small,.add-benefit-task-frequency-hint { color:#8290a0; font-size:11px; line-height:1.5; }
+.add-benefit-task-frequency-hint { display:block; margin-top:6px; }
 .benefit-template-material-logistics { margin-top:15px; }
 .benefit-template-internal-comment { margin-top:15px; }
 .benefit-template-subtasks-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
