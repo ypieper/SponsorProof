@@ -25,10 +25,8 @@ export async function GET() {
       const metadata = data.user?.user_metadata ?? {};
       const firstName = String(metadata.first_name ?? "").trim();
       const lastName = String(metadata.last_name ?? "").trim();
-      const metadataName = String(metadata.full_name ?? metadata.name ?? "").trim();
-      const fullName = [firstName, lastName].filter(Boolean).join(" ")
-        || (metadataName.includes("@") ? "" : metadataName);
-      return { ...member, email: data.user?.email ?? member.email, full_name: fullName };
+      const fullName = [firstName, lastName].filter(Boolean).join(" ");
+      return { ...member, email: data.user?.email ?? member.email, first_name: firstName, last_name: lastName, full_name: fullName };
     }));
     return NextResponse.json({ members, currentUserId: user.id }, { headers: { "Cache-Control": "no-store" } });
   } catch {

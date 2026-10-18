@@ -27,6 +27,10 @@ export async function fetchStoredTasks(eventId?: string) {
   return { data: normalized, error: null };
 }
 
+export async function normalizeLegacyBenefitTaskInstances(benefitId: string) {
+  return createClient().rpc("normalize_legacy_benefit_task_instances", { target_benefit_id: benefitId });
+}
+
 export async function createStoredTask(input: TaskInput) {
   const supabase = createClient();
   const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
@@ -100,4 +104,9 @@ export async function updateStoredTask(id: string, changes: { title?: string; sp
 
 export async function deleteStoredTask(id: string) {
   return createClient().from("tasks").delete().eq("id", id);
+}
+
+export async function deleteStoredTasks(ids: string[]) {
+  if (!ids.length) return { error: null };
+  return createClient().from("tasks").delete().in("id", ids);
 }

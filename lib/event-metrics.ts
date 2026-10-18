@@ -5,15 +5,15 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/client";
 
 export type EventMetricValues = {
-  sponsorship: number; sponsors: number; benefits: number; completed: number; contracts: number;
+  sponsorship: number; sponsors: number; benefits: number; trackedBenefits: number; completed: number; contracts: number;
   contractsCreated: number; contractsSigned: number; reportsCreated: number; reportsSent: number; evidenceTasks: number; completedEvidenceTasks: number;
 };
 type Assignment = { event_id: string; sponsor_id: string };
 type Contract = { id: string; event_id: string; sponsor_id: string; value_cents: number; signature_status?: string; signed_at?: string | null };
-type Benefit = { id: string; event_id: string; sponsor_id: string | null; contract_id: string | null; title: string; status: string; evidence_summary: string | null };
+type Benefit = { id: string; event_id: string; sponsor_id: string | null; contract_id: string | null; title: string; status: string; evidence_summary: string | null; completion_required?: boolean | null; quantity: number };
 
 function emptyMetrics(): EventMetricValues {
-  return { sponsorship: 0, sponsors: 0, benefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, reportsSent: 0, evidenceTasks: 0, completedEvidenceTasks: 0 };
+  return { sponsorship: 0, sponsors: 0, benefits: 0, trackedBenefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, reportsSent: 0, evidenceTasks: 0, completedEvidenceTasks: 0 };
 }
 
 export async function fetchEventMetrics(eventIds: string[]) {
@@ -25,8 +25,8 @@ export async function fetchEventMetrics(eventIds: string[]) {
   const [assignmentResult, contractResult, benefitResult, taskResult, evidenceResult] = await Promise.all([
     supabase.from("event_sponsors").select("event_id, sponsor_id").in("event_id", ids),
     supabase.from("contracts").select("id, event_id, sponsor_id, value_cents, signature_status, signed_at").in("event_id", ids),
-    supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, status, evidence_summary").in("event_id", ids),
-    supabase.from("tasks").select("id, event_id, benefit_id, status").in("event_id", ids),
+    supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, status, evidence_summary, completion_required, quantity").in("event_id", ids),
+    supabase.from("tasks").select("id, event_id, benefit_id, status, workflow_instance").in("event_id", ids),
     supabase.from("evidence_files").select("event_id, benefit_id, task_id").in("event_id", ids),
   ]);
   for (const query of [assignmentResult, contractResult, benefitResult, taskResult, evidenceResult]) if (query.error) throw query.error;
@@ -80,7 +80,9 @@ export async function fetchEventMetrics(eventIds: string[]) {
     counted.add(key);
     const metrics = result[benefit.event_id];
     metrics.benefits += 1;
-    const subtasks = tasksByBenefit.get(benefit.id) ?? [];
+    if (benefit.completion_required === false) return;
+    metrics.trackedBenefits += 1;
+    const subtasks = (tasksByBenefit.get(benefit.id) ?? []).filter((task) => task.workflow_instance <= benefit.quantity);
     if (subtasks.length) {
       if (subtasks.every((task) => task.status === "Erledigt" || evidenceKeys.has(task.id))) metrics.completed += 1;
       return;
@@ -89,8 +91,11 @@ export async function fetchEventMetrics(eventIds: string[]) {
     const complete = benefit.status === "Erfüllt" || benefit.status === "Erledigt" || Boolean(benefit.evidence_summary && benefit.evidence_summary !== "Noch kein Nachweis") || evidenceKeys.has(`benefit-${benefit.id}`);
     if (complete) { metrics.completed += 1; metrics.completedEvidenceTasks += 1; }
   });
+  const noCompletionBenefitIds = new Set(benefits.filter((benefit) => benefit.completion_required === false).map((benefit) => benefit.id));
   (taskResult.data ?? []).forEach((task) => {
-    if (!task.event_id || !result[task.event_id]) return;
+    if (!task.event_id || !result[task.event_id] || (task.benefit_id && noCompletionBenefitIds.has(task.benefit_id))) return;
+    const benefit = task.benefit_id ? benefits.find((item) => item.id === task.benefit_id) : undefined;
+    if (benefit && task.workflow_instance > benefit.quantity) return;
     result[task.event_id].evidenceTasks += 1;
     if (task.status === "Erledigt" || evidenceKeys.has(task.id)) result[task.event_id].completedEvidenceTasks += 1;
   });
@@ -100,7 +105,7 @@ export async function fetchEventMetrics(eventIds: string[]) {
 export function sumEventMetrics(metrics: EventMetricValues[]): EventMetricValues {
   return metrics.reduce((sum, item) => ({
     sponsorship: sum.sponsorship + item.sponsorship, sponsors: sum.sponsors + item.sponsors,
-    benefits: sum.benefits + item.benefits, completed: sum.completed + item.completed,
+    benefits: sum.benefits + item.benefits, trackedBenefits: sum.trackedBenefits + item.trackedBenefits, completed: sum.completed + item.completed,
     contracts: sum.contracts + item.contracts, contractsCreated: sum.contractsCreated + item.contractsCreated,
     contractsSigned: sum.contractsSigned + item.contractsSigned, reportsCreated: sum.reportsCreated + item.reportsCreated,
     reportsSent: sum.reportsSent + item.reportsSent,

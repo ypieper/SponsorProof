@@ -28,7 +28,7 @@ export function DashboardMetrics() {
   const { aggregate, loading, error } = metrics;
   const unavailable = eventsLoading || loading || error;
   const amount = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(aggregate.sponsorship);
-  const fulfilled = aggregate.benefits ? `${Math.round(aggregate.completed / aggregate.benefits * 100)} %` : "0 %";
+  const fulfilled = aggregate.trackedBenefits ? `${Math.round(aggregate.completed / aggregate.trackedBenefits * 100)} %` : "0 %";
 
   return <section className="metric-grid">
     <Metric label="Sponsoringvolumen netto" value={unavailable ? "—" : amount} icon="spark"/>

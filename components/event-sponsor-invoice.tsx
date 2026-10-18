@@ -297,8 +297,11 @@ export function EventSponsorInvoice({ eventId, sponsorId, sponsorName, endpointB
   function invoiceCard(invoice: Invoice, index: number) {
     const draft = drafts[invoice.id] ?? invoiceDraft(invoice);
     const saving = busyId === invoice.id;
-    return <article className="sponsor-invoice-card" key={invoice.id}>
-      <header className="sponsor-invoice-card-head"><div><span className="sponsor-invoice-card-label">Rechnung {index + 1}</span><b>{invoice.file_name || draft.invoiceNumber || "Rechnungsdatei"}</b></div><div className="sponsor-invoice-card-statuses">{(mode === "sponsor" || invoice.paid_at) && <span className={`sponsor-invoice-payment-status ${invoice.paid_at ? "paid" : "unpaid"}`}>{invoice.paid_at ? "Bezahlt" : "Offen"}</span>}{mode === "organizer" && <span className={`sponsor-invoice-publication-status ${invoice.sponsor_visible ? "published" : "private"}`}>{invoice.sponsor_visible ? "Im Sponsorbereich veröffentlicht" : "Nur für Veranstalter sichtbar"}</span>}</div></header>
+    const netAmount = invoice.net_amount ?? (invoice.gross_amount === null ? null : invoice.gross_amount / 1.19);
+    const formattedNetAmount = netAmount === null ? "Nicht angegeben" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(netAmount);
+    return <details className="sponsor-invoice-card" key={invoice.id}>
+      <summary className="sponsor-invoice-summary"><span className="sponsor-invoice-summary-total"><small>Rechnungssumme (netto)</small><strong>{formattedNetAmount}</strong></span><span className="sponsor-invoice-card-statuses"><span className={`sponsor-invoice-payment-status ${invoice.paid_at ? "paid" : "unpaid"}`}>{invoice.paid_at ? "Bezahlt" : "Nicht bezahlt"}</span>{mode === "organizer" && <span className={`sponsor-invoice-publication-status ${invoice.sponsor_visible ? "published" : "private"}`} title={invoice.sponsor_visible ? "Im Sponsorbereich veröffentlicht" : "Nur für Veranstalter sichtbar"}>{invoice.sponsor_visible ? "Veröffentlicht" : "Intern"}</span>}</span><span className="sponsor-invoice-summary-chevron"><Icon name="chevron" size={15}/></span></summary>
+      <div className="sponsor-invoice-expanded"><header className="sponsor-invoice-card-head"><div><span className="sponsor-invoice-card-label">Rechnung {index + 1}</span><b>{invoice.file_name || draft.invoiceNumber || "Rechnungsdatei"}</b></div></header>
       <div className="sponsor-invoice-grid">
         <label className="settings-field"><span>Rechnungsnummer</span><input type="text" maxLength={120} disabled={mode === "sponsor"} value={draft.invoiceNumber} onChange={(event) => updateDraft(invoice.id, "invoiceNumber", event.target.value)} placeholder="z. B. RE-2026-014" /></label>
         {dateField(invoice.id, draft, "invoiceDate", "Rechnungsdatum")}
@@ -315,7 +318,8 @@ export function EventSponsorInvoice({ eventId, sponsorId, sponsorName, endpointB
       </div>
       {mode === "organizer" && <p className="sponsor-invoice-vat-note">XRechnung und ZUGFeRD werden lokal im Browser ausgelesen. Das Versanddatum wird manuell erfasst.</p>}
       {mode === "organizer" && <>{analyzingId === invoice.id && <p className="sponsor-invoice-vat-note">Rechnungsdaten werden lokal ausgelesen …</p>}<div className="sponsor-invoice-card-actions"><button className="btn sponsor-invoice-delete-button" type="button" disabled={Boolean(busyId) || Boolean(analyzingId)} onClick={() => setConfirmDeleteId(invoice.id)}>Rechnung löschen</button><button className="btn" type="button" disabled={Boolean(busyId)} onClick={() => void setPaid(invoice.id, !invoice.paid_at)}>{saving ? "Wird gespeichert …" : invoice.paid_at ? "Zahlung als offen markieren" : "Als bezahlt markieren"}</button><button className="btn btn-primary" type="button" disabled={Boolean(busyId) || Boolean(analyzingId)} onClick={() => void saveInvoice(invoice.id)}>{saving ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></>}
-    </article>;
+      </div>
+    </details>;
   }
 
   function newInvoiceCard() {

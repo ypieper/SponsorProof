@@ -14,6 +14,7 @@ export type StoredBenefit = {
   quantity: number;
   status: string;
   evidence: string;
+  completionRequired: boolean;
   dueAt?: string;
 };
 
@@ -31,10 +32,11 @@ type BenefitRow = {
   quantity: number;
   status: string;
   evidence_summary: string;
+  completion_required?: boolean | null;
   due_at: string | null;
 };
 
-export type BenefitInput = Omit<StoredBenefit, "id" | "quantity" | "detail" | "benefitType"> & { detail?: string; quantity?: number; benefitType?: StoredBenefit["benefitType"] };
+export type BenefitInput = Omit<StoredBenefit, "id" | "quantity" | "detail" | "benefitType" | "completionRequired"> & { detail?: string; quantity?: number; benefitType?: StoredBenefit["benefitType"]; completionRequired?: boolean };
 export type LegacyBenefit = {
   id?: string;
   eventId: string;
@@ -65,6 +67,7 @@ export function benefitFromRow(row: BenefitRow): StoredBenefit {
     quantity: row.quantity ?? 1,
     status: row.status,
     evidence: row.evidence_summary,
+    completionRequired: row.completion_required !== false,
     dueAt: row.due_at ?? undefined,
   };
 }
@@ -83,12 +86,13 @@ function rowFromInput(benefit: BenefitInput) {
     quantity: benefit.quantity ?? 1,
     status: benefit.status,
     evidence_summary: benefit.evidence,
+    completion_required: benefit.completionRequired !== false,
     due_at: benefit.dueAt ?? null,
   };
 }
 
 export async function fetchStoredBenefits(eventId?: string) {
-  let query = createClient().from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, due_at").order("created_at", { ascending: true });
+  let query = createClient().from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, completion_required, due_at").order("created_at", { ascending: true });
   if (eventId) query = query.eq("event_id", eventId);
   const { data, error } = await query;
   return { data: (data ?? []).map((row) => benefitFromRow(row as BenefitRow)), error };
@@ -99,7 +103,7 @@ export async function createStoredBenefits(benefits: BenefitInput[]) {
   const { data, error } = await createClient()
     .from("benefits")
     .insert(benefits.map(rowFromInput))
-    .select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, due_at");
+    .select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, completion_required, due_at");
   return { data: (data ?? []).map((row) => benefitFromRow(row as BenefitRow)), error };
 }
 
@@ -110,7 +114,7 @@ export async function syncLegacyBenefitsToSupabase(legacyBenefits: LegacyBenefit
   const supabase = createClient();
   const eventIds = [...new Set(legacy.map((benefit) => benefit.eventId))];
   const [benefitResult, contractResult] = await Promise.all([
-    supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, due_at").in("event_id", eventIds),
+    supabase.from("benefits").select("id, event_id, sponsor_id, contract_id, title, benefit_type, material_logistics, category, description, detail, quantity, status, evidence_summary, completion_required, due_at").in("event_id", eventIds),
     supabase.from("contracts").select("id, event_id, sponsor_id").in("event_id", eventIds),
   ]);
   if (benefitResult.error) return { data: [] as StoredBenefit[], error: benefitResult.error, imported: 0 };
@@ -144,11 +148,12 @@ export async function syncLegacyBenefitsToSupabase(legacyBenefits: LegacyBenefit
   return { data: [...existing, ...inserted.data], error: null, imported: inserted.data.length };
 }
 
-export async function updateStoredBenefit(id: string, changes: { status?: string; evidence?: string; dueAt?: string | null }) {
-  const update: { status?: string; evidence_summary?: string; due_at?: string | null } = {};
+export async function updateStoredBenefit(id: string, changes: { status?: string; evidence?: string; dueAt?: string | null; quantity?: number }) {
+  const update: { status?: string; evidence_summary?: string; due_at?: string | null; quantity?: number } = {};
   if (changes.status !== undefined) update.status = changes.status;
   if (changes.evidence !== undefined) update.evidence_summary = changes.evidence;
   if (changes.dueAt !== undefined) update.due_at = changes.dueAt;
+  if (changes.quantity !== undefined) update.quantity = changes.quantity;
   const { error } = await createClient().from("benefits").update(update).eq("id", id);
   return { error };
 }

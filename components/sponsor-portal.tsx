@@ -8,6 +8,7 @@ import { EventSponsorInvoice } from "@/components/event-sponsor-invoice";
 import { SponsorDocumentArea } from "@/components/sponsor-document-area";
 import { createClient } from "@/lib/supabase/client";
 import { FirstLoginWalkthrough } from "@/components/first-login-walkthrough";
+import { SponsorGroup } from "@/components/sponsor-group";
 
 type PortalContract = {
   id: string;
@@ -27,6 +28,64 @@ type PortalBenefit = { id: string; title: string; benefit_type: "monetary" | "in
 type PortalApproval = PortalTask;
 type PortalPartnership = { sponsor_id: string; sponsor_name: string; tasks: PortalStandaloneTask[]; contracts: PortalContract[]; benefits: PortalBenefit[] };
 type PortalEvent = { id: string; title: string; start_date: string | null; end_date: string | null; location: string; organizer_logo_url: string | null; contact_first_name: string; contact_last_name: string; contact_email: string; contact_phone: string; signature_addon_enabled: boolean; sponsor_assignments: PortalPartnership[] };
+
+const demoFile: PortalFile = { id: "demo-document", file_name: "Beispiel-Nachweis.pdf", content_type: "application/pdf", created_at: "2026-10-17T12:22:00.000Z", url: "/downloads/sponso-muster-vertriebspartnervereinbarung.pdf" };
+const demoPortalEvent: PortalEvent = {
+  id: "demo",
+  title: "Aloha Open-Air 2027",
+  start_date: "2027-06-10",
+  end_date: "2027-06-10",
+  location: "Festivalwiese 23",
+  organizer_logo_url: null,
+  contact_first_name: "Jonas",
+  contact_last_name: "Kastenholz",
+  contact_email: "jonas@sponso.de",
+  contact_phone: "0175 34396572",
+  signature_addon_enabled: false,
+  sponsor_assignments: [{
+    sponsor_id: "demo-sponsor",
+    sponsor_name: "Elspass Autoland GmbH",
+    contracts: [{ id: "demo-contract", title: "Sponsoringvertrag", sponsor_name: "Elspass Autoland GmbH", value_cents: 500000, signature_status: "signed", sponsor_signed_at: "2026-10-14T14:10:00.000Z", organizer_signed_at: "2026-10-14T14:12:00.000Z", signed_at: "2026-10-14T14:12:00.000Z", signing_url: null }],
+    tasks: [
+      { id: "demo-manual-upload", title: "Logo für die Event-Website bereitstellen", due_at: "2027-05-20", status: "Offen", completion_type: "sponsor_upload", requires_sponsor_approval: false, sponsor_approval_status: "pending", sponsor_approved_at: null, ready: true, files: [] },
+      { id: "demo-manual-approval", title: "Social-Media-Beitrag freigeben", due_at: "2027-05-28", status: "In Bearbeitung", completion_type: "sponsor_approval", requires_sponsor_approval: true, sponsor_approval_status: "pending", sponsor_approved_at: null, ready: true, files: [demoFile] },
+      { id: "demo-manual-completed", title: "Sponsorlogo im Programmheft freigeben", due_at: "2027-05-10", status: "Erledigt", completion_type: "sponsor_approval", requires_sponsor_approval: true, sponsor_approval_status: "approved", sponsor_approved_at: "2026-10-15T14:08:00.000Z", ready: true, files: [demoFile] },
+    ],
+    benefits: [{
+      id: "demo-benefit",
+      title: "Logo auf der Event-Website",
+      benefit_type: "in_kind",
+      material_logistics: null,
+      description: "Platzierung des Sponsors auf der Event-Website",
+      quantity: 1,
+      due_at: "2027-06-01",
+      status: "In Bearbeitung",
+      units: [{ instance: 1, needed_at: "2027-06-01", status: "In Bearbeitung", hasSponsorApproval: true, tasks: [
+        { id: "demo-benefit-approval", benefit_id: "demo-benefit", title: "Website-Entwurf freigeben", due_at: "2027-05-25", planned_publish_date: null, status: "In Bearbeitung", completion_type: "sponsor_approval", requires_sponsor_approval: true, assigned_to_sponsor: false, sponsor_approval_status: "pending", sponsor_approved_at: null, ready: true, workflow_order: 1, workflow_instance: 1, files: [demoFile] },
+        { id: "demo-benefit-upload", benefit_id: "demo-benefit", title: "Logo in hoher Auflösung hochladen", due_at: "2027-05-18", planned_publish_date: null, status: "Offen", completion_type: "sponsor_upload", requires_sponsor_approval: false, assigned_to_sponsor: true, sponsor_approval_status: "pending", sponsor_approved_at: null, ready: false, workflow_order: 2, workflow_instance: 1, files: [] },
+      ] }],
+    }],
+  }],
+};
+
+function DemoSponsorInvoice({ sponsorName }: { sponsorName: string }) {
+  return <section className="panel sponsor-invoice-area">
+    <div className="table-head"><div><h2>Rechnung</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Veröffentlichte Rechnungen für {sponsorName} in diesem Event.</p></div></div>
+    <article className="sponsor-invoice-total-card"><span>Gesamtrechnungswert (netto)</span><strong>5.000,00&nbsp;€</strong></article>
+    <div className="sponsor-invoice-list"><article className="sponsor-invoice-card">
+      <header className="sponsor-invoice-card-head"><div><span className="sponsor-invoice-card-label">Beispieldatensatz</span><b>Rechnung RE-2027-014</b></div><div className="sponsor-invoice-card-statuses"><span className="sponsor-invoice-payment-status unpaid">Offen</span></div></header>
+      <div className="sponsor-invoice-grid">
+        <label className="settings-field"><span>Rechnungsnummer</span><input type="text" value="RE-2027-014" disabled readOnly /></label>
+        <label className="settings-field"><span>Rechnungsdatum</span><input type="text" value="10.06.2027" disabled readOnly /></label>
+        <label className="settings-field"><span>Fällig am</span><input type="text" value="24.06.2027" disabled readOnly /></label>
+        <label className="settings-field"><span>Versanddatum</span><input type="text" value="10.06.2027" disabled readOnly /></label>
+        <label className="settings-field"><span>Nettobetrag</span><input type="text" value="5.000,00 €" disabled readOnly /></label>
+        <label className="settings-field"><span>Bruttobetrag</span><input type="text" value="5.950,00 €" disabled readOnly /></label>
+      </div>
+      <div className="sponsor-invoice-file-row"><span>Beispielhafte Rechnungsangaben</span><button className="btn" type="button" disabled title="In der Demo nicht verfügbar"><Icon name="file" size={14}/> Rechnung herunterladen</button></div>
+    </article><p className="sponsor-invoice-vat-note">Diese Angaben sind Beispieldaten. In der Demo wird keine Rechnung erstellt oder heruntergeladen.</p></div>
+  </section>;
+}
 
 function SponsorBenefits({ benefits }: { benefits: PortalBenefit[] }) {
   return <section className="panel sponsor-portal-detail-panel sponsor-portal-benefits-list">
@@ -77,6 +136,21 @@ function SponsorEvidenceHistory({ files }: { files: PortalFile[] }) {
   </div>;
 }
 
+function SponsorCompletedTaskRow({ task, benefitName }: { task: { id: string; title: string; sponsor_approval_status: string; sponsor_approved_at: string | null; files: PortalFile[] }; benefitName?: string }) {
+  const approved = task.sponsor_approval_status === "approved";
+  return <article className="sponsor-portal-completed-task" key={task.id}>
+    <div className="sponsor-portal-completed-task-copy">
+      <b>{task.title}</b>
+      <small>{approved ? `Freigegeben${task.sponsor_approved_at ? ` am ${formatFeedbackDate(task.sponsor_approved_at)}` : ""}` : "Abgeschlossen"}</small>
+      {benefitName && <small className="sponsor-portal-task-benefit-label">Leistung: {benefitName}</small>}
+    </div>
+    <div className="sponsor-portal-completed-task-files">
+      {task.files.length > 0 ? <SponsorEvidenceHistory files={task.files}/> : <small className="sponsor-portal-unit-wait">Kein Nachweis angehängt.</small>}
+    </div>
+    <span className="sponsor-benefit-status sponsor-benefit-status-done">{approved ? "Freigegeben" : "Abgeschlossen"}</span>
+  </article>;
+}
+
 function SponsorTaskUpload({ busy, disabled, onUpload }: { busy: boolean; disabled: boolean; onUpload: (file: File) => void }) {
   return <label className="btn btn-primary sponsor-task-upload-button">
     <Icon name="file" size={14}/>{busy ? "Wird hochgeladen …" : "Datei hochladen"}
@@ -100,9 +174,9 @@ function SponsorUploadTaskCard({ task, benefitName, busy, disabled, onUpload }: 
   </article>;
 }
 
-export function SponsorPortal({ eventId }: { eventId?: string }) {
-  const [events, setEvents] = useState<PortalEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+export function SponsorPortal({ eventId, demoMode = false }: { eventId?: string; demoMode?: boolean }) {
+  const [events, setEvents] = useState<PortalEvent[]>(() => demoMode ? [demoPortalEvent] : []);
+  const [loading, setLoading] = useState(!demoMode);
   const [profileRequired, setProfileRequired] = useState(false);
   const [profileName, setProfileName] = useState({ firstName: "", lastName: "" });
   const [savingProfile, setSavingProfile] = useState(false);
@@ -118,17 +192,18 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
   const activeEvent = events.find((event) => event.id === eventId);
   const activePartnership = activeEvent?.sponsor_assignments.find((assignment) => assignment.sponsor_id === activeSponsorId) ?? activeEvent?.sponsor_assignments[0];
   const activeManualTasks = activePartnership?.tasks ?? [];
-  const activeManualTasksToShow = activeManualTasks.filter((task) => task.status !== "Erledigt");
+  const isCompletedSponsorTask = (task: { status: string; sponsor_approval_status: string }) => task.status === "Erledigt" || task.sponsor_approval_status === "approved";
+  const activeManualTasksToShow = activeManualTasks.filter((task) => !isCompletedSponsorTask(task));
   const partnershipBenefits = activePartnership?.benefits ?? [];
   const completedTasks = [
-    ...activeManualTasks.filter((task) => task.status === "Erledigt").map((task) => ({ task, benefitName: undefined as string | undefined })),
+    ...activeManualTasks.filter(isCompletedSponsorTask).map((task) => ({ task, benefitName: undefined as string | undefined })),
     ...partnershipBenefits.flatMap((benefit) => benefit.units.flatMap((unit) => unit.tasks
-      .filter((task) => task.status === "Erledigt")
+      .filter(isCompletedSponsorTask)
       .map((task) => ({ task, benefitName: benefit.title })))),
   ];
   const activeTaskBenefits = activePartnership?.benefits.map((benefit) => ({
     ...benefit,
-    units: benefit.units.map((unit) => ({ ...unit, tasks: unit.tasks.filter((task) => task.status !== "Erledigt") })).filter((unit) => unit.tasks.length > 0),
+    units: benefit.units.map((unit) => ({ ...unit, tasks: unit.tasks.filter((task) => !isCompletedSponsorTask(task)) })).filter((unit) => unit.tasks.length > 0),
   })).filter((benefit) => benefit.units.length > 0) ?? [];
   const hasActiveTasks = activeManualTasksToShow.length > 0 || activeTaskBenefits.length > 0;
   const returningTaskHasBenefit = returningTaskId ? events.flatMap((event) => event.sponsor_assignments).flatMap((assignment) => assignment.benefits.flatMap((benefit) => benefit.units.flatMap((unit) => unit.tasks))).some((task) => task.id === returningTaskId) : false;
@@ -156,6 +231,7 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
     } finally { if (showLoading) setLoading(false); }
   }, []);
   useEffect(() => {
+    if (demoMode) return;
     let active = true;
     void createClient().auth.getUser().then(async ({ data, error: userError }) => {
       if (!active) return;
@@ -179,8 +255,9 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
       setLoading(false);
     });
     return () => { active = false; };
-  }, [load]);
+  }, [demoMode, load]);
   useEffect(() => {
+    if (demoMode) return;
     const waitingForOrganizer = events.some((event) => event.sponsor_assignments.some((assignment) => assignment.contracts.some((contract) => contract.signature_status === "pending_organizer")));
     if (!waitingForOrganizer) return;
     let cancelled = false;
@@ -196,8 +273,13 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
     };
     const interval = window.setInterval(() => { void refreshContracts(); }, 15000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [events]);
+  }, [demoMode, events]);
   useEffect(() => {
+    if (demoMode) {
+      setActiveTab("tasks");
+      setActiveSponsorId("");
+      return;
+    }
     const validTabs = ["contract", "invoice", "benefits", "tasks", "documents"] as const;
     const syncTab = () => {
       const requested = new URLSearchParams(window.location.search).get("tab");
@@ -207,17 +289,18 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
     window.addEventListener("popstate", syncTab);
     setActiveSponsorId("");
     return () => window.removeEventListener("popstate", syncTab);
-  }, [eventId]);
+  }, [demoMode, eventId]);
 
   function selectTab(tab: "contract" | "invoice" | "benefits" | "tasks" | "documents") {
     setActiveTab(tab);
+    if (demoMode) return;
     const url = new URL(window.location.href);
     url.searchParams.set("tab", tab);
     window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
   async function sign(contract: PortalContract) {
-    if (busyId || !activeEvent?.signature_addon_enabled) return;
+    if (demoMode || busyId || !activeEvent?.signature_addon_enabled) return;
     setBusyId(contract.id); setError(""); setMessage("");
     try {
       const response = await fetch(`/api/contracts/${contract.id}/simple-signature`, { method: "POST" });
@@ -231,7 +314,7 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
   }
 
   async function uploadSponsorTask(task: { id: string }, file: File) {
-    if (busyId) return;
+    if (demoMode || busyId) return;
     setBusyId(task.id); setError(""); setMessage("");
     try {
       const formData = new FormData();
@@ -247,7 +330,7 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
   }
 
   async function respondToTask(task: { id: string }, decision: "approve" | "return"): Promise<boolean> {
-    if (busyId) return false;
+    if (demoMode || busyId) return false;
     const comment = approvalComments[task.id]?.trim() ?? "";
     if (decision === "return" && !comment) {
       setError("Bitte gib einen Kommentar zu den gewünschten Änderungen ein.");
@@ -281,7 +364,7 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
 
   async function redeemInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (redeeming) return;
+    if (demoMode || redeeming) return;
     setRedeeming(true); setError(""); setMessage("");
     try {
       const response = await fetch("/api/sponsor/redeem-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: inviteCode }) });
@@ -297,6 +380,7 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
 
   async function saveSponsorProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (demoMode) return;
     const firstName = profileName.firstName.trim();
     const lastName = profileName.lastName.trim();
     if (!firstName || !lastName || savingProfile) {
@@ -318,8 +402,8 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
     }
   }
 
-  return <main className="sponsor-portal-page">
-    <header className="sponsor-portal-header"><Link href="/sponsor" className="brand" aria-label="sponso Sponsor-Bereich"><SponsoLogo /></Link><div><span>Sponsor-Bereich</span><LogoutButton /></div></header>
+  return <main className={`sponsor-portal-page${demoMode ? " sponsor-portal-demo-embedded" : ""}`}>
+    <header className="sponsor-portal-header">{demoMode ? <span className="brand" aria-label="sponso Sponsor-Bereich"><SponsoLogo /></span> : <Link href="/sponsor" className="brand" aria-label="sponso Sponsor-Bereich"><SponsoLogo /></Link>}<div><span>Sponsor-Bereich</span>{demoMode ? <button className="btn logout-button" type="button" disabled>Abmelden</button> : <LogoutButton />}</div></header>
     <section className="sponsor-portal-content">
       {profileRequired ? <section className="panel sponsor-profile-setup">
         <div className="eyebrow">ERSTEINRICHTUNG</div>
@@ -332,22 +416,22 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
           <button className="btn btn-primary" type="submit" disabled={savingProfile}>{savingProfile ? "Wird gespeichert …" : "Speichern und weiter"}<Icon name="arrow" size={15}/></button>
         </form>
       </section> : eventId ? <>
-        <Link className="sponsor-portal-back-link" href="/sponsor">← Alle Events</Link>
+        {!demoMode && <Link className="sponsor-portal-back-link" href="/sponsor">← Alle Events</Link>}
         {error && !returningTaskId && <p className="field-message error" role="alert">{error}</p>}{message && <p className="field-message success" role="status">{message}</p>}
         {loading ? <section className="panel"><p className="task-empty">Event wird geladen …</p></section> : activeEvent ? <>
           <div className="sponsor-portal-event-heading">{activeEvent.organizer_logo_url && <img className="sponsor-portal-event-heading-logo" src={activeEvent.organizer_logo_url} alt={`Logo ${activeEvent.title}`} />}<div><div className="eyebrow">DEINE PARTNERSCHAFT</div><h1>{activeEvent.title}</h1><p className="subtitle">{[activeEvent.start_date && new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(`${activeEvent.start_date}T00:00:00`)), activeEvent.location].filter(Boolean).join(" · ") || "Event"}</p></div></div>
           <section className="sponsor-portal-contact"><span className="settings-section-icon"><Icon name="users" size={16}/></span><div><b>Deine Ansprechperson</b>{[activeEvent.contact_first_name, activeEvent.contact_last_name].filter(Boolean).join(" ") && <strong>{[activeEvent.contact_first_name, activeEvent.contact_last_name].filter(Boolean).join(" ")}</strong>}{activeEvent.contact_email && <a href={`mailto:${activeEvent.contact_email}`}>{activeEvent.contact_email}</a>}{activeEvent.contact_phone && <a href={`tel:${activeEvent.contact_phone.replace(/[^\d+]/g, "")}`}>{activeEvent.contact_phone}</a>}{![activeEvent.contact_first_name, activeEvent.contact_last_name, activeEvent.contact_email, activeEvent.contact_phone].some(Boolean) && <span>Kontaktdaten werden noch ergänzt.</span>}</div></section>
           {activePartnership && (activeEvent.sponsor_assignments.length > 1 ? <label className="sponsor-portal-assignment-select"><span>Sponsor-Zuordnung</span><select value={activePartnership.sponsor_id} onChange={(event) => setActiveSponsorId(event.target.value)}>{activeEvent.sponsor_assignments.map((assignment) => <option key={assignment.sponsor_id} value={assignment.sponsor_id}>{assignment.sponsor_name}</option>)}</select></label> : <p className="sponsor-portal-assignment-name">Sponsor: {activePartnership.sponsor_name}</p>)}
           <div className="sponsor-portal-tabs" role="tablist" aria-label="Event-Bereiche"><button type="button" role="tab" aria-selected={displayedTab === "contract"} className={displayedTab === "contract" ? "active" : ""} onClick={() => selectTab("contract")}>Vertrag</button>{hasSignedContract && <button type="button" role="tab" aria-selected={displayedTab === "invoice"} className={displayedTab === "invoice" ? "active" : ""} onClick={() => selectTab("invoice")}>Rechnung</button>}{hasBenefitContent && <button type="button" role="tab" aria-selected={displayedTab === "benefits"} className={displayedTab === "benefits" ? "active" : ""} onClick={() => selectTab("benefits")}>Leistungen</button>}{canShowTasks && <button type="button" role="tab" aria-selected={displayedTab === "tasks"} className={displayedTab === "tasks" ? "active" : ""} onClick={() => selectTab("tasks")}>Aufgaben</button>}<button type="button" role="tab" aria-selected={displayedTab === "documents"} className={displayedTab === "documents" ? "active" : ""} onClick={() => selectTab("documents")}>Dokumente</button></div>
-          {displayedTab === "invoice" ? activePartnership ? <EventSponsorInvoice eventId={activeEvent.id} sponsorId={activePartnership.sponsor_id} sponsorName={activePartnership.sponsor_name} endpointBase={`/api/events/${activeEvent.id}/sponsors/${activePartnership.sponsor_id}/invoice`} /> : <section className="panel"><p className="task-empty">Für dieses Event wurde keine Sponsor-Zuordnung gefunden.</p></section> : displayedTab === "documents" ? activePartnership ? <SponsorDocumentArea eventId={activeEvent.id} sponsorId={activePartnership.sponsor_id} sponsorName={activePartnership.sponsor_name} mode="sponsor" /> : <section className="panel"><p className="task-empty">Für dieses Event wurde keine Sponsor-Zuordnung gefunden.</p></section> : displayedTab === "benefits" ? <SponsorBenefits benefits={activePartnership?.benefits ?? []}/> : displayedTab === "tasks" ? <section className="panel sponsor-portal-detail-panel sponsor-portal-benefits sponsor-portal-task-list"><div className="sponsor-portal-tab-heading"><h2>Aufgaben</h2><p>Hier siehst du für dich angelegte Aufgaben und Aufgaben zu vereinbarten Leistungen.</p></div>{activeManualTasksToShow.length > 0 && <div className="sponsor-portal-task-card-grid">{activeManualTasksToShow.map((task) => {
+          {displayedTab === "invoice" ? activePartnership ? demoMode ? <DemoSponsorInvoice sponsorName={activePartnership.sponsor_name}/> : <EventSponsorInvoice eventId={activeEvent.id} sponsorId={activePartnership.sponsor_id} sponsorName={activePartnership.sponsor_name} endpointBase={`/api/events/${activeEvent.id}/sponsors/${activePartnership.sponsor_id}/invoice`} /> : <section className="panel"><p className="task-empty">Für dieses Event wurde keine Sponsor-Zuordnung gefunden.</p></section> : displayedTab === "documents" ? activePartnership ? demoMode ? <section className="panel sponsor-document-area"><div className="table-head"><div><h2>Dokumente</h2><p className="subtitle">Deine Uploads und die vom Veranstalter für dich bereitgestellten Unterlagen.</p></div></div><p className="task-empty">Für dieses Event wurden noch keine weiteren Dokumente bereitgestellt.</p></section> : <SponsorDocumentArea eventId={activeEvent.id} sponsorId={activePartnership.sponsor_id} sponsorName={activePartnership.sponsor_name} mode="sponsor" /> : <section className="panel"><p className="task-empty">Für dieses Event wurde keine Sponsor-Zuordnung gefunden.</p></section> : displayedTab === "benefits" ? <SponsorBenefits benefits={activePartnership?.benefits ?? []}/> : displayedTab === "tasks" ? <section className="panel sponsor-portal-detail-panel sponsor-portal-benefits sponsor-portal-task-list"><div className="sponsor-portal-tab-heading"><h2>Aufgaben</h2><p>Hier siehst du für dich angelegte Aufgaben und Aufgaben zu vereinbarten Leistungen.</p></div>{hasActiveTasks && <SponsorGroup className="sponsor-portal-task-sponsor-group" name={activePartnership?.sponsor_name ?? "Sponsor"} itemCount={activeManualTasksToShow.length + activeTaskBenefits.reduce((count, benefit) => count + benefit.units.reduce((unitCount, unit) => unitCount + unit.tasks.length, 0), 0)} itemLabel="Aufgabe" itemLabelPlural="Aufgaben" contentClassName="sponsor-portal-task-sponsor-content">{activeManualTasksToShow.length > 0 && <div className="sponsor-portal-task-card-grid">{activeManualTasksToShow.map((task) => {
             const isApproval = task.completion_type === "sponsor_approval" || task.requires_sponsor_approval;
-            if (task.completion_type === "sponsor_upload") return <SponsorUploadTaskCard key={task.id} task={task} busy={busyId === task.id} disabled={Boolean(busyId)} onUpload={(file) => void uploadSponsorTask(task, file)}/>;
+            if (task.completion_type === "sponsor_upload") return <SponsorUploadTaskCard key={task.id} task={task} busy={busyId === task.id} disabled={demoMode || Boolean(busyId)} onUpload={(file) => void uploadSponsorTask(task, file)}/>;
             const statusClass = task.status === "Erledigt" ? "done" : task.status === "In Bearbeitung" ? "progress" : "open";
             const statusText = task.status === "Erledigt" ? "Abgeschlossen" : task.status === "In Bearbeitung" ? "In Bearbeitung" : "Offen";
             if (isApproval && task.sponsor_approval_status === "approved") return <article className="sponsor-portal-benefit-task sponsor-portal-assigned-task" key={task.id}><div className="sponsor-portal-review-copy"><b>{task.title}</b><small>{`Freigegeben${task.sponsor_approved_at ? ` am ${formatFeedbackDate(task.sponsor_approved_at)}` : ""}`}</small><SponsorEvidenceHistory files={task.files}/></div><span className="sponsor-benefit-status sponsor-benefit-status-done">Freigegeben</span></article>;
             if (isApproval) {
               const returned = task.sponsor_approval_status === "changes_requested";
-              return <article className="sponsor-portal-benefit-task sponsor-portal-approval-card sponsor-portal-manual-approval" key={task.id}><div className="sponsor-portal-approval-placeholder sponsor-portal-manual-approval-placeholder" aria-hidden="true"><Icon name="file" size={25}/><span>Freigabe</span></div><div className="sponsor-portal-approval-content"><header><div className="sponsor-portal-review-copy"><span className="sponsor-portal-approval-eyebrow">Freigabe durch den Sponsor</span><b>{task.title}</b><small>{task.due_at ? `Rückmeldung bis ${formatPortalDate(task.due_at)}` : "Bitte prüfe den bereitgestellten Nachweis."}</small></div><span className={`sponsor-benefit-status sponsor-benefit-status-${returned ? "open" : "progress"}`}>{returned ? "Änderung angefragt" : "Freigabe offen"}</span></header><div className="sponsor-portal-review-footer">{task.files.length ? <SponsorEvidenceHistory files={task.files}/> : <small className="sponsor-portal-unit-wait">Der Veranstalter hat noch keinen Nachweis zur Freigabe bereitgestellt.</small>}{returned ? <div className="sponsor-portal-returned-status" role="status">Änderung angefragt</div> : task.ready && <div className="sponsor-portal-review-actions"><button className="btn" type="button" disabled={Boolean(busyId)} onClick={() => { setError(""); setReturningTaskId(task.id); }}>Änderung anfragen</button><button className="btn btn-primary" type="button" disabled={Boolean(busyId)} onClick={() => void respondToTask(task, "approve")}>{busyId === task.id ? "Wird gespeichert …" : "Freigeben"}</button></div>}</div></div></article>;
+              return <article className="sponsor-portal-benefit-task sponsor-portal-approval-card sponsor-portal-manual-approval" key={task.id}><div className="sponsor-portal-approval-placeholder sponsor-portal-manual-approval-placeholder" aria-hidden="true"><Icon name="file" size={25}/><span>Freigabe</span></div><div className="sponsor-portal-approval-content"><header><div className="sponsor-portal-review-copy"><span className="sponsor-portal-approval-eyebrow">Freigabe durch den Sponsor</span><b>{task.title}</b><small>{task.due_at ? `Rückmeldung bis ${formatPortalDate(task.due_at)}` : "Bitte prüfe den bereitgestellten Nachweis."}</small></div><span className={`sponsor-benefit-status sponsor-benefit-status-${returned ? "open" : "progress"}`}>{returned ? "Änderung angefragt" : "Freigabe offen"}</span></header><div className="sponsor-portal-review-footer">{task.files.length ? <SponsorEvidenceHistory files={task.files}/> : <small className="sponsor-portal-unit-wait">Der Veranstalter hat noch keinen Nachweis zur Freigabe bereitgestellt.</small>}{returned ? <div className="sponsor-portal-returned-status" role="status">Änderung angefragt</div> : task.ready && <div className="sponsor-portal-review-actions"><button className="btn" type="button" disabled={demoMode || Boolean(busyId)} onClick={() => { setError(""); setReturningTaskId(task.id); }}>Änderung anfragen</button><button className="btn btn-primary" type="button" disabled={demoMode || Boolean(busyId)} onClick={() => void respondToTask(task, "approve")}>{busyId === task.id ? "Wird gespeichert …" : "Freigeben"}</button></div>}</div></div></article>;
             }
             return <article className="sponsor-portal-benefit-task sponsor-portal-assigned-task" key={task.id}><div className="sponsor-portal-review-copy"><b>{task.title}</b><small>{task.due_at ? `Fällig am ${formatPortalDate(task.due_at)}` : "Vom Veranstalter angelegt"}</small></div><span className={`sponsor-benefit-status sponsor-benefit-status-${statusClass}`}>{statusText}</span></article>;
           })}</div>}{activeTaskBenefits.length ? <div className="sponsor-portal-task-card-grid">{activeTaskBenefits.map((benefit) => <article className="sponsor-portal-benefit" key={benefit.id}>
@@ -357,20 +441,20 @@ export function SponsorPortal({ eventId }: { eventId?: string }) {
               const approved = task.sponsor_approval_status === "approved";
               const returned = task.sponsor_approval_status === "changes_requested" && !task.ready;
               const fileLinks = <SponsorEvidenceHistory files={task.files}/>;
-              const previewFile = task.files.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).find((file) => file.content_type.startsWith("image/"));
-              if (task.assigned_to_sponsor && task.completion_type === "sponsor_upload") return <SponsorUploadTaskCard key={task.id} task={task} benefitName={benefit.title} busy={busyId === task.id} disabled={Boolean(busyId)} onUpload={(file) => void uploadSponsorTask(task, file)}/>;
+              if (task.assigned_to_sponsor && task.completion_type === "sponsor_upload") return <SponsorUploadTaskCard key={task.id} task={task} benefitName={benefit.title} busy={busyId === task.id} disabled={demoMode || Boolean(busyId)} onUpload={(file) => void uploadSponsorTask(task, file)}/>;
               if (task.assigned_to_sponsor && task.completion_type !== "sponsor_approval") return <article className="sponsor-portal-benefit-task sponsor-portal-assigned-task" key={task.id}><div className="sponsor-portal-review-copy"><b>{task.title}</b><small>Dein Beitrag{task.due_at ? ` · Fällig am ${formatPortalDate(task.due_at)}` : ""}</small><small className="sponsor-portal-task-benefit-label">Leistung: {benefit.title}</small></div>{showTaskStatus && <span className={`sponsor-benefit-status sponsor-benefit-status-${task.status === "Erledigt" ? "done" : task.status === "In Bearbeitung" ? "progress" : "open"}`}>{task.status === "Erledigt" ? "Abgeschlossen" : task.status === "In Bearbeitung" ? "In Bearbeitung" : "Offen"}</span>}</article>;
               if (approved) return <details className="sponsor-portal-benefit-task sponsor-portal-benefit-task-completed" key={task.id}><summary className="sponsor-portal-completed-summary"><span className="sponsor-portal-completed-copy"><b>{task.title}</b></span>{showTaskStatus && <span className="sponsor-benefit-status sponsor-benefit-status-done">Abgeschlossen</span>}<Icon name="chevron" size={15}/></summary><div className="sponsor-portal-completed-content"><small>{`Freigegeben${task.sponsor_approved_at ? ` am ${formatFeedbackDate(task.sponsor_approved_at)}` : ""}.`}</small><small className="sponsor-portal-task-benefit-label">Leistung: {benefit.title}</small>{fileLinks}</div></details>;
-              return <article className="sponsor-portal-benefit-task sponsor-portal-approval-card" key={task.id}>
-                {previewFile ? <a className="sponsor-portal-approval-preview" href={previewFile.url} target="_blank" rel="noopener noreferrer" aria-label={`Vorschau öffnen: ${previewFile.file_name}`}><img src={previewFile.url} alt={`Vorschau für ${task.title}`}/><span>Vorschau öffnen</span></a> : <div className="sponsor-portal-approval-placeholder"><Icon name="file" size={24}/><span>Freigabe</span></div>}
+              return <article className="sponsor-portal-benefit-task sponsor-portal-approval-card sponsor-portal-manual-approval" key={task.id}>
+                <div className="sponsor-portal-approval-placeholder sponsor-portal-manual-approval-placeholder" aria-hidden="true"><Icon name="file" size={25}/><span>Freigabe</span></div>
                 <div className="sponsor-portal-approval-content"><header><div className="sponsor-portal-review-copy"><span className="sponsor-portal-approval-eyebrow">Freigabe durch den Sponsor</span><b>{task.title}</b><small>{returned ? "Änderungen wurden angefragt." : "Entwurf bereitgestellt · wartet auf deine Rückmeldung."}</small></div><span className={`sponsor-benefit-status ${returned ? "sponsor-benefit-status-open" : "sponsor-benefit-status-progress"}`}>{returned ? "Änderungen angefragt" : "Freigabe offen"}</span></header>
                   {task.due_at && <p className="sponsor-portal-approval-due">Rückmeldung bis {formatPortalDate(task.due_at)}</p>}
                   <small className="sponsor-portal-task-benefit-label">Leistung: {benefit.title}</small>
-                  <div className="sponsor-portal-review-footer">{fileLinks}{returned ? <div className="sponsor-portal-returned-status" role="status">Änderung angefragt</div> : <div className="sponsor-portal-review-actions"><button className="btn" type="button" disabled={!task.ready || Boolean(busyId)} onClick={() => { setError(""); setReturningTaskId(task.id); }}>Änderung anfragen</button><button className="btn btn-primary" type="button" disabled={!task.ready || Boolean(busyId)} onClick={() => void respondToTask(task, "approve")}>{busyId === task.id ? "Wird gespeichert …" : "Freigeben"}</button></div>}</div>
+                  <div className="sponsor-portal-review-footer">{fileLinks}{returned ? <div className="sponsor-portal-returned-status" role="status">Änderung angefragt</div> : <div className="sponsor-portal-review-actions"><button className="btn" type="button" disabled={demoMode || !task.ready || Boolean(busyId)} onClick={() => { setError(""); setReturningTaskId(task.id); }}>Änderung anfragen</button><button className="btn btn-primary" type="button" disabled={demoMode || !task.ready || Boolean(busyId)} onClick={() => void respondToTask(task, "approve")}>{busyId === task.id ? "Wird gespeichert …" : "Freigeben"}</button></div>}</div>
                 </div>
               </article>;
-            })}</div></section>)}</div></article>)}</div>
-          : null}{!hasActiveTasks && <div className="sponsor-portal-task-empty-state"><div className="sponsor-portal-task-empty-illustration" aria-hidden="true"><svg viewBox="0 0 176 132" fill="none"><path d="M22 103.5c20.5-8.4 39.7-11.2 66-11.2 26.2 0 46.4 3.1 66 11.2" stroke="#DDE7EE" strokeWidth="2" strokeLinecap="round"/><rect x="35" y="21" width="91" height="87" rx="15" transform="rotate(-8 35 21)" fill="#F3F7FA" stroke="#DCE6ED" strokeWidth="2"/><rect x="55" y="21" width="91" height="87" rx="15" transform="rotate(5 55 21)" fill="white" stroke="#DCE6ED" strokeWidth="2"/><path d="M77 49h43M75 63h47M73 77h31" stroke="#AAB9C6" strokeWidth="4" strokeLinecap="round"/><circle cx="125" cy="89" r="22" fill="#E7F5EF" stroke="white" strokeWidth="5"/><path d="m115 89 7 7 13-15" stroke="#299775" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/><path d="m41 37-5 5m0-5 5 5" stroke="#EF7056" strokeWidth="2.5" strokeLinecap="round"/><circle cx="145" cy="36" r="3" fill="#F4B44E"/></svg></div><h3>Aktuell nichts zu tun</h3><p>Bei neuen Aufgaben, zum Beispiel Freigaben von Dokumenten, findest du alle Informationen hier. Eine Benachrichtigung per E-Mail ist aktuell noch nicht eingerichtet.</p></div>}<details className="sponsor-portal-completed-tasks"><summary><span>Erledigte Aufgaben</span><span className="sponsor-portal-completed-count">{completedTasks.length}</span><Icon name="chevron" size={15}/></summary><div className="sponsor-portal-completed-task-list">{completedTasks.map(({ task, benefitName }) => { const isApproved = task.sponsor_approval_status === "approved"; return <article className="sponsor-portal-completed-task" key={task.id}><div><b>{task.title}</b><small>{isApproved ? `Freigegeben${task.sponsor_approved_at ? ` am ${formatFeedbackDate(task.sponsor_approved_at)}` : ""}` : "Abgeschlossen"}</small>{benefitName && <small className="sponsor-portal-task-benefit-label">Leistung: {benefitName}</small>}</div>{task.files.length > 0 ? <SponsorEvidenceHistory files={task.files}/> : <small className="sponsor-portal-unit-wait">Kein Nachweis angehängt.</small>}<span className="sponsor-benefit-status sponsor-benefit-status-done">{isApproved ? "Freigegeben" : "Abgeschlossen"}</span></article>; })}{completedTasks.length === 0 && <p className="sponsor-portal-completed-empty">Noch keine Aufgaben abgeschlossen.</p>}</div></details></section> : <><section className="panel sponsor-portal-detail-panel"><div className="sponsor-portal-tab-heading"><h2>Vertrag</h2><p>Hier findest du deinen Sponsoringvertrag und den aktuellen Zeichnungsstatus.</p></div>{activePartnership?.contracts.length ? activePartnership.contracts.map((contract) => <article className="sponsor-portal-contract" key={contract.id}><div><b>{contract.title || "Sponsoringvertrag"}</b><span>{contract.sponsor_name} · {new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(contract.value_cents) / 100)}</span><small>{statusLabel(contract.signature_status)}</small>{contract.signature_status === "signed" && <div className="sponsor-portal-contract-complete" role="status"><Icon name="check" size={14}/><span>Beide Unterschriften liegen vor. Der Vertrag ist vollständig abgeschlossen.</span></div>}</div><div className="sponsor-portal-contract-actions">{contract.signing_url && contract.signature_status !== "signed" && <a className="btn" href={contract.signing_url} target="_blank" rel="noreferrer"><Icon name="file" size={14}/> Vertrag ansehen</a>}{contract.signature_status === "signed" && <a className="btn btn-primary" href={`/api/sponsor/contracts/${contract.id}/document?download=true`}><Icon name="file" size={14}/> Gezeichneten Vertrag herunterladen</a>}{activeEvent?.signature_addon_enabled && contract.signature_status === "pending_sponsor" && <button className="btn btn-primary" type="button" disabled={busyId === contract.id} onClick={() => void sign(contract)}>{busyId === contract.id ? "Wird gespeichert …" : "Vertrag einfach zeichnen"}</button>}{activeEvent?.signature_addon_enabled && contract.signature_status === "pending_organizer" && <span className="sponsor-portal-wait">Der Veranstalter ist als Nächstes an der Reihe.</span>}</div></article>) : <p className="task-empty">Für dieses Event wurde noch kein Vertrag hinterlegt.</p>}{activeEvent?.signature_addon_enabled && <p className="sponsor-simple-signature-note">Die Zeichnung per Klick ist eine interne Bestätigung im sponso-Bereich. Sie ist keine qualifizierte elektronische Signatur und verwendet noch keinen externen Signaturdienst.</p>}</section></>}
+            })}</div></section>)}</div></article>)}</div> : null}</SponsorGroup>}
+          {!hasActiveTasks && <div className="sponsor-portal-task-empty-state"><div className="sponsor-portal-task-empty-illustration" aria-hidden="true"><svg viewBox="0 0 176 132" fill="none"><path d="M22 103.5c20.5-8.4 39.7-11.2 66-11.2 26.2 0 46.4 3.1 66 11.2" stroke="#DDE7EE" strokeWidth="2" strokeLinecap="round"/><rect x="35" y="21" width="91" height="87" rx="15" transform="rotate(-8 35 21)" fill="#F3F7FA" stroke="#DCE6ED" strokeWidth="2"/><rect x="55" y="21" width="91" height="87" rx="15" transform="rotate(5 55 21)" fill="white" stroke="#DCE6ED" strokeWidth="2"/><path d="M77 49h43M75 63h47M73 77h31" stroke="#AAB9C6" strokeWidth="4" strokeLinecap="round"/><circle cx="125" cy="89" r="22" fill="#E7F5EF" stroke="white" strokeWidth="5"/><path d="m115 89 7 7 13-15" stroke="#299775" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/><path d="m41 37-5 5m0-5 5 5" stroke="#EF7056" strokeWidth="2.5" strokeLinecap="round"/><circle cx="145" cy="36" r="3" fill="#F4B44E"/></svg></div><h3>Aktuell nichts zu tun</h3><p>Bei neuen Aufgaben, zum Beispiel Freigaben von Dokumenten, findest du alle Informationen hier. Eine Benachrichtigung per E-Mail ist aktuell noch nicht eingerichtet.</p></div>}
+          <details className="sponsor-portal-completed-tasks"><summary><span>Erledigte Aufgaben</span><span className="sponsor-portal-completed-count">{completedTasks.length}</span><Icon name="chevron" size={15}/></summary><div className="sponsor-portal-completed-task-list">{completedTasks.map(({ task, benefitName }) => <SponsorCompletedTaskRow key={task.id} task={task} benefitName={benefitName}/>)}{completedTasks.length === 0 && <p className="sponsor-portal-completed-empty">Noch keine Aufgaben abgeschlossen.</p>}</div></details></section> : <><section className="panel sponsor-portal-detail-panel"><div className="sponsor-portal-tab-heading"><h2>Vertrag</h2><p>Hier findest du deinen Sponsoringvertrag und den aktuellen Zeichnungsstatus.</p></div>{activePartnership?.contracts.length ? activePartnership.contracts.map((contract) => <article className="sponsor-portal-contract" key={contract.id}><div><b>{contract.title || "Sponsoringvertrag"}</b><span>{contract.sponsor_name} · {new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(contract.value_cents) / 100)}</span><small>{statusLabel(contract.signature_status)}</small>{contract.signature_status === "signed" && <div className="sponsor-portal-contract-complete" role="status"><Icon name="check" size={14}/><span>Beide Unterschriften liegen vor. Der Vertrag ist vollständig abgeschlossen.</span></div>}</div><div className="sponsor-portal-contract-actions">{contract.signing_url && contract.signature_status !== "signed" && <a className="btn" href={contract.signing_url} target="_blank" rel="noreferrer"><Icon name="file" size={14}/> Vertrag ansehen</a>}{contract.signature_status === "signed" && contract.signing_url && <a className="btn btn-primary" href={`/api/sponsor/contracts/${contract.id}/document?download=true`}><Icon name="file" size={14}/> Gezeichneten Vertrag herunterladen</a>}{activeEvent?.signature_addon_enabled && contract.signature_status === "pending_sponsor" && <button className="btn btn-primary" type="button" disabled={busyId === contract.id} onClick={() => void sign(contract)}>{busyId === contract.id ? "Wird gespeichert …" : "Vertrag einfach zeichnen"}</button>}{activeEvent?.signature_addon_enabled && contract.signature_status === "pending_organizer" && <span className="sponsor-portal-wait">Der Veranstalter ist als Nächstes an der Reihe.</span>}</div></article>) : <p className="task-empty">Für dieses Event wurde noch kein Vertrag hinterlegt.</p>}{activeEvent?.signature_addon_enabled && <p className="sponsor-simple-signature-note">Die Zeichnung per Klick ist eine interne Bestätigung im sponso-Bereich. Sie ist keine qualifizierte elektronische Signatur und verwendet noch keinen externen Signaturdienst.</p>}</section></>}
         </> : <section className="panel sponsor-portal-empty"><h2>Event nicht gefunden</h2><p>Dieses Event ist nicht mit deinem Sponsor-Konto verknüpft.</p><Link className="btn" href="/sponsor">Zur Event-Übersicht</Link></section>}
       </> : <>
         <div className="eyebrow">DEINE PARTNERSCHAFTEN</div><h1>Willkommen im Sponsor-Bereich</h1><p className="subtitle">Hier findest du deine verknüpften Events.</p>

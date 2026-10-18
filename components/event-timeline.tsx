@@ -19,6 +19,7 @@ export function EventTimeline({ event, sponsors }: { event: StoredEvent; sponsor
   const eventSponsors = useMemo(() => sponsors.filter((record) => record.sponsor.eventIds.includes(event.id) || record.contracts.some((contract) => contract.eventId === event.id)), [event.id, sponsors]);
   const [steps, setSteps] = useState<TimelineStep[]>([
     { title: "Event angelegt", detail: formatDate(event.createdAt) || "Erfasst", complete: true },
+    { title: "Sponsoren hinzugefügt", detail: "Wird geladen …", complete: false },
     { title: "Verträge erstellt", detail: "Wird geladen …", complete: false },
     { title: "Verträge unterschrieben", detail: "Wird geladen …", complete: false },
     { title: "Alle Nachweise erbracht", detail: "Wird geladen …", complete: false },
@@ -34,6 +35,7 @@ export function EventTimeline({ event, sponsors }: { event: StoredEvent; sponsor
         const reportsComplete = totalContracts > 0 && metrics.reportsCreated === totalContracts && metrics.reportsSent === totalContracts;
         const next: TimelineStep[] = [
           { title: "Event angelegt", detail: formatDate(event.createdAt) || "Erfasst", complete: true },
+          { title: "Sponsoren hinzugefügt", detail: totalSponsors ? `${totalSponsors} ${totalSponsors === 1 ? "Sponsor hinzugefügt" : "Sponsoren hinzugefügt"}` : "Noch keine Sponsoren hinzugefügt", complete: totalSponsors > 0 },
           { title: "Verträge erstellt", detail: `${metrics.contractsCreated} von ${totalContracts} Verträgen`, complete: totalContracts > 0 && metrics.contractsCreated === totalContracts },
           { title: "Verträge unterschrieben", detail: `${metrics.contractsSigned} von ${totalSponsors} gezeichnete Vereinbarungen hochgeladen`, complete: totalSponsors > 0 && metrics.contractsSigned === totalSponsors },
           { title: "Alle Nachweise erbracht", detail: metrics.evidenceTasks ? `${metrics.completedEvidenceTasks} von ${metrics.evidenceTasks} Nachweisen` : "Noch keine Aufgaben oder Leistungen", complete: metrics.evidenceTasks > 0 && metrics.completedEvidenceTasks === metrics.evidenceTasks },

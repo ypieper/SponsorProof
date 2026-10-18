@@ -7,6 +7,31 @@ import { createClient } from "@/lib/supabase/client";
 
 type EventDetails = { title: string; startDate: string; endDate: string; location: string; responsible: string; contactFirstName: string; contactLastName: string; contactEmail: string; contactPhone: string; organizerLogoPath: string | null; organizerLogoUrl?: string | null };
 const maxLogoSize = 5 * 1024 * 1024;
+const organizerLogoWidth = 1200;
+const organizerLogoHeight = 400;
+
+async function fitLogoToContainer(file: File) {
+  const image = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = organizerLogoWidth;
+    canvas.height = organizerLogoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Das Logo konnte nicht verarbeitet werden.");
+    if (file.type === "image/jpeg") {
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, organizerLogoWidth, organizerLogoHeight);
+    }
+    const scale = Math.min(organizerLogoWidth / image.width, organizerLogoHeight / image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    context.drawImage(image, (organizerLogoWidth - width) / 2, (organizerLogoHeight - height) / 2, width, height);
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Das Logo konnte nicht verarbeitet werden.")), file.type));
+    return new File([blob], file.name, { type: file.type, lastModified: file.lastModified });
+  } finally {
+    image.close();
+  }
+}
 
 function formatDate(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -69,11 +94,13 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
       const previousLogoPath = details.organizerLogoPath;
       let organizerLogoPath = removeLogo ? null : draft.organizerLogoPath;
       if (logoFile) {
+        const fittedLogoFile = await fitLogoToContainer(logoFile);
+        if (fittedLogoFile.size > maxLogoSize) throw new Error("Das bearbeitete Logo ist größer als 5 MB. Bitte wähle eine kleinere Datei.");
         const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
         if (organizationError || typeof organizationId !== "string") throw organizationError ?? new Error("Der Veranstalterbereich konnte nicht ermittelt werden.");
-        const extension = logoFile.type === "image/png" ? "png" : logoFile.type === "image/webp" ? "webp" : "jpg";
+        const extension = fittedLogoFile.type === "image/png" ? "png" : fittedLogoFile.type === "image/webp" ? "webp" : "jpg";
         uploadedLogoPath = `${organizationId}/events/${eventId}/branding/${crypto.randomUUID()}.${extension}`;
-        const { error: uploadError } = await supabase.storage.from("sponsorproof-files").upload(uploadedLogoPath, logoFile, { contentType: logoFile.type, upsert: false });
+        const { error: uploadError } = await supabase.storage.from("sponsorproof-files").upload(uploadedLogoPath, fittedLogoFile, { contentType: fittedLogoFile.type, upsert: false });
         if (uploadError) throw uploadError;
         organizerLogoPath = uploadedLogoPath;
       }
@@ -141,7 +168,7 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
               <div className="event-logo-controls">
                 <label className="btn" htmlFor={`event-logo-${eventId}`}>{logoFile || (!removeLogo && draft.organizerLogoPath) ? "Logo ersetzen" : "Logo auswählen"}<input id={`event-logo-${eventId}`} type="file" accept="image/png,image/jpeg,image/webp" disabled={saving} onChange={chooseLogo}/></label>
                 {(logoFile || (!removeLogo && draft.organizerLogoPath)) && <button className="btn" type="button" disabled={saving} onClick={() => { setLogoFile(null); setRemoveLogo(true); }}>Logo entfernen</button>}
-                <small>Empfohlen: 1200 × 400 Pixel im Querformat · PNG, JPG oder WebP · maximal 5 MB.</small>
+                <small>Das Logo wird beim Speichern proportional in einen 1200 × 400-Pixel-Container eingepasst · PNG, JPG oder WebP · maximal 5 MB.</small>
               </div>
             </div>
           </section>

@@ -104,9 +104,17 @@ export function contractFromRow(row: ContractRow): SponsorContract {
   };
 }
 
-export async function updateContractRecord(id: string, details: { netValueCents: number; grossValueCents: number }) {
+export async function updateContractRecord(id: string, details: { netValueCents?: number; grossValueCents?: number; signatureStatus?: SponsorContract["signatureStatus"]; signedAt?: string | null; sponsorSignedAt?: string | null; organizerSignedAt?: string | null; signingDocumentId?: string | null }) {
   const { createClient } = await import("@/lib/supabase/client");
-  return createClient().from("contracts").update({ value_cents: details.netValueCents, gross_value_cents: details.grossValueCents }).eq("id", id);
+  const updates: Record<string, number | string | null> = {};
+  if (details.netValueCents !== undefined) updates.value_cents = details.netValueCents;
+  if (details.grossValueCents !== undefined) updates.gross_value_cents = details.grossValueCents;
+  if (details.signatureStatus !== undefined) updates.signature_status = details.signatureStatus;
+  if (details.signedAt !== undefined) updates.signed_at = details.signedAt;
+  if (details.sponsorSignedAt !== undefined) updates.sponsor_signed_at = details.sponsorSignedAt;
+  if (details.organizerSignedAt !== undefined) updates.organizer_signed_at = details.organizerSignedAt;
+  if (details.signingDocumentId !== undefined) updates.signing_document_id = details.signingDocumentId;
+  return createClient().from("contracts").update(updates).eq("id", id);
 }
 
 export async function setContractSigningDocument(id: string, documentId: string) {
