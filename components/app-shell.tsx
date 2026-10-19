@@ -123,14 +123,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         return <Link href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</Link>;
       })}</nav>
       {!adminNavigationOnly && <div className="sidebar-bottom">
-        <nav className="sidebar-legal-links" aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav>
+        <nav className="sidebar-legal-links" aria-label="Kontakt"><Link href="/kontakt">Kontakt</Link></nav>
         <Link className="profile" href="/einstellungen?tab=profile" aria-label="Einstellungen und Meine Daten öffnen" title="Meine Daten bearbeiten"><span className="avatar">{userDisplay.initials}</span><div><b title={userDisplay.name}>{userDisplay.name}</b><small title={userDisplay.organization}>{userDisplay.organization}</small></div><span style={{marginLeft:"auto",color:"#8a94a0"}}><Icon name="chevron" size={16}/></span></Link>
       </div>}
     </aside>
     <div className={`main-area ${path === "/dashboard" ? "dashboard-main-area" : ""}`}>
       <header className="topbar"><MobileMenu isPlatformAdmin={adminNavigationOnly} isSalesPartner={isSalesPartner}/><div className="crumb">{adminNavigationOnly ? "Plattform" : "Veranstalterbereich"} <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? (adminNavigation.find((item) => item.href === path)?.label ?? "Benutzer") : path === "/dashboard" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Vertragsbausteine" : path.includes("einstellungen") ? "Einstellungen" : "Veranstalterbereich"}</b></div><div className="top-actions">{!adminNavigationOnly && <><Link className="top-event-mode-link" href="/event-modus" aria-label="Event-Modus öffnen" title="Event-Modus öffnen"><Icon name="camera" size={15}/><span>Event-Modus öffnen</span></Link><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link></>}<LogoutButton/></div></header>
       {children}
-      <footer className="app-footer"><span>© {new Date().getFullYear()} sponso</span><nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
+      <footer className="app-footer"><span>© {new Date().getFullYear()} sponso</span>{adminNavigationOnly && <nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav>}</footer>
     </div>
   </div>;
 }
