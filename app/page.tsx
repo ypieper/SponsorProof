@@ -177,7 +177,7 @@ export default function LandingPage() {
             <strong className="landing-pricing-price">{item.price}</strong>
             <span className="landing-pricing-period">einmalig pro Event</span>
             <ul className="landing-pricing-features">{eventPackageFeatures.map((feature) => <li key={feature}>{feature}</li>)}</ul>
-            <span className="landing-pricing-signature"><span><small>OPTIONAL</small>Digitale Signatur<small className="landing-pricing-signature-count">{item.signatures}</small></span><strong>{item.signaturePrice}</strong></span>
+            <span className="landing-pricing-signature"><span><small>OPTIONAL</small>Rechtssichere Vertragsunterschrift<small className="landing-pricing-signature-count">{item.signatures}</small></span><strong>{item.signaturePrice}</strong></span>
             <Link className={`btn${item.featured ? " btn-primary" : ""}`} href="/login?type=organizer&mode=signup">Event starten <span aria-hidden="true">→</span></Link>
           </article>)}
         </div>
