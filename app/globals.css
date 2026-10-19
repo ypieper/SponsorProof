@@ -2413,14 +2413,14 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
 .mobile-drawer .nav-link { color: #d5dfe8 !important; }
 .sidebar .nav-link.active,
 .mobile-drawer .nav-link.active {
-  background: #ed694e !important;
-  border-color: #ed694e !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
   color: #fff !important;
 }
 .sidebar .nav-link:hover,
 .mobile-drawer .nav-link:hover { background: #1d3a52 !important; color: #fff !important; }
 .sidebar .nav-link.active:hover,
-.mobile-drawer .nav-link.active:hover { background: #ed694e !important; }
+.mobile-drawer .nav-link.active:hover { background: var(--accent-strong) !important; }
 .mobile-drawer .brand,
 .sidebar .brand { color: #fff !important; }
 .mobile-drawer .nav-label,
