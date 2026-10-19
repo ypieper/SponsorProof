@@ -40,6 +40,10 @@ button { font: inherit; }
 .help-card strong { display: block; font-size: 12px; margin: 7px 0 4px; }
 .help-card p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 0 0 10px; }
 .help-card a { font-size: 11px; color: var(--accent-strong); font-weight: 650; }
+.help-card .help-card-action { display:flex; width:100%; min-height:36px; justify-content:center; gap:7px; padding:0 10px; font-size:10px; }
+.sidebar-legal-links { display:flex; flex-wrap:wrap; align-items:center; gap:5px 10px; margin:0 3px 13px; padding:10px 5px 0; border-top:1px solid #e8ebef; }
+.sidebar-legal-links a { color:#7e8996; font-size:9px; line-height:1.4; }
+.sidebar-legal-links a:hover { color:var(--accent-strong); }
 .profile { padding: 14px 8px 0; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; color: inherit; text-decoration: none; border-radius: 8px; transition: background .15s ease; }
 .profile:hover { background: #f5f7f8; }
 .profile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1909,6 +1913,10 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
 .sidebar .help-card strong { color: #f7f9fb; }
 .sidebar .help-card p { color: #b6c4d0; }
 .sidebar .help-card a { color: #ff9b80; }
+.sidebar .help-card .help-card-action { color:#fff; }
+.sidebar .sidebar-legal-links { border-top-color:#2b465c; }
+.sidebar .sidebar-legal-links a { color:#9fb1c1; }
+.sidebar .sidebar-legal-links a:hover { color:#fff; }
 .sidebar .profile { border-top-color: #2b465c; }
 .sidebar .profile:hover { background: #1b374e; }
 .sidebar .profile b { color: #f5f7fa; }
