@@ -61,8 +61,7 @@ button { font: inherit; }
 .crumb { color: #8b95a2; font-size: 12px; }
 .crumb b { color: #4b5563; font-weight: 600; }
 .top-actions { display: flex; align-items: center; gap: 10px; }
-.top-event-mode-link { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:36px; padding:0 12px; border:1px solid #e85f43; border-radius:9px; background:linear-gradient(100deg,#f1785c,#e55c40); color:#fff; box-shadow:0 4px 12px #e55c4022; font-size:11px; font-weight:650; white-space:nowrap; }
-.top-event-mode-link:hover { background:linear-gradient(100deg,#e9684c,#d94f34); }
+.top-event-mode-link { min-height:36px; white-space:nowrap; }
 .top-event-mode-link:focus-visible { outline:2px solid var(--accent-strong); outline-offset:2px; }
 .icon-button { width: 36px; height: 36px; border: 1px solid var(--line); background: #fff; display: grid; place-items: center; border-radius: 9px; color: #697482; }
 .content { max-width: 1320px; margin: 0 auto; padding: 34px 38px 60px; }
