@@ -3701,6 +3701,96 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
   .library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
+/* More visual character on the public landing page. */
+.landing-hero::before {
+  inset:-70px -9vw -8px -9vw;
+  border-radius:34px;
+  background:
+    radial-gradient(ellipse at 77% 40%,rgba(255,207,191,.75),transparent 34%),
+    radial-gradient(ellipse at 20% 70%,rgba(202,226,243,.82),transparent 38%),
+    linear-gradient(115deg,rgba(255,255,255,.45),rgba(250,244,241,.58) 58%,rgba(239,246,250,.5));
+}
+.landing-flow-card {
+  border-color:#dce6ed;
+  box-shadow:0 30px 76px rgba(25,45,64,.15),0 6px 18px rgba(25,45,64,.06);
+}
+.landing-problem {
+  border:1px solid #e3eaf0;
+  border-left:3px solid #e75b40;
+  border-radius:0 14px 14px 0;
+  box-shadow:0 10px 30px rgba(25,45,64,.035);
+}
+.landing-step {
+  padding:21px 20px 19px 0;
+  border-bottom:1px solid #e5ebef;
+}
+.landing-step-number { display:inline-flex; align-items:center; gap:8px; }
+.landing-step-number::before { width:22px; height:2px; border-radius:2px; background:#f3b09e; content:""; }
+.landing-collaboration-grid article {
+  padding:22px 23px 24px;
+  border:1px solid #e3eaf0;
+  border-radius:16px;
+  background:linear-gradient(145deg,#fff,#f8fafb);
+  box-shadow:0 12px 32px rgba(25,45,64,.055);
+}
+.landing-pricing-grid { gap:16px; }
+.landing-pricing-card {
+  border-radius:18px;
+  box-shadow:0 13px 32px rgba(25,45,64,.065);
+  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;
+}
+.landing-pricing-card:hover { transform:translateY(-4px); box-shadow:0 19px 38px rgba(25,45,64,.11); }
+.landing-pricing-card.is-featured { background:linear-gradient(180deg,#fffaf8,#fff 50%); box-shadow:0 16px 38px rgba(220,103,77,.13); }
+.landing-enterprise-card { border-radius:17px; }
+
+/* The sponsor portal is embedded at a narrower size in the public demo. */
+@media (max-width:700px) {
+  .demo-sponsor-workspace-content,
+  .demo-sponsor-workspace-content .sponsor-portal-demo-embedded,
+  .demo-sponsor-workspace-content .sponsor-portal-content { min-width:0; width:100%; box-sizing:border-box; }
+  .demo-sponsor-workspace-content .sponsor-portal-header {
+    grid-template-columns:auto minmax(0,1fr);
+    gap:10px;
+    min-height:54px;
+    padding:7px 13px;
+  }
+  .demo-sponsor-workspace-content .sponsor-portal-header > .brand { grid-column:1; justify-self:start; }
+  .demo-sponsor-workspace-content .sponsor-portal-header > div {
+    grid-column:2;
+    gap:8px;
+    font-size:10px;
+  }
+  .demo-sponsor-workspace-content .sponsor-portal-header .logout-button { min-height:30px; padding:0 8px; font-size:9px; }
+  .demo-sponsor-workspace-content .sponsor-portal-content { padding:18px 13px 24px; }
+  .demo-sponsor-workspace-content .sponsor-portal-event-heading { align-items:flex-start; gap:11px; margin-bottom:17px; }
+  .demo-sponsor-workspace-content .sponsor-portal-event-heading h1 { margin:5px 0; font-size:clamp(22px,7vw,30px); overflow-wrap:anywhere; }
+  .demo-sponsor-workspace-content .sponsor-portal-event-heading .subtitle { font-size:11px; line-height:1.5; }
+  .demo-sponsor-workspace-content .sponsor-portal-event-heading-logo { width:62px; height:54px; padding:5px; }
+  .demo-sponsor-workspace-content .sponsor-portal-contact { gap:9px; margin-bottom:14px; padding:11px; }
+  .demo-sponsor-workspace-content .sponsor-portal-contact strong { font-size:12px; }
+  .demo-sponsor-workspace-content .sponsor-portal-contact a,
+  .demo-sponsor-workspace-content .sponsor-portal-contact div > span { font-size:10px; overflow-wrap:anywhere; }
+  .demo-sponsor-workspace-content .sponsor-portal-tabs {
+    gap:18px;
+    margin:14px 0 12px;
+    overflow-x:auto;
+    scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
+  }
+  .demo-sponsor-workspace-content .sponsor-portal-tabs::-webkit-scrollbar { display:none; }
+  .demo-sponsor-workspace-content .sponsor-portal-tabs button { min-height:40px; flex:none; padding:0 1px 9px; white-space:nowrap; }
+  .demo-sponsor-workspace-content .sponsor-portal-detail-panel,
+  .demo-sponsor-workspace-content .sponsor-portal-page .sponsor-invoice-area,
+  .demo-sponsor-workspace-content .sponsor-portal-page .sponsor-document-area { padding:14px; }
+  .demo-sponsor-workspace-content .sponsor-portal-contract-benefit-list article { flex-wrap:wrap; gap:8px; padding:10px; }
+  .demo-sponsor-workspace-content .sponsor-portal-contract-benefit-list article > div { flex:1 1 100%; }
+  .demo-sponsor-workspace-content .sponsor-portal-contract-benefit-list span { flex:none; }
+  .demo-sponsor-workspace-content .sponsor-portal-document-row,
+  .demo-sponsor-workspace-content .sponsor-invoice-card { min-width:0; }
+  .landing-collaboration-grid article { padding:18px; }
+  .landing-pricing-card:hover { transform:none; }
+}
+
 /* Fixed-size iPhone preview for the real-world event mode workflow. */
 .demo-role-switch button { display:inline-flex; align-items:center; justify-content:center; gap:5px; }
 .demo-role-switch button.active { color:#a65336; }
