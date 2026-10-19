@@ -2078,9 +2078,10 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
 .landing-pricing-features { display:grid; gap:8px; width:100%; margin:17px 0 0; padding:13px 0 0; border-top:1px solid #edf1f4; list-style:none; color:#627588; font-size:10px; line-height:1.45; }
 .landing-pricing-features li { position:relative; padding-left:15px; }
 .landing-pricing-features li::before { position:absolute; top:0; left:0; color:#339977; font-weight:800; content:"✓"; }
-.landing-pricing-signature { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-height:54px; margin-top:15px; padding:9px 10px; border:1px solid #f4d8ce; border-radius:10px; background:#fff7f3; color:#5e6e7d; font-size:10px; font-weight:700; line-height:1.35; }
+.landing-pricing-signature { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-height:68px; margin-top:15px; padding:9px 10px; border:1px solid #f4d8ce; border-radius:10px; background:#fff7f3; color:#5e6e7d; font-size:10px; font-weight:700; line-height:1.35; }
 .landing-pricing-signature > span { display:grid; gap:2px; }
 .landing-pricing-signature > span > small { color:#a57466; font-size:7px; font-weight:800; letter-spacing:.08em; }
+.landing-pricing-signature > span > .landing-pricing-signature-count { color:#78899b; font-size:9px; font-weight:550; letter-spacing:0; }
 .landing-pricing-signature > strong { flex:none; color:#bd4d36; font-size:16px; }
 .landing-pricing-card > .btn { display:flex; justify-content:center; width:100%; min-height:39px; margin-top:18px; font-size:11px; text-decoration:none; }
 .landing-pricing-popular { position:absolute; top:-10px; right:12px; padding:4px 7px; border-radius:99px; background:#fff0eb; color:#c84932; font-size:8px; font-weight:800; letter-spacing:.06em; }
@@ -2234,7 +2235,7 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
   .landing-pricing-price { grid-column:2; grid-row:1; justify-self:end; font-size:30px; }
   .landing-pricing-period { grid-column:2; grid-row:2; justify-self:end; margin:0; font-size:11px; text-align:right; }
   .landing-pricing-features { grid-column:1/-1; grid-template-columns:minmax(0,1fr); gap:9px; margin-top:9px; padding-top:12px; font-size:13px; line-height:1.45; }
-  .landing-pricing-signature { grid-column:1/-1; min-height:52px; margin-top:4px; padding:9px 11px; font-size:12px; }
+  .landing-pricing-signature { grid-column:1/-1; min-height:68px; margin-top:4px; padding:9px 11px; font-size:12px; }
   .landing-pricing-signature > span > small { font-size:8px; }
   .landing-pricing-signature > strong { font-size:18px; }
   .landing-pricing-card > .btn { grid-column:1/-1; min-height:48px; margin-top:4px; font-size:14px; }
