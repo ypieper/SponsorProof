@@ -32,11 +32,11 @@ const featureNames: Record<EventFeature, string> = {
   reports: "Sponsorberichte erstellen",
 };
 
-function packageDescription(maxContracts: number) {
-  const packageName = eventContractPackageLabel(maxContracts);
+function packageDescription(maxContracts: number, packageCode?: string) {
+  const packageName = eventContractPackageLabel(maxContracts, packageCode);
   if (packageName === "Starter") {
     return [
-      "Bis zu 5 Sponsoren und Verträge",
+      `Bis zu ${maxContracts} Sponsoren`,
       "Sponsoren und Vereinbarungen verwalten",
       "Verträge aus Bausteinen erstellen",
       "Aufgaben ableiten und Nachweise inklusive Fotos dokumentieren",
@@ -44,7 +44,7 @@ function packageDescription(maxContracts: number) {
     ];
   }
   return [
-    `Bis zu ${maxContracts} Sponsoren und Verträge`,
+    `Bis zu ${maxContracts} Sponsoren`,
     "Alle Kernfunktionen enthalten",
   ];
 }
@@ -173,7 +173,7 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
       setCode("");
       const activatedPackage = contractPackages.find((item) => item.code === result.packageCode);
       setDialogMessage(result.packageCode
-        ? `Event freigeschaltet. Das Paket ${activatedPackage?.name ?? eventContractPackageLabel(activatedPackage?.max_contracts ?? Number(String(result.packageCode).split("_")[1]))} ist jetzt aktiv.`
+        ? `Event freigeschaltet. Das Paket ${activatedPackage?.name ?? eventContractPackageLabel(activatedPackage?.max_contracts ?? Number(String(result.packageCode).split("_")[1]), result.packageCode)} ist jetzt aktiv.`
         : `Event freigeschaltet. Der Tarif ${eventPlanLabel(result.plan)} ist jetzt aktiv.`);
       window.dispatchEvent(new CustomEvent("sponso:event-entitlement-updated", { detail: { eventId: dialog.eventId } }));
     } catch (error) {
@@ -196,10 +196,10 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
     {dialog && <div className="modal-backdrop entitlement-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !redeeming) setDialog(null); }}>
       <section className="create-modal entitlement-modal" role="dialog" aria-modal="true" aria-labelledby="entitlement-title">
         <div className="create-modal-head"><div><div className="eyebrow">EVENT FREISCHALTEN</div><h2 id="entitlement-title">sponso für dieses Event freischalten</h2><p>{dialog.title}{dialog.reason ? ` · ${dialog.reason}` : ""}</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={redeeming} onClick={() => setDialog(null)}><Icon name="close" size={16}/></button></div>
-        {currentPackageBooking ? <section className="entitlement-package-current"><div><strong>Paket gebucht: {eventContractPackageLabel(currentPackageBooking.max_contracts)}</strong><span>{currentPackageBooking.payment_status === "comped" ? "Über Freischaltcode aktiviert" : `Gesamtbetrag ${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(currentPackageBooking.total_amount_cents / 100)}`}</span></div><p>{currentPackageBooking.signature_addon_selected ? `Digitale Signaturen inklusive (${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(currentPackageBooking.signature_addon_amount_cents / 100)} Add-on).` : currentPackageBooking.payment_status === "comped" ? "Das Paket wurde mit einem Freischaltcode aktiviert." : "Ohne Signatur-Add-on gebucht."}</p></section> : currentEntitlement?.plan_code === "event" || currentEntitlement?.plan_code === "event_pro" ? <section className="entitlement-package-current"><div><strong>Bestehender Tarif: {eventPlanLabel(currentEntitlement.plan_code)}</strong><span>Für dieses Event wurde bereits ein Tarif freigeschaltet.</span></div><p>Die neuen Vertragspakete gelten für neu gebuchte Events. Ein Wechsel bestehender Tarife benötigt eine separate Zuordnung.</p></section> : <>
+        {currentPackageBooking ? <section className="entitlement-package-current"><div><strong>Paket gebucht: {eventContractPackageLabel(currentPackageBooking.max_contracts, currentPackageBooking.package_code)}</strong><span>{currentPackageBooking.payment_status === "comped" ? "Über Freischaltcode aktiviert" : `Gesamtbetrag ${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(currentPackageBooking.total_amount_cents / 100)}`}</span></div><p>{currentPackageBooking.signature_addon_selected ? `Digitale Signaturen inklusive (${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(currentPackageBooking.signature_addon_amount_cents / 100)} Add-on).` : currentPackageBooking.payment_status === "comped" ? "Das Paket wurde mit einem Freischaltcode aktiviert." : "Ohne Signatur-Add-on gebucht."}</p></section> : currentEntitlement?.plan_code === "event" || currentEntitlement?.plan_code === "event_pro" ? <section className="entitlement-package-current"><div><strong>Bestehender Tarif: {eventPlanLabel(currentEntitlement.plan_code)}</strong><span>Für dieses Event wurde bereits ein Tarif freigeschaltet.</span></div><p>Die neuen Vertragspakete gelten für neu gebuchte Events. Ein Wechsel bestehender Tarife benötigt eine separate Zuordnung.</p></section> : <>
           <div className="entitlement-package-grid" role="radiogroup" aria-label="Paket auswählen">{contractPackages.map((item) => {
-            const packageName = eventContractPackageLabel(item.max_contracts);
-            return <button key={item.code} className={`entitlement-package-card${selectedPackage === item.code ? " selected" : ""}`} type="button" role="radio" aria-checked={selectedPackage === item.code} onClick={() => setSelectedPackage(item.code)}><span className="entitlement-package-card-heading"><span>{packageName}</span>{packageName === "Pro" && <span className="entitlement-package-popular">Meistgewählt</span>}</span><strong>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(item.base_amount_cents / 100)}</strong><small>einmalig pro Event</small><span className="entitlement-package-features">{packageDescription(item.max_contracts).map((description) => <span key={description}>{description}</span>)}</span></button>;
+            const packageName = item.name || eventContractPackageLabel(item.max_contracts, item.code);
+            return <button key={item.code} className={`entitlement-package-card${selectedPackage === item.code ? " selected" : ""}`} type="button" role="radio" aria-checked={selectedPackage === item.code} onClick={() => setSelectedPackage(item.code)}><span className="entitlement-package-card-heading"><span>{packageName}</span>{packageName === "Pro" && <span className="entitlement-package-popular">Meistgewählt</span>}</span><strong>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(item.base_amount_cents / 100)}</strong><small>einmalig pro Event</small><span className="entitlement-package-features">{packageDescription(item.max_contracts, item.code).map((description) => <span key={description}>{description}</span>)}</span></button>;
           })}</div>
           <aside className="entitlement-enterprise-plan"><div><strong>Enterprise</strong><span>Für Veranstalter mit mehreren Events</span></div><ul className="entitlement-enterprise-features"><li>Individuelle Anzahl an Sponsoren und Verträgen</li><li>Alle Kernfunktionen enthalten</li><li>Umfang und Preis auf Anfrage</li></ul><Link className="btn btn-primary" href="/kontakt?anliegen=enterprise">Enterprise anfragen</Link></aside>
           {selectedPackageDetails && <div className="entitlement-signature-addon"><label><input type="checkbox" checked={signatureAddon} onChange={(event) => setSignatureAddon(event.target.checked)}/><span><span className="entitlement-signature-addon-heading"><strong>Digitale Signatur hinzufügen</strong><em>Schneller zum Abschluss</em></span><small>Dein Sponsor zeichnet direkt im Sponsorenbereich – ohne Drucken, Scannen oder E-Mail-Pingpong. Viele Sponsoren bevorzugen diesen schnellen digitalen Weg. Gilt für einen Vertrag je Sponsor in deinem Paket.</small></span></label><b>+ {new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(signatureAddonAmount / 100)}</b></div>}

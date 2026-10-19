@@ -44,7 +44,7 @@ export function AccountEventTariffs() {
     {loading ? <p className="task-empty">Events und Tarife werden geladen …</p> : error ? <div className="account-event-tariffs-error"><p role="alert">{error}</p><button className="btn" type="button" onClick={() => void loadEvents()}>Erneut laden</button></div> : events.length === 0 ? <EmptyState title="Noch keine Events" description="Sobald du ein Event anlegst, erscheinen hier sein Tarif und Status."/> : <div className="account-event-tariffs-list">
       {events.map((event) => {
         const stage = eventLifecycleStage(metrics.byEvent[event.id] ?? { sponsorship: 0, signedSponsorship: 0, sponsors: 0, benefits: 0, trackedBenefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, reportsSent: 0, evidenceTasks: 0, completedEvidenceTasks: 0 });
-        const planName = event.planCode === "enterprise" ? eventPlanLabel("enterprise") : event.contractPackage ? `Paket: ${eventContractPackageLabel(event.contractPackage.maxContracts)}` : eventPlanLabel(event.planCode);
+        const planName = event.planCode === "enterprise" ? eventPlanLabel("enterprise") : event.contractPackage ? `Paket: ${eventContractPackageLabel(event.contractPackage.maxContracts, event.contractPackage.code)}` : eventPlanLabel(event.planCode);
         const canUpgrade = !event.contractPackage && event.planCode !== "enterprise" && event.bookedPlanCode !== "event_pro";
         const stageText = metrics.loading ? "Status wird geladen …" : metrics.error ? "Status nicht verfügbar" : stage.label;
         return <article className="account-event-tariff-row" key={event.id}>

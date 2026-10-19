@@ -37,10 +37,9 @@ const story = [
 ];
 
 const eventPackages = [
-  { name: "Starter", contracts: "Bis zu 5 Sponsoren und Verträge", price: "99 €", signaturePrice: "+20 €" },
-  { name: "Plus", contracts: "Bis zu 7 Sponsoren und Verträge", price: "129 €", signaturePrice: "+28 €" },
-  { name: "Pro", contracts: "Bis zu 10 Sponsoren und Verträge", price: "169 €", signaturePrice: "+40 €", featured: true },
-  { name: "Event", contracts: "Bis zu 15 Sponsoren und Verträge", price: "229 €", signaturePrice: "+60 €" },
+  { name: "Starter", sponsorLimit: "Bis zu 10 Sponsoren", price: "99 €", signaturePrice: "+40 €" },
+  { name: "Plus", sponsorLimit: "Bis zu 20 Sponsoren", price: "179 €", signaturePrice: "+80 €" },
+  { name: "Pro", sponsorLimit: "Bis zu 30 Sponsoren", price: "239 €", signaturePrice: "+120 €", featured: true },
 ];
 
 const eventPackageFeatures = [
@@ -174,7 +173,7 @@ export default function LandingPage() {
           {eventPackages.map((item, index) => <article className={`landing-pricing-card landing-reveal landing-reveal-delay-${Math.min(index + 1, 4)}${item.featured ? " is-featured" : ""}`} key={item.name}>
             {item.featured && <span className="landing-pricing-popular">MEISTGEWÄHLT</span>}
             <h3>{item.name}</h3>
-            <p className="landing-pricing-capacity">{item.contracts}</p>
+            <p className="landing-pricing-capacity">{item.sponsorLimit}</p>
             <strong className="landing-pricing-price">{item.price}</strong>
             <span className="landing-pricing-period">einmalig pro Event</span>
             <ul className="landing-pricing-features">{eventPackageFeatures.map((feature) => <li key={feature}>{feature}</li>)}</ul>
