@@ -5,7 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/client";
 
 export type EventMetricValues = {
-  sponsorship: number; sponsors: number; benefits: number; trackedBenefits: number; completed: number; contracts: number;
+  sponsorship: number; signedSponsorship: number; sponsors: number; benefits: number; trackedBenefits: number; completed: number; contracts: number;
   contractsCreated: number; contractsSigned: number; reportsCreated: number; reportsSent: number; evidenceTasks: number; completedEvidenceTasks: number;
 };
 type Assignment = { event_id: string; sponsor_id: string };
@@ -13,7 +13,7 @@ type Contract = { id: string; event_id: string; sponsor_id: string; value_cents:
 type Benefit = { id: string; event_id: string; sponsor_id: string | null; contract_id: string | null; title: string; status: string; evidence_summary: string | null; completion_required?: boolean | null; quantity: number; tasks_per_unit?: boolean | null };
 
 function emptyMetrics(): EventMetricValues {
-  return { sponsorship: 0, sponsors: 0, benefits: 0, trackedBenefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, reportsSent: 0, evidenceTasks: 0, completedEvidenceTasks: 0 };
+  return { sponsorship: 0, signedSponsorship: 0, sponsors: 0, benefits: 0, trackedBenefits: 0, completed: 0, contracts: 0, contractsCreated: 0, contractsSigned: 0, reportsCreated: 0, reportsSent: 0, evidenceTasks: 0, completedEvidenceTasks: 0 };
 }
 
 export async function fetchEventMetrics(eventIds: string[]) {
@@ -58,7 +58,11 @@ export async function fetchEventMetrics(eventIds: string[]) {
     metrics.sponsorship += Number(contract.value_cents ?? 0) / 100;
     metrics.contracts += 1;
     if (generatedIds.has(contract.id)) metrics.contractsCreated += 1;
-    if (contract.signature_status === "signed" || contract.signed_at || signedIds.has(contract.id)) metrics.contractsSigned += 1;
+    const isSigned = contract.signature_status === "signed" || Boolean(contract.signed_at) || signedIds.has(contract.id);
+    if (isSigned) {
+      metrics.contractsSigned += 1;
+      metrics.signedSponsorship += Number(contract.value_cents ?? 0) / 100;
+    }
     if (reports.get(contract.id)?.generated_at) metrics.reportsCreated += 1;
     if (reports.get(contract.id)?.sent_at) metrics.reportsSent += 1;
   });
@@ -105,7 +109,7 @@ export async function fetchEventMetrics(eventIds: string[]) {
 
 export function sumEventMetrics(metrics: EventMetricValues[]): EventMetricValues {
   return metrics.reduce((sum, item) => ({
-    sponsorship: sum.sponsorship + item.sponsorship, sponsors: sum.sponsors + item.sponsors,
+    sponsorship: sum.sponsorship + item.sponsorship, signedSponsorship: sum.signedSponsorship + item.signedSponsorship, sponsors: sum.sponsors + item.sponsors,
     benefits: sum.benefits + item.benefits, trackedBenefits: sum.trackedBenefits + item.trackedBenefits, completed: sum.completed + item.completed,
     contracts: sum.contracts + item.contracts, contractsCreated: sum.contractsCreated + item.contractsCreated,
     contractsSigned: sum.contractsSigned + item.contractsSigned, reportsCreated: sum.reportsCreated + item.reportsCreated,

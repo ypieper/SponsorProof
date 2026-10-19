@@ -119,16 +119,16 @@ export function AdminOrganizations() {
           : loadError ? <p className="field-message error" role="alert">{loadError}</p>
           : organizations.length === 0 ? <p className="task-empty">Es sind keine Veranstalterbereiche vorhanden.</p>
             : filteredOrganizations.length === 0 ? <p className="task-empty">Keine Veranstalterbereiche für diese Suche gefunden.</p>
-              : <div className="admin-organizations-table-wrap"><table className="table admin-organizations-table">
+              : <div className="admin-organizations-table-wrap"><table className="table admin-organizations-table table-card-list">
                 <thead><tr><th>VERANSTALTERBEREICH</th><th>SPONSO-ID</th><th>INHABER</th><th>VERTRIEBSPARTNER</th><th>MITGLIEDER</th><th>ERSTELLT</th><th>AKTION</th></tr></thead>
                 <tbody>{filteredOrganizations.map((organization) => <tr key={organization.id}>
-                  <td><strong>{organization.name}</strong></td>
-                  <td><code className="admin-organization-id">{organization.sponsoId}</code></td>
-                  <td><div className="admin-organization-owners">{organization.owners.length ? organization.owners.map((owner) => <span key={owner.email + "-" + owner.name}><strong>{owner.name}</strong><small>{owner.email || "E-Mail nicht hinterlegt"}</small></span>) : <span>Kein Inhaber hinterlegt</span>}</div></td>
-                  <td>{organization.salesPartner ? <div className="admin-organization-owners"><span><strong>{organization.salesPartner.name}</strong><small>{organization.salesPartner.email || "E-Mail nicht hinterlegt"}</small><small>Code: {organization.salesPartner.referralCode}</small></span></div> : <span>—</span>}</td>
-                  <td>{organization.memberCount}</td>
-                  <td>{dateFormat.format(new Date(organization.createdAt))}</td>
-                  <td><button className="btn btn-danger-soft admin-organization-delete" type="button" aria-label={organization.name + " löschen"} onClick={() => { setDeleteTarget(organization); setConfirmation(""); setActionError(""); }}><Icon name="trash" size={14}/>Löschen</button></td>
+                  <td data-label="Veranstalterbereich"><strong>{organization.name}</strong></td>
+                  <td data-label="Sponso-ID"><code className="admin-organization-id">{organization.sponsoId}</code></td>
+                  <td data-label="Inhaber"><div className="admin-organization-owners">{organization.owners.length ? organization.owners.map((owner) => <span key={owner.email + "-" + owner.name}><strong>{owner.name}</strong><small>{owner.email || "E-Mail nicht hinterlegt"}</small></span>) : <span>Kein Inhaber hinterlegt</span>}</div></td>
+                  <td data-label="Vertriebspartner">{organization.salesPartner ? <div className="admin-organization-owners"><span><strong>{organization.salesPartner.name}</strong><small>{organization.salesPartner.email || "E-Mail nicht hinterlegt"}</small><small>Code: {organization.salesPartner.referralCode}</small></span></div> : <span>—</span>}</td>
+                  <td data-label="Mitglieder">{organization.memberCount}</td>
+                  <td data-label="Erstellt">{dateFormat.format(new Date(organization.createdAt))}</td>
+                  <td data-label="Aktion"><button className="btn btn-danger-soft admin-organization-delete" type="button" aria-label={organization.name + " löschen"} onClick={() => { setDeleteTarget(organization); setConfirmation(""); setActionError(""); }}><Icon name="trash" size={14}/>Löschen</button></td>
                 </tr>)}</tbody>
               </table></div>}
       </section>

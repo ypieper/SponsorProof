@@ -94,11 +94,11 @@ export function MobileMenu({ isPlatformAdmin = false, isSalesPartner = false }: 
         <div className="nav-label">{isPlatformAdmin ? "Plattform" : "Veranstalterbereich"}</div>
         <nav className="nav-list" aria-label="Hauptnavigation">{isPlatformAdmin ? adminNavigation.map((item) => {
           const active = path === item.href || (item.href !== "/admin/users" && path.startsWith(`${item.href}/`));
-          return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
+          return <Link href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</Link>;
         }) : [...navigation, ...(isSalesPartner ? [{ label: "Vertriebspartner", href: "/partner", icon: "spark" }] : [])].map((item) => {
           const route = item.href.split("?")[0];
           const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
-          return <a href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</a>;
+          return <Link href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</Link>;
         })}</nav>
       </div>
     </dialog>, document.body)}

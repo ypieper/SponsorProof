@@ -5,7 +5,8 @@ import { Icon } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 
 type DocumentCategory = "tickets" | "event_info" | "other";
-type SponsorDocument = { id: string; storage_path?: string; file_name: string; content_type: string; size_bytes: number; uploaded_at: string; uploaded_by_type: "sponsor" | "organizer"; uploaded_by_name: string; document_role?: "general" | "signed_contract"; document_category?: DocumentCategory; published_to_sponsor?: boolean; contract_id?: string | null; can_delete?: boolean };
+type SponsorDocument = { id: string; storage_path?: string; file_name: string; display_name: string; content_type: string; size_bytes: number; uploaded_at: string; uploaded_by_type: "sponsor" | "organizer"; uploaded_by_name: string; document_role?: "general" | "signed_contract"; document_category?: DocumentCategory; published_to_sponsor?: boolean; contract_id?: string | null; can_delete?: boolean };
+type SelectedFile = { file: File; displayName: string };
 type PreparedUpload = { documentId: string; storagePath: string; uploadToken: string; contentType: string };
 const acceptedFiles = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp";
 const categoryLabels: Record<DocumentCategory, string> = { tickets: "Tickets", event_info: "Veranstaltungsinfos", other: "Sonstiges" };
@@ -18,7 +19,8 @@ function formatSize(value: number) {
 export function SponsorDocumentArea({ eventId, sponsorId, sponsorName, mode = "organizer" }: { eventId: string; sponsorId: string; sponsorName: string; mode?: "organizer" | "sponsor" }) {
   const baseUrl = mode === "sponsor" ? `/api/sponsor/events/${eventId}/sponsors/${sponsorId}` : `/api/events/${eventId}/sponsors/${sponsorId}`;
   const [documents, setDocuments] = useState<SponsorDocument[]>([]);
-  const [organizerFiles, setOrganizerFiles] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
+  const [pendingDisplayName, setPendingDisplayName] = useState("");
   const [category, setCategory] = useState<DocumentCategory>("tickets");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -73,28 +75,32 @@ export function SponsorDocumentArea({ eventId, sponsorId, sponsorName, mode = "o
   }
 
   async function uploadFiles() {
-    if (!organizerFiles.length || busy) return;
+    if (!selectedFiles.length || busy) return;
+    if (selectedFiles.some(({ displayName }) => !displayName.trim())) {
+      setError("Bitte vergib für jede Datei eine Bezeichnung.");
+      return;
+    }
     setBusy(true); setError(""); setMessage("");
     try {
       const supabase = createClient();
-      for (const file of organizerFiles) {
+      for (const { file, displayName } of selectedFiles) {
         const prepareResponse = await fetch(`${baseUrl}/documents`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "prepare", fileName: file.name, contentType: file.type, size: file.size, category }),
+          body: JSON.stringify({ action: "prepare", fileName: file.name, displayName: displayName.trim(), contentType: file.type, size: file.size, category }),
         });
         const prepared = await prepareResponse.json() as PreparedUpload & { error?: string };
         if (!prepareResponse.ok) throw new Error(prepared.error ?? `Der Upload von ${file.name} konnte nicht vorbereitet werden.`);
         const { error: uploadError } = await supabase.storage.from("sponsorproof-files").uploadToSignedUrl(prepared.storagePath, prepared.uploadToken, file, { contentType: prepared.contentType, upsert: false });
-        if (uploadError) throw new Error(`${file.name} konnte nicht hochgeladen werden.`);
+        if (uploadError) throw new Error(`${displayName} konnte nicht hochgeladen werden.`);
         const completeResponse = await fetch(`${baseUrl}/documents`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "complete", documentId: prepared.documentId }),
         });
         const completed = await completeResponse.json() as { error?: string };
-        if (!completeResponse.ok) throw new Error(completed.error ?? `${file.name} konnte nicht bestätigt werden.`);
+        if (!completeResponse.ok) throw new Error(completed.error ?? `${displayName} konnte nicht bestätigt werden.`);
       }
-      const uploadedCount = organizerFiles.length;
-      setOrganizerFiles([]);
+      const uploadedCount = selectedFiles.length;
+      setSelectedFiles([]);
       const input = window.document.getElementById(`${mode}-document-${sponsorId}`) as HTMLInputElement | null;
       if (input) input.value = "";
       await load();
@@ -105,7 +111,7 @@ export function SponsorDocumentArea({ eventId, sponsorId, sponsorName, mode = "o
   }
 
   async function deleteDocument(document: SponsorDocument) {
-    if (!window.confirm(`„${document.file_name}“ endgültig löschen?`)) return;
+    if (!window.confirm(`„${document.display_name}“ endgültig löschen?`)) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch(`${baseUrl}/documents`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ documentId: document.id }) });
@@ -119,7 +125,7 @@ export function SponsorDocumentArea({ eventId, sponsorId, sponsorName, mode = "o
   }
 
   async function setPublication(document: SponsorDocument, published: boolean) {
-    if (published && !window.confirm(`„${document.file_name}“ im Sponsorenbereich veröffentlichen?`)) return;
+    if (published && !window.confirm(`„${document.display_name}“ im Sponsorenbereich veröffentlichen?`)) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch(`${baseUrl}/documents`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "publication", documentId: document.id, published }) });
@@ -135,13 +141,15 @@ export function SponsorDocumentArea({ eventId, sponsorId, sponsorName, mode = "o
   return <section className="panel sponsor-document-area">
     <div className="table-head"><div><h2>{mode === "sponsor" ? "Dokumente" : `Dokumente von ${sponsorName}`}</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>{mode === "sponsor" ? "Deine Uploads und die vom Veranstalter für dich bereitgestellten Unterlagen." : "Lade Dateien für diesen Sponsor hoch und entscheide, welche im Sponsorenbereich erscheinen."}</p></div></div>
     {error && <p className="field-message error" role="alert">{error}</p>}{message && <p className="field-message success" role="status">{message}</p>}
+    <div className="sponsor-document-upload-section"><div className="sponsor-document-upload-heading"><b>Dateien hinzufügen</b><span>PDF, Word oder Bilddateien · maximal 25 MB je Datei</span></div><div className={`sponsor-organizer-upload sponsor-document-upload-controls${mode === "organizer" ? " has-category" : ""}`}>
+      {selectedFiles.length === 0 && <label className="settings-field sponsor-document-initial-label"><span>Dateibezeichnung *</span><input type="text" value={pendingDisplayName} maxLength={120} required placeholder="z. B. Tickets für den Aufbau" disabled={busy || loading} onChange={(event) => setPendingDisplayName(event.currentTarget.value)}/></label>}
+      {mode === "organizer" && <label className="settings-field sponsor-document-category-select"><span>Kategorie</span><select value={category} onChange={(event) => setCategory(event.currentTarget.value as DocumentCategory)} disabled={busy || loading}><option value="tickets">Tickets</option><option value="event_info">Veranstaltungsinfos</option><option value="other">Sonstiges</option></select></label>}
+      <label className="btn btn-primary sponsor-document-picker" htmlFor={`${mode}-document-${sponsorId}`}><Icon name="plus" size={14}/> Dateien auswählen<input id={`${mode}-document-${sponsorId}`} type="file" accept={acceptedFiles} multiple disabled={busy || loading} onChange={(event) => { const selected = Array.from(event.currentTarget.files ?? []); const initialName = pendingDisplayName.trim(); setSelectedFiles((current) => [...current, ...selected.map((file, index) => ({ file, displayName: current.length === 0 && index === 0 ? initialName : "" }))]); setPendingDisplayName(""); event.currentTarget.value = ""; }}/></label>
+      {selectedFiles.length > 0 && <span>{selectedFiles.length} {selectedFiles.length === 1 ? "Datei ausgewählt" : "Dateien ausgewählt"}</span>}
+      {selectedFiles.length > 0 && <div className="sponsor-document-upload-labels">{selectedFiles.map(({ file, displayName }, index) => <label className="settings-field" key={`${file.name}-${index}`}><span>Bezeichnung für Datei {index + 1} · {file.name.split(".").at(-1)?.toUpperCase()} · {formatSize(file.size)} *</span><input type="text" value={displayName} maxLength={120} required placeholder="z. B. Tickets für den Aufbau" disabled={busy} onChange={(event) => { const value = event.currentTarget.value; setSelectedFiles((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, displayName: value } : item)); }}/></label>)}</div>}
+      {selectedFiles.length > 0 && <button className="btn btn-primary" type="button" disabled={busy || selectedFiles.some(({ displayName }) => !displayName.trim())} onClick={() => void uploadFiles()}>{busy ? "Wird hochgeladen …" : "In Archiv hochladen"}</button>}
+    </div></div>
     <div className="sponsor-document-list-heading"><div><b>Hochgeladene Dateien</b><span>{documents.length} {documents.length === 1 ? "Datei" : "Dateien"}</span></div><button className="btn sponsor-document-refresh" type="button" disabled={loading || busy} onClick={() => void load()}>Aktualisieren</button></div>
-    <div className="sponsor-organizer-upload sponsor-document-upload-controls">
-      <label className="btn" htmlFor={`${mode}-document-${sponsorId}`}><Icon name="plus" size={14}/> Dateien auswählen<input id={`${mode}-document-${sponsorId}`} type="file" accept={acceptedFiles} multiple disabled={busy || loading} onChange={(event) => { const selected = Array.from(event.currentTarget.files ?? []); setOrganizerFiles((current) => [...current, ...selected]); event.currentTarget.value = ""; }}/></label>
-      {mode === "organizer" && <label className="sponsor-document-category-select">Kategorie<select value={category} onChange={(event) => setCategory(event.currentTarget.value as DocumentCategory)} disabled={busy || loading}><option value="tickets">Tickets</option><option value="event_info">Veranstaltungsinfos</option><option value="other">Sonstiges</option></select></label>}
-      <span>{organizerFiles.length ? `${organizerFiles.length} ${organizerFiles.length === 1 ? "Datei ausgewählt" : "Dateien ausgewählt"}` : "PDF, Word oder Bild · max. 25 MB je Datei"}</span>
-      {organizerFiles.length > 0 && <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void uploadFiles()}>{busy ? "Wird hochgeladen …" : "In Archiv hochladen"}</button>}
-    </div>
-    {loading ? <p className="task-empty">Dateien werden geladen …</p> : documents.length ? <div className="sponsor-document-list"><div className="sponsor-document-table-header"><span>DATEI</span><span>KATEGORIE</span><span>HERKUNFT</span><span>HOCHGELADEN</span><span>AKTION</span></div>{documents.map((document) => <article className="sponsor-document-row" key={document.id}><div className="sponsor-document-meta"><b>{document.file_name}</b><span>{formatSize(Number(document.size_bytes))}</span></div><div className="sponsor-document-category"><span className="sponsor-document-origin">{categoryLabels[document.document_category ?? "other"]}</span>{mode === "organizer" && document.uploaded_by_type === "organizer" && document.document_role !== "signed_contract" && <small className={`sponsor-document-publication ${document.published_to_sponsor ? "is-published" : ""}`}>{document.published_to_sponsor ? "Im Sponsorenbereich veröffentlicht" : "Nur intern"}</small>}</div><span className="sponsor-document-origin">{document.document_role === "signed_contract" ? "Gezeichneter Vertrag" : document.uploaded_by_type === "sponsor" ? "Sponsor" : `Veranstalter · ${document.uploaded_by_name}`}</span><time className="sponsor-document-date" dateTime={document.uploaded_at}>{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(document.uploaded_at))}</time><div className="sponsor-document-actions">{mode === "organizer" && document.uploaded_by_type === "organizer" && document.document_role !== "signed_contract" && <button className={`btn ${document.published_to_sponsor ? "sponsor-document-unpublish" : "btn-primary"}`} type="button" disabled={busy} onClick={() => void setPublication(document, !document.published_to_sponsor)}>{document.published_to_sponsor ? "Veröffentlichung zurücknehmen" : "Im Sponsorenbereich veröffentlichen"}</button>}{mode === "sponsor" && <button className="btn" type="button" onClick={() => openDocument(document)}>Öffnen</button>}<button className="btn" type="button" disabled={busy} onClick={() => void downloadDocument(document)}>Herunterladen</button>{(mode === "organizer" || document.can_delete) && <button className="btn signed-contract-delete" type="button" disabled={busy} onClick={() => void deleteDocument(document)}>Löschen</button>}</div></article>)}</div> : <p className="task-empty">Für dieses Event und diesen Sponsor wurden noch keine Dateien hochgeladen.</p>}
+    {loading ? <p className="task-empty">Dateien werden geladen …</p> : documents.length ? <div className="sponsor-document-list">{documents.map((document) => <article className="sponsor-document-row" key={document.id}><div className="sponsor-document-meta"><span className="sponsor-document-file-icon"><Icon name="file" size={17}/></span><div><b>{document.display_name}</b><span>{formatSize(Number(document.size_bytes))}</span></div></div><div className="sponsor-document-badges"><div className="sponsor-document-badge-field"><span>Kategorie</span><b className="sponsor-document-badge sponsor-document-badge-category">{document.document_role === "signed_contract" ? "Gezeichneter Vertrag" : categoryLabels[document.document_category ?? "other"]}</b></div><div className="sponsor-document-badge-field"><span>Herkunft</span><b className={`sponsor-document-badge sponsor-document-badge-origin ${document.uploaded_by_type === "sponsor" ? "is-sponsor" : "is-organizer"}`}>{document.uploaded_by_type === "sponsor" ? "Sponsor" : "Veranstalter"}</b></div>{mode === "organizer" && document.uploaded_by_type === "organizer" && document.document_role !== "signed_contract" && <small className={`sponsor-document-publication ${document.published_to_sponsor ? "is-published" : ""}`}>{document.published_to_sponsor ? "Im Sponsorenbereich veröffentlicht" : "Nur intern"}</small>}</div><div className="sponsor-document-date-field"><span>Hochgeladen</span><time className="sponsor-document-date" dateTime={document.uploaded_at}>{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(document.uploaded_at))}</time></div><div className="sponsor-document-actions">{mode === "organizer" && document.uploaded_by_type === "organizer" && document.document_role !== "signed_contract" && <button className={`btn ${document.published_to_sponsor ? "sponsor-document-unpublish" : "btn-primary"}`} type="button" disabled={busy} onClick={() => void setPublication(document, !document.published_to_sponsor)}>{document.published_to_sponsor ? "Veröffentlichung zurücknehmen" : "Im Sponsorenbereich veröffentlichen"}</button>}{mode === "sponsor" && <button className="btn" type="button" onClick={() => openDocument(document)}>Öffnen</button>}<button className="btn" type="button" disabled={busy} onClick={() => void downloadDocument(document)}>Herunterladen</button>{(mode === "organizer" || document.can_delete) && <button className="btn signed-contract-delete" type="button" disabled={busy} onClick={() => void deleteDocument(document)}>Löschen</button>}</div></article>)}</div> : <p className="task-empty">Für dieses Event und diesen Sponsor wurden noch keine Dateien hochgeladen.</p>}
   </section>;
 }

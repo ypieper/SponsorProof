@@ -181,7 +181,9 @@ export function WorkspaceDataExport() {
 
   return <section className="settings-section workspace-data-export" aria-labelledby="workspace-export-heading">
     <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="download" size={16}/></span><div><h2 id="workspace-export-heading">Datenexport</h2><p>Lade Veranstalterdaten, Events, Sponsoren, Verträge und alle gespeicherten Dateien herunter.</p></div></div>
-    <button className="btn btn-primary" type="button" disabled={busy || !isSupabaseConfigured} onClick={() => void exportWorkspace()}><Icon name="download" size={15}/>{busy ? "Export wird erstellt …" : "Vollständigen Export herunterladen"}</button>
-    <p className={`field-message ${error ? "error" : "hint"}`} role={error ? "alert" : "status"}>{message || "Der Export enthält eine JSON-Datei mit den Daten sowie die zugehörigen Dateien als ZIP-Archiv."}</p>
+    <div className="workspace-data-export-action">
+      <button className="btn btn-primary" type="button" disabled={busy || !isSupabaseConfigured} onClick={() => void exportWorkspace()}><Icon name="download" size={15}/>{busy ? "Export wird erstellt …" : "Vollständigen Export herunterladen"}</button>
+      <p className={`field-message ${error ? "error" : "hint"}`} role={error ? "alert" : "status"}>{message || "Der Export enthält eine JSON-Datei mit den Daten sowie die zugehörigen Dateien als ZIP-Archiv."}</p>
+    </div>
   </section>;
 }

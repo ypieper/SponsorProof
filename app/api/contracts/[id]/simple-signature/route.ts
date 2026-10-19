@@ -110,6 +110,7 @@ export async function POST(_request: Request, context: Context) {
           sponsor_id: contract.sponsor_id,
           storage_path: storagePath,
           file_name: fileName,
+          display_name: fileName.replace(/\.pdf$/i, ""),
           content_type: "application/pdf",
           size_bytes: file.size,
           status: "uploaded",
@@ -130,5 +131,40 @@ export async function POST(_request: Request, context: Context) {
     return NextResponse.json({ ok: true, signerRole }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Die Zeichnung konnte nicht abgeschlossen werden. Bitte versuche es erneut." }, { status: 500 });
+  }
+}
+
+export async function DELETE(_request: Request, context: Context) {
+  const { id } = await context.params;
+  if (!isUuid(id)) return NextResponse.json({ error: "Ungültiger Vertrag." }, { status: 400 });
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: "Bitte melde dich erneut an." }, { status: 401 });
+
+  try {
+    const admin = createAdminClient();
+    const { data: contract, error: contractError } = await admin.from("contracts")
+      .select("id, event_id, signature_status, sponsor_signed_at, signed_at, signing_provider, signing_request_id")
+      .eq("id", id).maybeSingle();
+    if (contractError || !contract) return NextResponse.json({ error: "Der Vertrag wurde nicht gefunden." }, { status: 404 });
+    const { data: ownsEvent, error: ownsError } = await supabase.rpc("owns_event", { target_event_id: contract.event_id });
+    if (ownsError) throw ownsError;
+    if (!ownsEvent) return NextResponse.json({ error: "Du hast keinen Zugriff auf diesen Vertrag." }, { status: 403 });
+    if (contract.signature_status !== "pending_sponsor" || contract.sponsor_signed_at || contract.signed_at) {
+      return NextResponse.json({ error: "Die Freigabe kann nur zurückgenommen werden, solange der Sponsor noch nicht gezeichnet hat." }, { status: 409 });
+    }
+    if (contract.signing_provider || contract.signing_request_id) {
+      return NextResponse.json({ error: "Diese Zeichnungsanfrage muss beim Signaturanbieter beendet werden." }, { status: 409 });
+    }
+
+    const { data: revoked, error: revokeError } = await admin.from("contracts").update({
+      signature_status: "draft",
+      signing_document_id: null,
+    }).eq("id", id).eq("signature_status", "pending_sponsor").is("sponsor_signed_at", null).is("signed_at", null).is("signing_provider", null).is("signing_request_id", null).select("id").maybeSingle();
+    if (revokeError) throw revokeError;
+    if (!revoked) return NextResponse.json({ error: "Der Sponsor hat inzwischen gezeichnet oder die Freigabe wurde bereits geändert. Lade die Seite neu." }, { status: 409 });
+    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "Die Freigabe zur Zeichnung konnte nicht zurückgenommen werden." }, { status: 500 });
   }
 }

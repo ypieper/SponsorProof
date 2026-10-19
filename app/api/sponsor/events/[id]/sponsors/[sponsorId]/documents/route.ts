@@ -4,7 +4,7 @@ import { authorizeSponsorAccountEvent, isUuid, sponsorUploadBucket, validateSpon
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ id: string; sponsorId: string }> };
-type DocumentRequest = { action?: unknown; documentId?: unknown; fileName?: unknown; contentType?: unknown; size?: unknown };
+type DocumentRequest = { action?: unknown; documentId?: unknown; fileName?: unknown; displayName?: unknown; contentType?: unknown; size?: unknown };
 
 async function authorize(context: Context) {
   const { id: eventId, sponsorId } = await context.params;
@@ -46,7 +46,7 @@ export async function GET(request: Request, context: Context) {
     } });
   }
   const { data, error } = await admin.from("sponsor_documents")
-    .select("id, file_name, content_type, size_bytes, uploaded_at, uploaded_by_type, uploaded_by_name, uploaded_by_user_id, document_role, document_category, published_to_sponsor, contract_id")
+    .select("id, file_name, display_name, content_type, size_bytes, uploaded_at, uploaded_by_type, uploaded_by_name, uploaded_by_user_id, document_role, document_category, published_to_sponsor, contract_id")
     .eq("event_id", eventId).eq("sponsor_id", sponsorId).eq("status", "uploaded")
     .or("uploaded_by_type.eq.sponsor,document_role.eq.signed_contract,published_to_sponsor.eq.true")
     .order("uploaded_at", { ascending: false });
@@ -62,7 +62,7 @@ export async function POST(request: Request, context: Context) {
   const admin = createAdminClient();
 
   if (body.action === "prepare") {
-    if (typeof body.fileName !== "string" || typeof body.contentType !== "string" || typeof body.size !== "number") return NextResponse.json({ error: "Dateiinformationen fehlen." }, { status: 400 });
+    if (typeof body.fileName !== "string" || typeof body.displayName !== "string" || !body.displayName.trim() || body.displayName.trim().length > 120 || typeof body.contentType !== "string" || typeof body.size !== "number") return NextResponse.json({ error: "Bitte gib eine Dateibezeichnung mit maximal 120 Zeichen an." }, { status: 400 });
     const file = validateSponsorUploadFile({ name: body.fileName, contentType: body.contentType, size: body.size });
     if (!file) return NextResponse.json({ error: "Erlaubt sind PDF-, Word- und Bilddateien bis 25 MB." }, { status: 400 });
     const { data: event, error: eventError } = await admin.from("events").select("organization_id").eq("id", eventId).maybeSingle();
@@ -73,7 +73,7 @@ export async function POST(request: Request, context: Context) {
     const storagePath = `${event.organization_id}/events/${eventId}/sponsor-documents/${sponsorId}/${randomUUID()}.${file.extension}`;
     const { error: insertError } = await admin.from("sponsor_documents").insert({
       id: documentId, organization_id: event.organization_id, event_id: eventId, sponsor_id: sponsorId,
-      storage_path: storagePath, file_name: file.fileName, content_type: file.contentType, size_bytes: body.size,
+      storage_path: storagePath, file_name: file.fileName, display_name: body.displayName.trim(), content_type: file.contentType, size_bytes: body.size,
       uploaded_by_type: "sponsor", uploaded_by_user_id: user!.id, uploaded_by_name: sponsor.name,
       uploaded_by_email: user!.email ?? null, status: "pending",
     });

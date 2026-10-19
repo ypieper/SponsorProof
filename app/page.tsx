@@ -36,6 +36,20 @@ const story = [
   { number: "03", title: "Ergebnisse sauber belegen", text: "Fotos und Dateien werden gesammelt. Für jeden Sponsor entsteht ein nachvollziehbarer Leistungsnachweis." },
 ];
 
+const eventPackages = [
+  { name: "Starter", contracts: "Bis zu 5 Sponsoren und Verträge", price: "99 €", signaturePrice: "+20 €" },
+  { name: "Plus", contracts: "Bis zu 7 Sponsoren und Verträge", price: "129 €", signaturePrice: "+28 €" },
+  { name: "Pro", contracts: "Bis zu 10 Sponsoren und Verträge", price: "169 €", signaturePrice: "+40 €", featured: true },
+  { name: "Event", contracts: "Bis zu 15 Sponsoren und Verträge", price: "229 €", signaturePrice: "+60 €" },
+];
+
+const eventPackageFeatures = [
+  "Sponsoren und Verträge verwalten",
+  "Leistungen und Aufgaben koordinieren",
+  "Nachweise und Fotos dokumentieren",
+  "Leistungsberichte je Sponsor erstellen",
+];
+
 export default function LandingPage() {
   return <PublicPageFrame brandHref="/">
     <LandingMotion><main className="landing-page">
@@ -147,6 +161,32 @@ export default function LandingPage() {
             <ul><li>Verträge online zeichnen</li><li>Social-Media-Beiträge und weitere Inhalte freigeben</li><li>Leistungen einsehen und Unterlagen austauschen</li></ul>
           </article>
         </div>
+      </section>
+
+      <section className="landing-pricing" id="preise">
+        <div className="landing-section-heading landing-reveal">
+          <span className="landing-eyebrow">TRANSPARENTE PREISE</span>
+          <h2>Das passende Paket für dein Event.</h2>
+          <p>Einmal buchen und Sponsoring, Aufgaben und Nachweise für dein Event an einem Ort verwalten.</p>
+        </div>
+        <div className="landing-pricing-grid">
+          {eventPackages.map((item, index) => <article className={`landing-pricing-card landing-reveal landing-reveal-delay-${Math.min(index + 1, 4)}${item.featured ? " is-featured" : ""}`} key={item.name}>
+            {item.featured && <span className="landing-pricing-popular">MEISTGEWÄHLT</span>}
+            <h3>{item.name}</h3>
+            <p className="landing-pricing-capacity">{item.contracts}</p>
+            <strong className="landing-pricing-price">{item.price}</strong>
+            <span className="landing-pricing-period">einmalig pro Event</span>
+            <ul className="landing-pricing-features">{eventPackageFeatures.map((feature) => <li key={feature}>{feature}</li>)}</ul>
+            <span className="landing-pricing-signature"><span><small>OPTIONAL</small>Digitale Signatur</span><strong>{item.signaturePrice}</strong></span>
+            <Link className={`btn${item.featured ? " btn-primary" : ""}`} href="/login?type=organizer&mode=signup">Event starten <span aria-hidden="true">→</span></Link>
+          </article>)}
+        </div>
+        <aside className="landing-enterprise-card">
+          <div className="landing-enterprise-heading"><span>INDIVIDUELL</span><h3>Enterprise</h3><p>Für Veranstalter mit mehreren Events oder besonderen Anforderungen.</p></div>
+          <ul><li>Mehrere Events in einem Veranstalterbereich</li><li>Individuelle Anzahl an Sponsoren und Verträgen</li><li>Alle Kernfunktionen enthalten</li></ul>
+          <Link className="btn" href="/kontakt?anliegen=enterprise">Enterprise anfragen <span aria-hidden="true">→</span></Link>
+        </aside>
+        <p className="landing-pricing-note">Alle Pakete enthalten die Kernfunktionen. Die digitale Signatur ist optional; der Gesamtaufpreis für das jeweilige Paket steht oben.</p>
       </section>
 
       <section className="landing-final-cta landing-reveal">

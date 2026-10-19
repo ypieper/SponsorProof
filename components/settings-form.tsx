@@ -33,7 +33,7 @@ const initialSettings: Settings = {
   bank: "",
 };
 
-function Field({ label, value, onChange, type = "text", placeholder, required = false, readOnly = false, autoComplete, onBlur, message, messageKind = "hint" }: {
+function Field({ label, value, onChange, type = "text", placeholder, required = false, readOnly = false, autoComplete, onBlur, message, messageKind = "hint", className }: {
   label: string;
   value: string;
   onChange?: (value: string) => void;
@@ -45,8 +45,9 @@ function Field({ label, value, onChange, type = "text", placeholder, required = 
   onBlur?: () => void;
   message?: string;
   messageKind?: "hint" | "error" | "success";
+  className?: string;
 }) {
-  return <label className="settings-field">
+  return <label className={`settings-field ${className ?? ""}`}>
     <span>{label}{required && <span className="required-mark"> *</span>}</span>
     <input type={type} value={value} onChange={onChange ? (event) => onChange(event.target.value) : undefined} onBlur={onBlur} placeholder={placeholder} required={required} readOnly={readOnly} autoComplete={autoComplete} />
     {message && <span className={`field-message ${messageKind}`} role={messageKind === "error" ? "alert" : "status"}>{message}</span>}
@@ -236,31 +237,31 @@ export function SettingsForm() {
         ? "PLZ wird geprüft …"
         : undefined;
 
-  return <section className="settings-card panel">
+  return <div className="settings-workspace">
     <div className="settings-tabs" role="tablist" aria-label="Einstellungsbereiche">
       {(["Stammdaten", "Vertragsvorlage", "Meine Daten", "Tarife & Events", "Team"] as const).map((tab) => {
         const tabId = tab === "Meine Daten" ? "meine-daten" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Tarife & Events" ? "tarife" : tab;
         const panelId = `settings-panel-${tabId}`;
         const tabParam = tab === "Meine Daten" ? "profile" : tab === "Team" ? "team" : tab === "Vertragsvorlage" ? "vertragsvorlage" : tab === "Tarife & Events" ? "tarife" : "stammdaten";
-        return <a key={tab} href={`/einstellungen?tab=${tabParam}`} role="tab" id={`settings-tab-${tabId}`} aria-selected={activeTab === tab} aria-controls={panelId} aria-current={activeTab === tab ? "page" : undefined} className={`settings-tab ${activeTab === tab ? "active" : ""}`} onClick={(event) => openSettingsTab(tab, event)}>{tab}</a>;
+        return <a key={tab} href={`/einstellungen?tab=${tabParam}`} role="tab" id={`settings-tab-${tabId}`} aria-selected={activeTab === tab} aria-controls={panelId} aria-current={activeTab === tab ? "page" : undefined} className={`settings-tab ${activeTab === tab ? "active" : ""}`} onClick={(event) => openSettingsTab(tab, event)}>{tab === "Vertragsvorlage" ? "Vertragsvorlagen" : tab}</a>;
       })}
     </div>
 
-    {activeTab === "Team" ? <div id="settings-panel-team" role="tabpanel" aria-labelledby="settings-tab-team"><TeamSettings /></div> : activeTab === "Meine Daten" ? <div id="settings-panel-meine-daten" role="tabpanel" aria-labelledby="settings-tab-meine-daten"><AccountSettings /></div> : activeTab === "Tarife & Events" ? <div id="settings-panel-tarife" role="tabpanel" aria-labelledby="settings-tab-tarife" className="settings-panel-content"><AccountEventTariffs /></div> : activeTab === "Vertragsvorlage" ? <ContractTemplateSettings /> : <form className="settings-form" onSubmit={saveSettings}>
-    <div id="settings-panel-Stammdaten" role="tabpanel" aria-labelledby="settings-tab-Stammdaten" className="settings-panel-content">
-      <div className="settings-section">
-        <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="pin" size={16}/></span><div><h2>Anschrift</h2><p>Bezeichnung und offizielle Anschrift des Veranstalters.</p></div></div>
-        {sponsoId && <div className="settings-sponso-id"><span>Sponso-ID</span><code>{sponsoId}</code></div>}
-        <div className="settings-grid">
-          <div className="settings-field-full"><Field label="Bezeichnung" value={settings.organization} onChange={(value) => update("organization", value)} required autoComplete="organization" /></div>
-          <Field label="Straße" value={settings.street} onChange={(value) => update("street", value)} required autoComplete="address-line1" />
-          <Field label="Nr." value={settings.streetNumber} onChange={(value) => update("streetNumber", value)} required autoComplete="address-line2" />
-          <Field label="PLZ" value={settings.postalCode} onChange={handlePostalCodeChange} message={postalCodeMessage} messageKind={postalCodeStatus === "invalid" ? "error" : "hint"} required autoComplete="postal-code" />
-          <Field label="Ort" value={settings.city} onChange={(value) => update("city", value)} required placeholder={postalCodeStatus === "loading" ? "Wird ermittelt …" : "Ort"} autoComplete="address-level2" />
+    <section className="settings-card panel">
+    {activeTab === "Team" ? <div id="settings-panel-team" role="tabpanel" aria-labelledby="settings-tab-team" className="settings-tab-pane"><TeamSettings /></div> : activeTab === "Meine Daten" ? <div id="settings-panel-meine-daten" role="tabpanel" aria-labelledby="settings-tab-meine-daten" className="settings-tab-pane settings-tab-pane-save"><AccountSettings /></div> : activeTab === "Tarife & Events" ? <div id="settings-panel-tarife" role="tabpanel" aria-labelledby="settings-tab-tarife" className="settings-tab-pane"><AccountEventTariffs /></div> : activeTab === "Vertragsvorlage" ? <div id="settings-panel-vertragsvorlage" role="tabpanel" aria-labelledby="settings-tab-vertragsvorlage" className="settings-tab-pane"><ContractTemplateSettings /></div> : <form id="settings-panel-Stammdaten" className="settings-form settings-tab-pane settings-tab-pane-save" role="tabpanel" aria-labelledby="settings-tab-Stammdaten" onSubmit={saveSettings}>
+      <div className="settings-tab-sections">
+      <div className="settings-section settings-section-card">
+        <div className="settings-section-heading settings-section-heading-id"><span className="settings-section-icon"><Icon name="pin" size={16}/></span><div><h2>Anschrift</h2><p>Bezeichnung und offizielle Anschrift des Veranstalters.</p></div>{sponsoId && <div className="settings-sponso-id"><span>Sponso-ID</span><code>{sponsoId}</code></div>}</div>
+        <div className="settings-grid settings-address-grid">
+          <Field className="settings-address-name" label="Bezeichnung" value={settings.organization} onChange={(value) => update("organization", value)} required autoComplete="organization" />
+          <Field className="settings-address-street" label="Straße" value={settings.street} onChange={(value) => update("street", value)} required autoComplete="address-line1" />
+          <Field className="settings-address-number" label="Nr." value={settings.streetNumber} onChange={(value) => update("streetNumber", value)} required autoComplete="address-line2" />
+          <Field className="settings-address-postal" label="PLZ" value={settings.postalCode} onChange={handlePostalCodeChange} message={postalCodeMessage} messageKind={postalCodeStatus === "invalid" ? "error" : "hint"} required autoComplete="postal-code" />
+          <Field className="settings-address-city" label="Ort" value={settings.city} onChange={(value) => update("city", value)} required placeholder={postalCodeStatus === "loading" ? "Wird ermittelt …" : "Ort"} autoComplete="address-level2" />
         </div>
       </div>
 
-      <div className="settings-section">
+      <div className="settings-section settings-section-card">
         <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="file" size={16}/></span><div><h2>Bankverbindung</h2><p>Bankdaten werden nach Eingabe der IBAN lokal ermittelt.</p></div></div>
         <div className="settings-grid">
           <div className="settings-field settings-field-full">
@@ -271,8 +272,9 @@ export function SettingsForm() {
           <Field label="BIC" value={settings.bic} onChange={(value) => update("bic", value.toUpperCase())} placeholder={bankPlaceholder} autoComplete="off" />
         </div>
       </div>
-    </div>
-    <div className="settings-save-row"><p role="status" aria-live="polite">{saveMessage || (settingsReady ? "Wird im gemeinsamen Veranstalterbereich gespeichert." : "Einstellungen werden geladen …")}</p><button className="btn btn-primary" type="submit" disabled={!settingsReady}><Icon name="check" size={15}/>Speichern</button></div>
+      </div>
+      <div className="settings-save-row"><p role="status" aria-live="polite">{saveMessage || (settingsReady ? "Wird im gemeinsamen Veranstalterbereich gespeichert." : "Einstellungen werden geladen …")}</p><button className="btn btn-primary" type="submit" disabled={!settingsReady}><Icon name="check" size={15}/>Speichern</button></div>
     </form>}
-  </section>;
+    </section>
+  </div>;
 }

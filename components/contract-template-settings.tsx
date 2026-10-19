@@ -18,7 +18,7 @@ export function ContractTemplateSettings() {
   const [events, setEvents] = useState<EventOption[]>([]);
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
-  const [selectedByTemplate, setSelectedByTemplate] = useState<Record<string, string>>({});
+  const [selectedByTemplate, setSelectedByTemplate] = useState<Record<string, string[]>>({});
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [ready, setReady] = useState(false);
@@ -44,7 +44,9 @@ export function ContractTemplateSettings() {
       setAssignments(nextAssignments);
       setSelectedByTemplate(Object.fromEntries(nextTemplates.map((template) => [
         template.id,
-        Object.entries(nextAssignments).find(([, assignedTemplateId]) => assignedTemplateId === template.id)?.[0] ?? "",
+        Object.entries(nextAssignments)
+          .filter(([, assignedTemplateId]) => assignedTemplateId === template.id)
+          .map(([eventId]) => eventId),
       ])));
       setMessage("");
     } catch (error) {
@@ -108,8 +110,17 @@ export function ContractTemplateSettings() {
     setMessage("");
   }
 
-  function selectEvent(templateId: string, eventId: string) {
-    setSelectedByTemplate((current) => ({ ...current, [templateId]: eventId }));
+  function toggleEvent(templateId: string, eventId: string, checked: boolean) {
+    setSelectedByTemplate((current) => {
+      const selected = current[templateId] ?? [];
+      return {
+        ...current,
+        [templateId]: checked
+          ? [...new Set([...selected, eventId])]
+          : selected.filter((selectedEventId) => selectedEventId !== eventId),
+      };
+    });
+    setMessage("");
   }
 
   async function saveAssignments(templateId: string) {
@@ -117,24 +128,32 @@ export function ContractTemplateSettings() {
     setMessage("");
     try {
       const supabase = createClient();
-      const selected = selectedByTemplate[templateId] ?? "";
-      const previous = Object.entries(assignments).filter(([, assignedTemplateId]) => assignedTemplateId === templateId).map(([eventId]) => eventId);
-      const removed = previous.filter((eventId) => eventId !== selected);
+      const selected = selectedByTemplate[templateId] ?? [];
+      const previous = Object.entries(assignments)
+        .filter(([, assignedTemplateId]) => assignedTemplateId === templateId)
+        .map(([eventId]) => eventId);
+      const conflicts = selected.filter((eventId) => assignments[eventId] && assignments[eventId] !== templateId);
+      if (conflicts.length) {
+        setMessage("Mindestens eines der ausgewählten Events ist bereits einer anderen Vorlage zugeordnet.");
+        return;
+      }
+      const previousSet = new Set(previous);
+      const selectedSet = new Set(selected);
+      const added = selected.filter((eventId) => !previousSet.has(eventId));
+      const removed = previous.filter((eventId) => !selectedSet.has(eventId));
+
+      if (added.length) {
+        const { error } = await supabase.from("event_contract_templates").insert(
+          added.map((eventId) => ({ event_id: eventId, template_id: templateId })),
+        );
+        if (error) throw error;
+      }
       if (removed.length) {
         const { error } = await supabase.from("event_contract_templates").delete().eq("template_id", templateId).in("event_id", removed);
         if (error) throw error;
       }
-      if (selected) {
-        const otherTemplateId = assignments[selected];
-        if (otherTemplateId && otherTemplateId !== templateId) {
-          setMessage("Dieses Event ist bereits einer anderen Vorlage zugeordnet. Hebe die bestehende Zuordnung zuerst auf.");
-          return;
-        }
-        const { error } = await supabase.from("event_contract_templates").upsert({ event_id: selected, template_id: templateId }, { onConflict: "event_id" });
-        if (error) throw error;
-      }
       await load();
-      setMessage("Event-Zuordnung gespeichert.");
+      setMessage("Event-Zuordnungen gespeichert.");
     } catch (error) {
       setMessage(readableError(error));
     } finally {
@@ -161,36 +180,44 @@ export function ContractTemplateSettings() {
     }
   }
 
-  return <div className="settings-panel-content contract-template-settings" role="tabpanel" id="settings-panel-vertragsvorlage" aria-labelledby="settings-tab-vertragsvorlage">
-    <div className="settings-section">
-      <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="file" size={16}/></span><div><h2>Vertragsvorlage</h2><p>Lade deine Word-Vorlagen hoch und ordne jede höchstens einem Event zu.</p></div></div>
+  return <div className="contract-template-settings">
+    <div className="settings-section settings-section-card">
+      <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="file" size={16}/></span><div><h2>Vertragsvorlage</h2><p>Lade Word-Vorlagen hoch und verwende dieselbe Vorlage für mehrere Events.</p></div></div>
       <form className="contract-template-upload" onSubmit={(event) => { void addTemplate(event); }}>
         <label className="settings-field"><span>Name der Vorlage</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder="z. B. Sponsoringvertrag Standard" /></label>
         <label className="settings-field"><span>Word-Datei (.docx) *</span><input id="contract-template-file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={chooseFile} required /></label>
         <button className="btn btn-primary" type="submit" disabled={busy || !ready || !file}><Icon name="plus" size={14}/> Vorlage hochladen</button>
-        <p className="subtitle contract-template-hint">Die Datei wird sicher im Veranstalterbereich gespeichert. Jedes Event kann höchstens eine Vorlage verwenden.</p>
+        <p className="subtitle contract-template-hint">Die Datei wird sicher im Veranstalterbereich gespeichert. Jedes Event kann weiterhin nur eine Vorlage verwenden.</p>
       </form>
     </div>
 
-    <div className="settings-section">
-      <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="calendar" size={16}/></span><div><h2>Vorlagen und Event-Zuordnung</h2><p>Jede Vorlage kann höchstens einem Event zugeordnet werden. Auch jedes Event kann höchstens eine Vorlage verwenden.</p></div></div>
+    <div className="settings-section settings-section-card">
+      <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="calendar" size={16}/></span><div><h2>Vorlagen und Event-Zuordnung</h2><p>Ordne eine Vorlage mehreren Events zu. Jedes Event kann weiterhin nur eine Vorlage verwenden.</p></div></div>
       {!ready ? <p className="task-empty">Vorlagen werden geladen …</p> : templates.length === 0 ? <div className="settings-empty-note">Noch keine Vertragsvorlagen hochgeladen.</div> : <div className="contract-template-list">{templates.map((template) => <article className="contract-template-card" key={template.id}>
         <div className="contract-template-card-heading"><span className="metric-icon"><Icon name="file" size={15}/></span><div><h3>{template.name}</h3><p>{template.original_filename}</p></div><button className="btn contract-template-delete" type="button" disabled={busy} onClick={() => { void deleteTemplate(template); }}>Löschen</button></div>
-        <div className="contract-template-events">{events.length ? <label className="settings-field"><span>Event für diese Vorlage</span><select value={selectedByTemplate[template.id] ?? ""} disabled={busy} onChange={(event) => selectEvent(template.id, event.target.value)}><option value="">Keinem Event zugeordnet</option>{events.map((event) => {
-          const otherTemplateId = assignments[event.id];
-          const assignedTemplate = templates.find((item) => item.id === otherTemplateId);
-          const unavailable = Boolean(otherTemplateId && otherTemplateId !== template.id);
-          return <option key={event.id} value={event.id} disabled={unavailable}>{event.title}{unavailable && assignedTemplate ? ` · ${assignedTemplate.name} zugeordnet` : ""}</option>;
-        })}</select></label> : <p className="task-empty">Lege zuerst ein Event an, um eine Vorlage zuzuordnen.</p>}</div>
-        <div className="contract-template-card-footer"><span>{selectedByTemplate[template.id] ? "1 Event ausgewählt" : "Keinem Event zugeordnet"}</span><button className="btn btn-primary" type="button" disabled={busy} onClick={() => { void saveAssignments(template.id); }}>Zuordnung speichern</button></div>
+        <div className="contract-template-events">{events.length ? <fieldset className="contract-template-event-fieldset" disabled={busy}>
+          <legend>Events für diese Vorlage</legend>
+          <div className="contract-template-event-list">{events.map((event) => {
+            const otherTemplateId = assignments[event.id];
+            const assignedTemplate = templates.find((item) => item.id === otherTemplateId);
+            const unavailable = Boolean(otherTemplateId && otherTemplateId !== template.id);
+            const checked = (selectedByTemplate[template.id] ?? []).includes(event.id);
+            return <label className={`contract-template-event ${unavailable ? "unavailable" : ""}`} key={event.id}>
+              <input type="checkbox" checked={checked} disabled={unavailable} onChange={(changeEvent) => toggleEvent(template.id, event.id, changeEvent.target.checked)} />
+              <span><b>{event.title}</b>{unavailable && assignedTemplate && <small>Bereits „{assignedTemplate.name}“ zugeordnet</small>}</span>
+            </label>;
+          })}</div>
+        </fieldset> : <p className="task-empty">Lege zuerst ein Event an, um eine Vorlage zuzuordnen.</p>}</div>
+        <div className="contract-template-card-footer"><span>{(selectedByTemplate[template.id] ?? []).length === 0 ? "Keinem Event zugeordnet" : (selectedByTemplate[template.id] ?? []).length === 1 ? "1 Event ausgewählt" : `${(selectedByTemplate[template.id] ?? []).length} Events ausgewählt`}</span><button className="btn btn-primary" type="button" disabled={busy || !ready} onClick={() => { void saveAssignments(template.id); }}>Zuordnungen speichern</button></div>
       </article>)}</div>}
     </div>
 
-    <div className="settings-section">
-      <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="layers" size={16}/></span><div><h2>Verfügbare Ersetzungsmarken</h2><p>Schreibe die Marke an die gewünschte Stelle in Word. Der eingefügte Inhalt übernimmt die Formatierung der Marke in deiner Vorlage.</p></div></div>
+    <details className="settings-section settings-section-card contract-template-placeholders-disclosure">
+      <summary className="settings-section-heading"><span className="settings-section-icon"><Icon name="layers" size={16}/></span><div><h2>Verfügbare Ersetzungsmarken</h2><p>Platzhalter für Daten im Vertrag.</p></div><span className="contract-template-placeholders-toggle"><Icon name="chevron" size={16}/></span></summary>
+      <p className="contract-template-placeholders-note">Diese Marken stehen für Angaben, die bereits in sponso gespeichert sind – zum Beispiel zu Veranstalter, Sponsor, Event oder Vertrag. Füge eine Marke inklusive der geschweiften Klammern an der passenden Stelle deiner Word-Vorlage ein. Wenn sponso den Vertrag erstellt, ersetzt es die Marke automatisch durch den gespeicherten Wert. Mit <b>{"{{@leistungen}}"}</b> fügst du alle vereinbarten Leistungen ein; die besonderen Hinweise dazu findest du direkt unter der Liste.</p>
       <div className="contract-template-placeholders">{contractTemplatePlaceholders.map((group) => <section className="contract-template-placeholder-group" key={group.title}><h3>{group.title}</h3><div>{group.fields.map(([marker, description]) => <div className="contract-template-placeholder-row" key={marker}><code>{marker}</code><span>{description}</span></div>)}</div></section>)}</div>
       <p className="subtitle contract-template-benefits-note"><b>{"{{@leistungen}}"}</b> gibt je Leistung den Namen fett und die Beschreibung normal darunter aus. Zwischen mehreren Leistungen wird ein Absatz eingefügt. Fälligkeitsdaten werden nicht ausgegeben. Platziere die Marke in Word in einem eigenen Absatz.</p>
-    </div>
+    </details>
     <p className="settings-feedback" role="status" aria-live="polite">{message || (ready ? "Vorlagen und Zuordnungen werden in deinem gemeinsamen Veranstalterbereich gespeichert." : "")}</p>
   </div>;
 }

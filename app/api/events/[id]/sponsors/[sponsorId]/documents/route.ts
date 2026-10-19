@@ -4,7 +4,7 @@ import { authorizeEventSponsor, isUuid, sponsorUploadBucket, validateSponsorUplo
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ id: string; sponsorId: string }> };
-type DocumentRequest = { action?: unknown; documentId?: unknown; fileName?: unknown; contentType?: unknown; size?: unknown; category?: unknown; published?: unknown };
+type DocumentRequest = { action?: unknown; documentId?: unknown; fileName?: unknown; displayName?: unknown; contentType?: unknown; size?: unknown; category?: unknown; published?: unknown };
 const documentCategories = ["tickets", "event_info", "other"] as const;
 
 export async function GET(_request: Request, context: Context) {
@@ -16,7 +16,7 @@ export async function GET(_request: Request, context: Context) {
   if (auth.error) return NextResponse.json({ error: "Der Zugriff konnte nicht geprüft werden." }, { status: auth.error === "server" ? 503 : 500 });
   const admin = createAdminClient();
   const { data, error } = await admin.from("sponsor_documents")
-    .select("id, storage_path, file_name, content_type, size_bytes, uploaded_at, uploaded_by_type, uploaded_by_name, uploaded_by_user_id, document_role, document_category, published_to_sponsor, contract_id")
+    .select("id, storage_path, file_name, display_name, content_type, size_bytes, uploaded_at, uploaded_by_type, uploaded_by_name, uploaded_by_user_id, document_role, document_category, published_to_sponsor, contract_id")
     .eq("event_id", eventId).eq("sponsor_id", sponsorId).eq("status", "uploaded")
     .order("uploaded_at", { ascending: false });
   if (error) return NextResponse.json({ error: "Sponsorendokumente konnten nicht geladen werden. Prüfe die Datenbankmigration." }, { status: 500 });
@@ -77,6 +77,9 @@ export async function POST(request: Request, context: Context) {
     if (typeof body.fileName !== "string" || typeof body.contentType !== "string" || typeof body.size !== "number") {
       return NextResponse.json({ error: "Dateiinformationen fehlen." }, { status: 400 });
     }
+    if (typeof body.displayName !== "string" || !body.displayName.trim() || body.displayName.trim().length > 120) {
+      return NextResponse.json({ error: "Bitte gib eine Dateibezeichnung mit maximal 120 Zeichen an." }, { status: 400 });
+    }
     const file = validateSponsorUploadFile({ name: body.fileName, contentType: body.contentType, size: body.size });
     if (!file) return NextResponse.json({ error: "Erlaubt sind PDF-, Word- und Bilddateien bis 25 MB." }, { status: 400 });
     const category = documentCategories.find((option) => option === body.category) ?? "other";
@@ -97,6 +100,7 @@ export async function POST(request: Request, context: Context) {
       sponsor_id: sponsorId,
       storage_path: storagePath,
       file_name: file.fileName,
+      display_name: body.displayName.trim(),
       content_type: file.contentType,
       size_bytes: body.size,
       uploaded_by_type: "organizer",

@@ -23,7 +23,7 @@ type Invoice = {
 };
 type Draft = { invoiceNumber: string; invoiceDate: string; dueDate: string; sentDate: string; netAmount: string; grossAmount: string };
 type StagedInvoiceFile = { storagePath: string; fileName: string; contentType: string };
-type Props = { eventId: string; sponsorId: string; sponsorName: string; endpointBase?: string; mode?: "sponsor" | "organizer" };
+type Props = { eventId: string; sponsorId: string; sponsorName: string; endpointBase?: string; mode?: "sponsor" | "organizer"; demoMode?: boolean };
 
 const emptyDraft: Draft = { invoiceNumber: "", invoiceDate: "", dueDate: "", sentDate: "", netAmount: "", grossAmount: "" };
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -69,7 +69,7 @@ function invoiceFields(draft: Draft) {
   return { invoiceNumber: draft.invoiceNumber, invoiceDate, dueDate, sentDate, netAmount, grossAmount };
 }
 
-export function EventSponsorInvoice({ eventId, sponsorId, sponsorName, endpointBase, mode = "sponsor" }: Props) {
+export function EventSponsorInvoice({ eventId, sponsorId, sponsorName, endpointBase, mode = "sponsor", demoMode = false }: Props) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [files, setFiles] = useState<Record<string, File | null>>({});
@@ -99,7 +99,18 @@ export function EventSponsorInvoice({ eventId, sponsorId, sponsorName, endpointB
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { void load(); }, [endpoint]);
+  useEffect(() => {
+    if (!demoMode) { void load(); return; }
+    const demoAmount = sponsorName === "Elspass Autoland GmbH" ? 5000 : sponsorName === "Hellmich Baugesellschaft" ? 2500 : 1500;
+    const demoInvoice: Invoice = {
+      id: `demo-${sponsorId}-invoice`, invoice_number: "RE-2027-014", invoice_date: "2027-06-14", due_date: "2027-07-14", sent_date: "2027-06-14",
+      net_amount: demoAmount, gross_amount: Math.round(demoAmount * 1.19 * 100) / 100,
+      file_name: `Rechnung-${sponsorName.replaceAll(" ", "-")}.pdf`, file_available: true, sponsor_visible: true, paid_at: null, updated_at: "2027-06-14T09:55:00.000Z",
+    };
+    setInvoices([demoInvoice]);
+    setDrafts({ [demoInvoice.id]: invoiceDraft(demoInvoice) });
+    setLoading(false);
+  }, [endpoint, demoMode, sponsorId, sponsorName]);
 
   function updateDraft(invoiceId: string, key: keyof Draft, value: string) {
     setDrafts((current) => ({ ...current, [invoiceId]: { ...(current[invoiceId] ?? emptyDraft), [key]: value } }));
@@ -286,7 +297,7 @@ export function EventSponsorInvoice({ eventId, sponsorId, sponsorName, endpointB
     } finally { setBusyId(null); }
   }
 
-  const dateField = (invoiceId: string, draft: Draft, key: "invoiceDate" | "dueDate" | "sentDate", label: string) => <label className="settings-field"><span>{label}</span><input type="text" inputMode="numeric" placeholder="TT.MM.JJJJ" maxLength={10} disabled={mode === "sponsor"} value={draft[key]} onChange={(event) => updateDraft(invoiceId, key, event.target.value)} /></label>;
+  const dateField = (invoiceId: string, draft: Draft, key: "invoiceDate" | "dueDate" | "sentDate", label: string) => <label className="settings-field"><span>{label}</span><input type="text" inputMode="numeric" placeholder="TT.MM.JJJJ" maxLength={10} disabled={mode === "sponsor" || demoMode} value={draft[key]} onChange={(event) => updateDraft(invoiceId, key, event.target.value)} /></label>;
   const editableInvoices = invoices;
   const visibleInvoices = mode === "sponsor" ? invoices.filter((invoice) => invoice.sponsor_visible && invoice.file_available) : editableInvoices;
   const totalNetAmount = visibleInvoices.reduce((total, invoice) => {
@@ -303,21 +314,21 @@ export function EventSponsorInvoice({ eventId, sponsorId, sponsorName, endpointB
       <summary className="sponsor-invoice-summary"><span className="sponsor-invoice-summary-total"><small>Rechnungssumme (netto)</small><strong>{formattedNetAmount}</strong></span><span className="sponsor-invoice-card-statuses"><span className={`sponsor-invoice-payment-status ${invoice.paid_at ? "paid" : "unpaid"}`}>{invoice.paid_at ? "Bezahlt" : "Nicht bezahlt"}</span>{mode === "organizer" && <span className={`sponsor-invoice-publication-status ${invoice.sponsor_visible ? "published" : "private"}`} title={invoice.sponsor_visible ? "Im Sponsorbereich veröffentlicht" : "Nur für Veranstalter sichtbar"}>{invoice.sponsor_visible ? "Veröffentlicht" : "Intern"}</span>}</span><span className="sponsor-invoice-summary-chevron"><Icon name="chevron" size={15}/></span></summary>
       <div className="sponsor-invoice-expanded"><header className="sponsor-invoice-card-head"><div><span className="sponsor-invoice-card-label">Rechnung {index + 1}</span><b>{invoice.file_name || draft.invoiceNumber || "Rechnungsdatei"}</b></div></header>
       <div className="sponsor-invoice-grid">
-        <label className="settings-field"><span>Rechnungsnummer</span><input type="text" maxLength={120} disabled={mode === "sponsor"} value={draft.invoiceNumber} onChange={(event) => updateDraft(invoice.id, "invoiceNumber", event.target.value)} placeholder="z. B. RE-2026-014" /></label>
+        <label className="settings-field"><span>Rechnungsnummer</span><input type="text" maxLength={120} disabled={mode === "sponsor" || demoMode} value={draft.invoiceNumber} onChange={(event) => updateDraft(invoice.id, "invoiceNumber", event.target.value)} placeholder="z. B. RE-2026-014" /></label>
         {dateField(invoice.id, draft, "invoiceDate", "Rechnungsdatum")}
         {dateField(invoice.id, draft, "dueDate", "Fällig am")}
         {dateField(invoice.id, draft, "sentDate", "Versanddatum")}
-        <label className="settings-field"><span>Nettobetrag</span><CurrencyField value={draft.netAmount} onChange={(value) => updateNetAmount(invoice.id, value)} ariaLabel="Rechnungsbetrag netto in Euro" readOnly={mode === "sponsor"}/></label>
+        <label className="settings-field"><span>Nettobetrag</span><CurrencyField value={draft.netAmount} onChange={(value) => updateNetAmount(invoice.id, value)} ariaLabel="Rechnungsbetrag netto in Euro" readOnly={mode === "sponsor" || demoMode}/></label>
         <label className="settings-field"><span>Bruttobetrag</span><CurrencyField value={draft.grossAmount} onChange={() => undefined} ariaLabel="Rechnungsbetrag brutto in Euro" readOnly/></label>
       </div>
       <div className="sponsor-invoice-file-row">
-        {mode === "organizer" && <label className="btn" htmlFor={`sponsor-invoice-file-${invoice.id}`}><Icon name="plus" size={14}/>{files[invoice.id] ? "Datei ausgewählt" : "Rechnungsdatei ersetzen"}<input id={`sponsor-invoice-file-${invoice.id}`} type="file" accept="application/pdf,.pdf,application/xml,text/xml,.xml" disabled={Boolean(busyId) || analyzingId === invoice.id} onChange={(event) => void selectInvoiceFile(invoice.id, event.currentTarget.files?.[0] ?? null)} /></label>}
+        {mode === "organizer" && !demoMode && <label className="btn" htmlFor={`sponsor-invoice-file-${invoice.id}`}><Icon name="plus" size={14}/>{files[invoice.id] ? "Datei ausgewählt" : "Rechnungsdatei ersetzen"}<input id={`sponsor-invoice-file-${invoice.id}`} type="file" accept="application/pdf,.pdf,application/xml,text/xml,.xml" disabled={Boolean(busyId) || analyzingId === invoice.id} onChange={(event) => void selectInvoiceFile(invoice.id, event.currentTarget.files?.[0] ?? null)} /></label>}
         <span>{files[invoice.id]?.name ?? invoice.file_name ?? "Rechnungsdatei fehlt"}</span>
-        {invoice.file_available && <button className="btn" type="button" disabled={Boolean(busyId)} onClick={() => void download(invoice)}><Icon name="file" size={14}/> Rechnung herunterladen</button>}
-        {mode === "organizer" && invoice.file_available && <label className="sponsor-invoice-publish-toggle"><input type="checkbox" checked={invoice.sponsor_visible} disabled={Boolean(busyId)} onChange={(event) => event.target.checked ? setConfirmPublishId(invoice.id) : void setPublication(invoice.id, false)}/><span>Im Sponsorenbereich veröffentlichen</span></label>}
+        {invoice.file_available && <button className="btn" type="button" disabled={Boolean(busyId) || demoMode} onClick={() => void download(invoice)}><Icon name="file" size={14}/> Rechnung herunterladen</button>}
+        {mode === "organizer" && !demoMode && invoice.file_available && <label className="sponsor-invoice-publish-toggle"><input type="checkbox" checked={invoice.sponsor_visible} disabled={Boolean(busyId)} onChange={(event) => event.target.checked ? setConfirmPublishId(invoice.id) : void setPublication(invoice.id, false)}/><span>Im Sponsorenbereich veröffentlichen</span></label>}
       </div>
-      {mode === "organizer" && <p className="sponsor-invoice-vat-note">XRechnung und ZUGFeRD werden lokal im Browser ausgelesen. Das Versanddatum wird manuell erfasst.</p>}
-      {mode === "organizer" && <>{analyzingId === invoice.id && <p className="sponsor-invoice-vat-note">Rechnungsdaten werden lokal ausgelesen …</p>}<div className="sponsor-invoice-card-actions"><button className="btn sponsor-invoice-delete-button" type="button" disabled={Boolean(busyId) || Boolean(analyzingId)} onClick={() => setConfirmDeleteId(invoice.id)}>Rechnung löschen</button><button className="btn" type="button" disabled={Boolean(busyId)} onClick={() => void setPaid(invoice.id, !invoice.paid_at)}>{saving ? "Wird gespeichert …" : invoice.paid_at ? "Zahlung als offen markieren" : "Als bezahlt markieren"}</button><button className="btn btn-primary" type="button" disabled={Boolean(busyId) || Boolean(analyzingId)} onClick={() => void saveInvoice(invoice.id)}>{saving ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></>}
+      {mode === "organizer" && !demoMode && <p className="sponsor-invoice-vat-note">XRechnung und ZUGFeRD werden lokal im Browser ausgelesen. Das Versanddatum wird manuell erfasst.</p>}
+      {mode === "organizer" && !demoMode && <>{analyzingId === invoice.id && <p className="sponsor-invoice-vat-note">Rechnungsdaten werden lokal ausgelesen …</p>}<div className="sponsor-invoice-card-actions"><button className="btn sponsor-invoice-delete-button" type="button" disabled={Boolean(busyId) || Boolean(analyzingId)} onClick={() => setConfirmDeleteId(invoice.id)}>Rechnung löschen</button><button className="btn" type="button" disabled={Boolean(busyId)} onClick={() => void setPaid(invoice.id, !invoice.paid_at)}>{saving ? "Wird gespeichert …" : invoice.paid_at ? "Zahlung als offen markieren" : "Als bezahlt markieren"}</button><button className="btn btn-primary" type="button" disabled={Boolean(busyId) || Boolean(analyzingId)} onClick={() => void saveInvoice(invoice.id)}>{saving ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></>}
       </div>
     </details>;
   }
@@ -347,7 +358,7 @@ export function EventSponsorInvoice({ eventId, sponsorId, sponsorName, endpointB
   }
 
   return <section className="panel sponsor-invoice-area">
-    <div className="table-head"><div><h2>Rechnung</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>{mode === "organizer" ? `Rechnungen und Angaben für ${sponsorName} in diesem Event.` : `Veröffentlichte Rechnungen für ${sponsorName} in diesem Event.`}</p></div>{mode === "organizer" && !newInvoiceId && <button className="btn btn-primary" type="button" onClick={() => { const id = globalThis.crypto.randomUUID(); setDrafts((current) => ({ ...current, [id]: emptyDraft })); setNewInvoiceId(id); }}><Icon name="plus" size={14}/> Rechnung hinzufügen</button>}</div>
+    <div className="table-head"><div><h2>Rechnung</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>{mode === "organizer" ? `Rechnungen und Angaben für ${sponsorName} in diesem Event.` : `Veröffentlichte Rechnungen für ${sponsorName} in diesem Event.`}</p></div>{mode === "organizer" && !demoMode && !newInvoiceId && <button className="btn btn-primary" type="button" onClick={() => { const id = globalThis.crypto.randomUUID(); setDrafts((current) => ({ ...current, [id]: emptyDraft })); setNewInvoiceId(id); }}><Icon name="plus" size={14}/> Rechnung hinzufügen</button>}</div>
     {error && <p className="field-message error" role="alert">{error}</p>}{message && <p className="field-message success" role="status">{message}</p>}
     {loading ? <p className="task-empty">Rechnungen werden geladen …</p> : <><article className="sponsor-invoice-total-card"><span>Gesamtrechnungswert (netto)</span><strong>{new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(totalNetAmount)}</strong></article><div className="sponsor-invoice-list">{visibleInvoices.map(invoiceCard)}{mode === "organizer" && newInvoiceCard()}{mode === "organizer" && !invoices.length && !newInvoiceId && <p className="task-empty">Für diesen Sponsor wurden noch keine Rechnungen erfasst.</p>}{mode === "sponsor" && !visibleInvoices.length && <p className="task-empty">Der Veranstalter hat noch keine Rechnungen veröffentlicht.</p>}</div></>}
     {confirmPublishId && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyId) setConfirmPublishId(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="publish-invoice-title"><div className="create-modal-head"><div><h2 id="publish-invoice-title">Rechnung veröffentlichen?</h2><p>Der Sponsor kann diese Rechnungsdatei anschließend im Rechnungs-Tab dieses Events herunterladen.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(busyId)} onClick={() => setConfirmPublishId(null)}><Icon name="close" size={16}/></button></div><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(busyId)} onClick={() => setConfirmPublishId(null)}>Abbrechen</button><button className="btn btn-primary" type="button" disabled={Boolean(busyId)} onClick={() => void setPublication(confirmPublishId, true)}>{busyId === confirmPublishId ? "Wird veröffentlicht …" : "Veröffentlichung bestätigen"}</button></div></section></div>}

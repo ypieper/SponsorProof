@@ -11,9 +11,14 @@ type Account = { firstName: string; lastName: string; email: string };
 
 export function AccountSettings() {
   const [account, setAccount] = useState<Account>({ firstName: "", lastName: "", email: "" });
-  const [password, setPassword] = useState("");
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordMessageIsError, setPasswordMessageIsError] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -44,7 +49,7 @@ export function AccountSettings() {
     setMessage("");
   }
 
-  async function save(event: FormEvent<HTMLFormElement>) {
+  async function savePersonalData(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!isSupabaseConfigured) return;
 
@@ -59,11 +64,9 @@ export function AccountSettings() {
       const { error } = await client.auth.updateUser({
         data: { first_name: account.firstName.trim(), last_name: account.lastName.trim() },
         ...(emailChanged ? { email: account.email.trim() } : {}),
-        ...(password ? { password } : {}),
       });
       if (error) throw error;
 
-      setPassword("");
       window.dispatchEvent(new Event("sponsorproof:user-account-updated"));
       setMessage(emailChanged
         ? "Deine Angaben wurden gespeichert. Bitte bestätige die neue E-Mail-Adresse über den zugesandten Link."
@@ -75,28 +78,66 @@ export function AccountSettings() {
     }
   }
 
-  return <form className="settings-form account-settings-form" onSubmit={save}>
-      <div className="settings-panel-content">
-        <div className="settings-section">
-          <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="users" size={16}/></span><div><h2>Persönliche Daten</h2><p>Dein Name und die E-Mail-Adresse für deine Anmeldung.</p></div></div>
-          {!isSupabaseConfigured ? <p className="auth-setup-message">Die Kontoverwaltung ist verfügbar, sobald Supabase eingerichtet ist.</p> : <div className="settings-grid">
-            <Field label="Vorname" value={account.firstName} onChange={(value) => update("firstName", value)} autoComplete="given-name" />
-            <Field label="Nachname" value={account.lastName} onChange={(value) => update("lastName", value)} autoComplete="family-name" />
-            <div className="settings-field-full"><Field label="E-Mail-Adresse" value={account.email} onChange={(value) => update("email", value)} type="email" required autoComplete="email" /></div>
-          </div>}
-        </div>
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isSupabaseConfigured || passwordSaving) return;
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage("Die beiden neuen Passwörter stimmen nicht überein.");
+      setPasswordMessageIsError(true);
+      return;
+    }
 
-        {isSupabaseConfigured && <div className="settings-section">
-          <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="settings" size={16}/></span><div><h2>Passwort ändern</h2><p>Lass das Feld leer, wenn du dein Passwort behalten möchtest.</p></div></div>
-          <div className="settings-grid"><div className="settings-field-full"><Field label="Neues Passwort" value={password} onChange={setPassword} type="password" placeholder="Mindestens 8 Zeichen" autoComplete="new-password" /></div></div>
-        </div>}
+    setPasswordSaving(true);
+    setPasswordMessage("");
+    setPasswordMessageIsError(false);
+    try {
+      const client = createClient();
+      const { data, error: userError } = await client.auth.getUser();
+      const email = data.user?.email;
+      if (userError || !email) throw new Error("Dein Konto konnte nicht geprüft werden. Bitte melde dich erneut an.");
 
-        {isSupabaseConfigured && <WorkspaceDataExport />}
-        {isSupabaseConfigured && <AccountDeletionSettings />}
+      const { error: verifyError } = await client.auth.signInWithPassword({ email, password: currentPassword });
+      if (verifyError) throw new Error("Das aktuelle Passwort ist nicht korrekt.");
+
+      const { error } = await client.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordMessage("Dein Passwort wurde geändert.");
+    } catch (cause) {
+      setPasswordMessage(cause instanceof Error ? cause.message : "Das Passwort konnte nicht geändert werden.");
+      setPasswordMessageIsError(true);
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
+  return <div className="settings-tab-sections account-settings-sections">
+    <form className="account-settings-area" onSubmit={savePersonalData}>
+      <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="users" size={16}/></span><div><h2>Persönliche Daten</h2><p>Dein Name und die E-Mail-Adresse für deine Anmeldung.</p></div></div>
+      {!isSupabaseConfigured ? <p className="auth-setup-message">Die Kontoverwaltung ist verfügbar, sobald Supabase eingerichtet ist.</p> : <div className="settings-grid">
+        <Field label="Vorname" value={account.firstName} onChange={(value) => update("firstName", value)} autoComplete="given-name" />
+        <Field label="Nachname" value={account.lastName} onChange={(value) => update("lastName", value)} autoComplete="family-name" />
+        <div className="settings-field-full"><Field label="E-Mail-Adresse" value={account.email} onChange={(value) => update("email", value)} type="email" required autoComplete="email" /></div>
+      </div>}
+      <div className="account-settings-save-row"><p role="status" aria-live="polite">{message || (ready ? "Deine Angaben werden sicher in deinem Konto gespeichert." : "Kontodaten werden geladen …")}</p><button className="btn btn-primary" type="submit" disabled={!ready || saving || !isSupabaseConfigured}><Icon name="check" size={15}/>{saving ? "Wird gespeichert …" : "Angaben speichern"}</button></div>
+    </form>
+
+    {isSupabaseConfigured && <form className="account-settings-area" onSubmit={changePassword}>
+      <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="settings" size={16}/></span><div><h2>Passwort ändern</h2><p>Bestätige dein aktuelles Passwort und gib das neue zweimal ein.</p></div></div>
+      <div className="settings-grid account-password-fields">
+        <Field label="Aktuelles Passwort" value={currentPassword} onChange={setCurrentPassword} type="password" required autoComplete="current-password" />
+        <Field label="Neues Passwort" value={newPassword} onChange={setNewPassword} type="password" placeholder="Mindestens 8 Zeichen" required autoComplete="new-password" />
+        <Field label="Neues Passwort wiederholen" value={confirmPassword} onChange={setConfirmPassword} type="password" placeholder="Neues Passwort erneut eingeben" required autoComplete="new-password" />
       </div>
+      <div className="account-settings-save-row"><p className={passwordMessageIsError ? "error" : ""} role={passwordMessageIsError ? "alert" : "status"} aria-live="polite">{passwordMessage || "Mindestens 8 Zeichen. Das neue Passwort muss in beiden Feldern übereinstimmen."}</p><button className="btn btn-primary" type="submit" disabled={!ready || passwordSaving || !currentPassword || !newPassword || !confirmPassword}><Icon name="check" size={15}/>{passwordSaving ? "Passwort wird geändert …" : "Passwort ändern"}</button></div>
+    </form>}
 
-      <div className="settings-save-row"><p role="status" aria-live="polite">{message || (ready ? "Deine Kontodaten werden sicher in deinem Konto gespeichert." : "Kontodaten werden geladen …")}</p><button className="btn btn-primary" type="submit" disabled={!ready || saving || !isSupabaseConfigured}><Icon name="check" size={15}/>{saving ? "Wird gespeichert …" : "Speichern"}</button></div>
-  </form>;
+    {isSupabaseConfigured && <WorkspaceDataExport />}
+    {isSupabaseConfigured && <AccountDeletionSettings />}
+  </div>;
 }
 
 function Field({ label, value, onChange, type = "text", placeholder, required = false, autoComplete }: {

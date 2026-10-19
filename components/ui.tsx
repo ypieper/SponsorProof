@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const paths: Record<string, React.ReactNode> = {
   grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
   stack: <><rect x="8" y="2.5" width="9" height="7" rx="1.5"/><rect x="5.5" y="8.5" width="9" height="7" rx="1.5"/><rect x="3" y="14.5" width="9" height="7" rx="1.5"/></>,
@@ -40,10 +42,10 @@ export function SponsoLogo({ markSize = 32 }: { markSize?: number }) {
   </>;
 }
 
-export function Status({ value }: { value: string }) {
-  const kind = value === "Erfüllt" || value === "Erledigt" || value === "Abgeschlossen" ? "status-done" : value === "In Arbeit" || value === "In Bearbeitung" ? "status-progress" : value === "Warte auf Sponsor" ? "status-waiting" : "status-open";
+export function Status({ value, tone }: { value: string; tone?: "done" | "progress" | "open" | "waiting" }) {
+  const kind = tone ? `status-${tone}` : value === "Erfüllt" || value === "Erledigt" || value === "Abgeschlossen" ? "status-done" : value === "In Arbeit" || value === "In Bearbeitung" ? "status-progress" : value === "Warte auf Sponsor" ? "status-waiting" : "status-open";
   const label = value === "Erfüllt" || value === "Erledigt" ? "Abgeschlossen" : value;
-  return <span className={`status ${kind}`}>{label}</span>;
+  return <span className={`badge status ${kind}`}>{label}</span>;
 }
 
 export function Progress({ value }: { value: number }) {
@@ -55,7 +57,7 @@ export function PageHeading({ eyebrow, title, subtitle, action }: { eyebrow?: st
 }
 
 export function Tabs({ items, active }: { items: { label: string; href: string }[]; active: string }) {
-  return <div className="tabs">{items.map((item) => <a key={item.label} href={item.href} className={`tab ${active === item.label ? "active" : ""}`} aria-current={active === item.label ? "page" : undefined}>{item.label}</a>)}</div>;
+  return <div className="tabs">{items.map((item) => <Link key={item.label} href={item.href} className={`tab ${active === item.label ? "active" : ""}`} aria-current={active === item.label ? "page" : undefined}>{item.label}</Link>)}</div>;
 }
 
 export function Metric({ label, value, note, icon }: { label: string; value: string; note?: string; icon: string }) {

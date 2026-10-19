@@ -84,9 +84,9 @@ export function AccountDeletionSettings() {
     }
   }
 
-  return <section className="settings-section account-deletion-section" aria-labelledby="account-deletion-heading">
-    <div className="settings-section-heading"><span className="settings-section-icon account-delete-icon">!</span><div><h2 id="account-deletion-heading">Konto oder Veranstalterbereich löschen</h2><p>Diese Löschung kann nicht rückgängig gemacht werden.</p></div></div>
-    {loading ? <p className="account-delete-status">Berechtigungen werden geprüft …</p> : !info ? <p className="field-message error" role="alert">{error}</p> : <>
+  return <details className="settings-section account-deletion-section">
+    <summary className="settings-section-heading account-deletion-heading"><span className="settings-section-icon account-delete-icon">!</span><div><h2 id="account-deletion-heading">Konto oder Veranstalterbereich löschen</h2><p>Diese Löschung kann nicht rückgängig gemacht werden.</p></div><span className="account-deletion-toggle" aria-hidden="true">›</span></summary>
+    {loading ? <p className="account-delete-status">Berechtigungen werden geprüft …</p> : !info ? <p className="field-message error" role="alert">{error}</p> : <div className="account-delete-body">
       {notice && <p className="field-message success account-delete-notice" role="status">{notice}</p>}
       <div className="account-delete-options">
         <label className={`account-delete-option ${mode === "account" ? "selected" : ""} ${!info.canDeleteAccount ? "unavailable" : ""}`}>
@@ -100,11 +100,13 @@ export function AccountDeletionSettings() {
       </div>
       {!info.canDeleteAccount && info.role === "owner" && <p className="account-delete-status">Du bist die letzte Inhaberin oder der letzte Inhaber. Dein Konto kann deshalb nicht einzeln gelöscht werden. Du kannst den gesamten Veranstalterbereich löschen und dein Konto anschließend separat entfernen.</p>}
       {info.role === "member" && info.ownerCount === 0 && <p className="account-delete-status error">Im Veranstalterbereich ist kein Inhaber hinterlegt. Bitte lass zuerst eine Person zur Inhaberin oder zum Inhaber ernennen.</p>}
-      <div className="account-delete-warning"><strong>Das wird gelöscht</strong><p>{explanation}</p><p>Die Daten werden unwiderruflich entfernt. Erstelle vorher benötigte Exporte oder sichere Dateien.</p></div>
-      <label className="settings-field account-delete-phrase"><span>Zur Bestätigung gib <b>{expectedPhrase}</b> ein.</span><input value={phrase} onChange={(event) => setPhrase(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} autoComplete="off" spellCheck={false} disabled={!canDeleteSelectedMode || busy} /></label>
-      <label className="account-delete-check"><input type="checkbox" checked={confirmed} disabled={!canDeleteSelectedMode || busy} onChange={(event) => setConfirmed(event.target.checked)} /><span>Ich bestätige, dass ich die oben beschriebene Löschung verstanden habe und sie unwiderruflich ist.</span></label>
-      {error && <p className="field-message error account-delete-error" role="alert">{error}</p>}
-      <button className="btn btn-danger-soft account-delete-submit" type="button" disabled={!buttonReady} onClick={() => void deleteData()}>{busy ? "Daten werden gelöscht …" : mode === "account" ? "Konto unwiderruflich löschen" : "Veranstalterbereich unwiderruflich löschen"}</button>
-    </>}
-  </section>;
+      <div className="account-delete-confirmation">
+        <div className="account-delete-warning"><strong>Das wird gelöscht</strong><p>{explanation}</p><p>Die Daten werden unwiderruflich entfernt. Erstelle vorher benötigte Exporte oder sichere Dateien.</p></div>
+        <label className="settings-field account-delete-phrase"><span>Zur Bestätigung gib <b>{expectedPhrase}</b> ein.</span><input value={phrase} onChange={(event) => setPhrase(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} autoComplete="off" spellCheck={false} disabled={!canDeleteSelectedMode || busy} /></label>
+        <label className="account-delete-check"><input type="checkbox" checked={confirmed} disabled={!canDeleteSelectedMode || busy} onChange={(event) => setConfirmed(event.target.checked)} /><span>Ich bestätige, dass ich die oben beschriebene Löschung verstanden habe und sie unwiderruflich ist.</span></label>
+        {error && <p className="field-message error account-delete-error" role="alert">{error}</p>}
+        <button className="btn btn-danger-soft account-delete-submit" type="button" disabled={!buttonReady} onClick={() => void deleteData()}>{busy ? "Daten werden gelöscht …" : mode === "account" ? "Konto unwiderruflich löschen" : "Veranstalterbereich unwiderruflich löschen"}</button>
+      </div>
+    </div>}
+  </details>;
 }

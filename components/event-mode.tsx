@@ -6,7 +6,6 @@ import { TasksOverview } from "@/components/tasks-overview";
 import { EmptyState, Icon, SponsoLogo } from "@/components/ui";
 import { fetchStoredEventsFromDatabase, formatEventDate, formatEventDateRange, type StoredEvent } from "@/lib/events-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { MobileMenu } from "@/components/mobile-menu";
 
 type EventModeTab = "event" | "proofs";
 
@@ -74,7 +73,7 @@ export function EventMode() {
   const selectedEvent = events.find((event) => event.id === selectedEventId);
 
   return <div className="mobile-shell mobile-event-mode">
-    <header className="mobile-header"><Link href="/dashboard" className="brand" aria-label="sponso Übersicht öffnen"><SponsoLogo markSize={29} /></Link><div className="mobile-header-actions"><MobileMenu/><Link href="/events" className="icon-button" aria-label="Zur Eventübersicht"><Icon name="chevron" size={16}/></Link></div></header>
+    <header className="mobile-header"><Link href="/dashboard" className="brand" aria-label="sponso Übersicht öffnen"><SponsoLogo markSize={29} /></Link><div className="mobile-header-actions"><nav className="mobile-header-mode-nav" aria-label="Event-Modus"><button className={activeTab === "event" ? "active" : ""} type="button" aria-pressed={activeTab === "event"} onClick={() => selectModeTab("event")}><Icon name="calendar" size={14}/>Event</button><button className={activeTab === "proofs" ? "active" : ""} type="button" aria-pressed={activeTab === "proofs"} onClick={() => selectModeTab("proofs")}><Icon name="camera" size={14}/>Nachweise</button></nav><Link href="/events" className="icon-button" aria-label="Zur Eventübersicht"><Icon name="chevron" size={16}/></Link></div></header>
     <main className="mobile-content">
       <span className="live-pill"><span className="live-dot"/> NACHWEIS-MODUS</span>
       <h1>{activeTab === "event" ? "Event auswählen" : "Nachweise vor Ort"}</h1>
@@ -87,9 +86,5 @@ export function EventMode() {
 
       {activeTab === "proofs" && (selectedEvent ? <TasksOverview eventFilter={selectedEvent.id} embedded mobileMode /> : <EmptyState title="Kein Event ausgewählt" description="Wähle im Reiter „Event“ zuerst eine Veranstaltung aus. Danach erscheinen hier alle Aufgaben und Nachweise." action={<button className="btn btn-primary" type="button" onClick={() => selectModeTab("event")}><Icon name="calendar" size={14}/> Event auswählen</button>} />)}
     </main>
-    <nav className="mobile-nav" aria-label="Nachweis-Modus">
-      <a href={eventModeHref("event", selectedEventId)} className={activeTab === "event" ? "active" : ""} aria-current={activeTab === "event" ? "page" : undefined} onClick={(event) => { event.preventDefault(); selectModeTab("event"); }}><Icon name="calendar" size={17}/>Event</a>
-      <a href={eventModeHref("proofs", selectedEventId)} className={activeTab === "proofs" ? "active" : ""} aria-current={activeTab === "proofs" ? "page" : undefined} onClick={(event) => { event.preventDefault(); selectModeTab("proofs"); }}><Icon name="camera" size={17}/>Nachweise</a>
-    </nav>
   </div>;
 }

@@ -6,7 +6,7 @@ export const metadata = privatePageMetadata("Einstellungen", "Verwalte deine Ver
 
 export default function SettingsPage() {
   return <main className="content">
-    <PageHeading eyebrow="VERANSTALTERBEREICH" title="Einstellungen" subtitle="Verwalte die Angaben zu deinem Veranstalter und deiner Ansprechperson." />
+    <PageHeading eyebrow="VERANSTALTERBEREICH" title="Einstellungen" subtitle="Stammdaten, Vertragsvorlagen, Tarife und Team an einem Ort." />
     <SettingsForm />
   </main>;
 }

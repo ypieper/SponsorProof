@@ -21,13 +21,19 @@ export async function GET() {
     const eventIds = [...new Set(assignments.map((item) => item.event_id))];
     const sponsorIds = [...new Set(assignments.map((item) => item.sponsor_id))];
     const [eventsResult, sponsorsResult, contractsResult, taskResult, benefitResult] = await Promise.all([
-      admin.from("events").select("id, title, start_date, end_date, location, organizer_logo_path, contact_first_name, contact_last_name, contact_email, contact_phone").in("id", eventIds),
+      admin.from("events").select("id, organization_id, title, start_date, end_date, location, organizer_logo_path, contact_first_name, contact_last_name, contact_email, contact_phone").in("id", eventIds),
       admin.from("sponsors").select("id, name").in("id", sponsorIds),
       admin.from("contracts").select("id, event_id, sponsor_id, title, value_cents, signature_status, sponsor_signed_at, organizer_signed_at, signed_at, signing_document_id").in("event_id", eventIds),
       admin.from("tasks").select("id, event_id, sponsor_id, sponsor_name, benefit_id, title, due_at, status, source, workflow_order, workflow_instance, completion_type, requires_sponsor_approval, assigned_to_sponsor, sponsor_approval_status, sponsor_approved_at").in("event_id", eventIds),
       admin.from("benefits").select("id, event_id, sponsor_id, title, benefit_type, material_logistics, description, quantity, tasks_per_unit, status, due_at").in("event_id", eventIds).in("sponsor_id", sponsorIds),
     ]);
     if (eventsResult.error || sponsorsResult.error || contractsResult.error || taskResult.error || benefitResult.error) throw eventsResult.error ?? sponsorsResult.error ?? contractsResult.error ?? taskResult.error ?? benefitResult.error;
+    const organizationIds = [...new Set((eventsResult.data ?? []).flatMap((event) => event.organization_id ? [event.organization_id] : []))];
+    const { data: organizations, error: organizationsError } = organizationIds.length
+      ? await admin.from("organizations").select("id, name").in("id", organizationIds)
+      : { data: [], error: null };
+    if (organizationsError) throw organizationsError;
+    const organizationNames = new Map((organizations ?? []).map((organization) => [organization.id, organization.name]));
     const allowed = new Set(assignments.map((item) => `${item.event_id}:${item.sponsor_id}`));
     const sponsorNamesById = new Map((sponsorsResult.data ?? []).map((sponsor) => [sponsor.id, sponsor.name.trim().toLocaleLowerCase()]));
     const benefitWorkflowCounts = new Map((benefitResult.data ?? []).map((benefit) => [benefit.id, benefit.tasks_per_unit === false ? 1 : benefit.quantity ?? 1]));
@@ -175,12 +181,13 @@ export async function GET() {
       for (const document of documents ?? []) documentsById.set(document.id, { contract_id: document.contract_id });
     }
     const eventsWithLogos = await Promise.all(events.map(async (event) => {
-      const { organizer_logo_path, ...eventData } = event;
+      const { organizer_logo_path, organization_id, ...eventData } = event;
       const { data: logo } = organizer_logo_path
         ? await admin.storage.from("sponsorproof-files").createSignedUrl(organizer_logo_path, 60 * 60 * 24)
         : { data: null };
       return {
       ...eventData,
+      organizer_name: organizationNames.get(organization_id) ?? "",
       organizer_logo_url: logo?.signedUrl ?? null,
       signature_addon_enabled: signatureEnabledEventIds.has(event.id),
       sponsor_assignments: assignments.filter((assignment) => assignment.event_id === event.id).map((assignment) => ({

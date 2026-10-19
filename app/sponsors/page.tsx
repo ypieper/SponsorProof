@@ -24,6 +24,7 @@ export default function SponsorsPage() {
   const [postalCodeStatus, setPostalCodeStatus] = useState<PostalCodeStatus>("idle");
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -66,6 +67,11 @@ export default function SponsorsPage() {
     return contractSum + Math.round(amount * 100);
   }, 0), 0);
   const euro = (totalCents / 100).toLocaleString("de-DE");
+  const normalizedSearch = search.trim().toLocaleLowerCase("de-DE");
+  const filteredRecords = records.filter(({ sponsor }) =>
+    !normalizedSearch || [sponsor.name, sponsor.contactFirstName, sponsor.contactLastName, sponsor.email]
+      .some((value) => value?.toLocaleLowerCase("de-DE").includes(normalizedSearch)),
+  );
 
   async function saveSponsor(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -82,6 +88,7 @@ export default function SponsorsPage() {
         return;
       }
       setRecords((current) => [...current, result.data!].sort((a, b) => a.sponsor.name.localeCompare(b.sponsor.name, "de")));
+      setSearch("");
       setCreating(false);
       setMasterData(emptySponsorMasterData);
       setPostalCodeStatus("idle");
@@ -102,12 +109,12 @@ export default function SponsorsPage() {
       <Metric label="Events" value={loading ? "—" : `${new Set(records.flatMap((record) => record.sponsor.eventIds)).size}`} note="mit Sponsoren" icon="calendar" />
     </section>
     <section className="panel table-panel sponsor-directory">
-      <div className="table-head"><div><h2>Alle Sponsoren</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Event-Zuordnung und Vertragswert werden im Event gepflegt.</p></div></div>
-      {loading ? <p className="task-empty">Sponsoren werden geladen …</p> : records.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Sponsoren" description="Lege die Stammdaten eines Sponsors an. Event und Vertragswert ergänzt du später im Event." action={<button className="btn btn-primary" type="button" onClick={() => setCreating(true)}><Icon name="plus" size={14}/> Sponsor hinzufügen</button>} /> : <table className="table"><thead><tr><th>SPONSOR</th><th>ANSPRECHPERSON</th><th>E-MAIL</th><th>VERTRAGSVOLUMEN</th><th></th></tr></thead><tbody>{records.map(({ sponsor, contracts }) => {
+      <div className="table-head sponsor-directory-table-head"><div><h2>Alle Sponsoren</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Event-Zuordnung und Vertragswert werden im Event gepflegt.</p></div><label className="sponsor-directory-search"><span className="sr-only">Sponsoren suchen</span><Icon name="search" size={16}/><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, Ansprechperson oder E-Mail" /></label></div>
+      {loading ? <p className="task-empty">Sponsoren werden geladen …</p> : records.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Sponsoren" description="Lege die Stammdaten eines Sponsors an. Event und Vertragswert ergänzt du später im Event." action={<button className="btn btn-primary" type="button" onClick={() => setCreating(true)}><Icon name="plus" size={14}/> Sponsor hinzufügen</button>} /> : filteredRecords.length === 0 ? <EmptyState className="empty-state-compact" title="Keine passenden Sponsoren" description="Ändere den Suchbegriff oder lösche ihn, um alle Sponsoren anzuzeigen." /> : <div className="sponsor-directory-grid">{filteredRecords.map(({ sponsor, contracts }) => {
         const amount = contracts.reduce((sum, contract) => sum + Math.round(Number(contract.value.replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", ".")) * 100), 0);
         const contact = [sponsor.contactFirstName, sponsor.contactLastName].filter(Boolean).join(" ");
-        return <tr key={sponsor.id}><td><Link href={`/sponsors/${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={sponsor.color ? { background: sponsor.color, color: "white" } : undefined}>{sponsor.initials}</span>{sponsor.name}</Link></td><td>{contact || <span className="directory-missing">Noch nicht hinterlegt</span>}</td><td>{sponsor.email || <span className="directory-missing">Noch nicht hinterlegt</span>}</td><td>{contracts.length ? `${(amount / 100).toLocaleString("de-DE")} €` : <span className="directory-missing">Im Event erfassen</span>}</td><td><Link className="sponsor-open-link" href={`/sponsors/${sponsor.id}`} aria-label={`${sponsor.name} öffnen`}><Icon name="arrow" size={15}/></Link></td></tr>;
-      })}</tbody></table>}
+        return <article className="sponsor-directory-card" key={sponsor.id}><div className="sponsor-directory-card-sponsor"><span className="sponsor-directory-card-label">Sponsor</span><Link href={`/sponsors/${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={sponsor.color ? { background: sponsor.color, color: "white" } : undefined}>{sponsor.initials}</span><b>{sponsor.name}</b></Link></div><div className="sponsor-directory-card-contact"><span className="sponsor-directory-card-label">Ansprechperson</span><b>{contact || <span className="directory-missing">Noch nicht hinterlegt</span>}</b></div><div className="sponsor-directory-card-email"><span className="sponsor-directory-card-label">E-Mail</span><b>{sponsor.email || <span className="directory-missing">Noch nicht hinterlegt</span>}</b></div><div className="sponsor-directory-card-value"><span className="sponsor-directory-card-label">Vertragsvolumen</span><b>{contracts.length ? `${(amount / 100).toLocaleString("de-DE")} €` : <span className="directory-missing">Im Event erfassen</span>}</b></div><div className="sponsor-directory-card-actions"><span className="sponsor-directory-card-label">Aktionen</span><Link className="sponsor-open-link" href={`/sponsors/${sponsor.id}`} aria-label={`${sponsor.name} öffnen`}><Icon name="arrow" size={15}/></Link></div></article>;
+      })}</div>}
     </section>
     {creating && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setCreating(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-sponsor-title"><div className="create-modal-head"><div><h2 id="create-sponsor-title">Sponsor hinzufügen</h2><p>Vollständige Stammdaten und Ansprechperson werden direkt angelegt.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setCreating(false)}><Icon name="close" size={16}/></button></div><form onSubmit={saveSponsor}><div className="sponsor-edit-sections"><SponsorMasterDataFields value={masterData} onChange={setMasterData} onPostalCodeStatusChange={setPostalCodeStatus} /></div>{formError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{formError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setCreating(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={saving || (postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim()))}>{saving ? "Wird gespeichert …" : "Sponsor speichern"}</button></div></form></section></div>}
   </main>;

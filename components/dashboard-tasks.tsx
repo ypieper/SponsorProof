@@ -10,10 +10,15 @@ import { fetchStoredBenefits } from "@/lib/benefits-storage";
 import { fetchStoredTasks } from "@/lib/tasks-storage";
 import { fetchStoredEvidence } from "@/lib/evidence-storage";
 import { createClient } from "@/lib/supabase/client";
+import type { DashboardTaskSummary } from "@/components/dashboard-metrics";
 
 type DashboardTask = { id: string; title: string; eventId: string; eventTitle: string; sponsor: string; dueAt: string; publishReady: boolean };
 
-export function DashboardTasks() {
+function localDateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function DashboardTasks({ onSummaryChange }: { onSummaryChange: (summary: DashboardTaskSummary | null) => void }) {
   const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [visibleCount, setVisibleCount] = useState(5);
   const [ready, setReady] = useState(false);
@@ -26,17 +31,21 @@ export function DashboardTasks() {
     async function loadTasks() {
       setReady(false);
       setLoadError("");
+      setTasks([]);
+      onSummaryChange(null);
       try {
-        const [evidenceResult, eventResult, sponsorResult, benefitResult, taskResult] = await Promise.all([
+        const [evidenceResult, eventResult, sponsorResult, benefitResult, taskResult, userResult] = await Promise.all([
           fetchStoredEvidence(),
           isSupabaseConfigured ? fetchStoredEventsFromDatabase() : Promise.resolve(null),
           isSupabaseConfigured ? fetchSponsorRecords() : Promise.resolve(null),
           isSupabaseConfigured ? fetchStoredBenefits() : Promise.resolve(null),
           isSupabaseConfigured ? fetchStoredTasks() : Promise.resolve(null),
+          isSupabaseConfigured ? createClient().auth.getUser() : Promise.resolve({ data: { user: null }, error: null }),
         ]);
-        if (evidenceResult.error || eventResult?.error || sponsorResult?.error || benefitResult?.error || taskResult?.error) throw new Error("Aufgabendaten konnten nicht geladen werden.");
+        if (evidenceResult.error || eventResult?.error || sponsorResult?.error || benefitResult?.error || taskResult?.error || userResult.error) throw new Error("Aufgabendaten konnten nicht geladen werden.");
         if (cancelled) return;
 
+        const userId = userResult.data.user?.id;
         const events = eventResult?.data ?? [];
         const eventNames = Object.fromEntries(events.map((event) => [event.id, event.title]));
         const sponsorNames = Object.fromEntries((sponsorResult?.data ?? []).map(({ sponsor }) => [sponsor.id, sponsor.name]));
@@ -44,26 +53,17 @@ export function DashboardTasks() {
 
         const evidenceIds = new Set((evidenceResult.data ?? []).map((item) => item.taskId));
         const storedTasks = taskResult?.data ?? [];
-        const assignedBenefits = new Set(storedTasks.filter((task) => task.source === "Leistung" && task.benefit_id).map((task) => task.benefit_id));
-        (benefitResult?.data ?? []).filter((benefit) => !assignedBenefits.has(benefit.id)).forEach((benefit) => {
-          const taskId = `benefit-${benefit.id}`;
-          const completed = evidenceIds.has(taskId) || Boolean(benefit.evidence && benefit.evidence !== "Noch kein Nachweis") || benefit.status === "Erledigt" || benefit.status === "Erfüllt";
-          if (completed) return;
-          openTasks.push({
-            id: taskId,
-            title: benefit.title,
-            eventId: benefit.eventId,
-            eventTitle: eventNames[benefit.eventId] ?? "Event",
-            sponsor: sponsorNames[benefit.sponsorId ?? ""] ?? "",
-            dueAt: benefit.dueAt ?? "",
-            publishReady: false,
-          });
+        const benefitsById = new Map((benefitResult?.data ?? []).map((benefit) => [benefit.id, benefit]));
+        const quantityBoundTasks = storedTasks.filter((task) => {
+          if (task.source !== "Leistung") return true;
+          if (!task.benefit_id) return false;
+          const benefit = benefitsById.get(task.benefit_id);
+          return Boolean(benefit && benefit.completionRequired !== false && task.workflow_instance <= (benefit.tasksPerUnit ? benefit.quantity : 1));
         });
-
-        const { data: { user } } = isSupabaseConfigured ? await createClient().auth.getUser() : { data: { user: null } };
-        storedTasks.filter((task) => task.source === "Leistung" || task.source === "Manuell").forEach((task) => {
+        quantityBoundTasks.filter((task) => task.source === "Leistung" || task.source === "Manuell").filter((task) => Boolean(userId && task.assigned_to === userId && !task.assigned_to_sponsor)).forEach((task) => {
           const completed = evidenceIds.has(task.id) || task.status === "Erledigt";
-          if (completed && !(task.publish_ready && task.assigned_to === user?.id)) return;
+          const publishReady = task.publish_ready && task.assigned_to === userId;
+          if (completed && !publishReady) return;
           openTasks.push({
             id: task.id,
             title: task.title,
@@ -71,19 +71,32 @@ export function DashboardTasks() {
             eventTitle: eventNames[task.event_id ?? ""] ?? "Event",
             sponsor: sponsorNames[task.sponsor_id ?? ""] ?? task.sponsor_name ?? "",
             dueAt: task.due_at ?? "",
-            publishReady: task.publish_ready && task.assigned_to === user?.id,
+            publishReady,
           });
         });
 
+        const now = new Date();
+        const today = localDateKey(now);
+        const weekAhead = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+        const weekAheadKey = `${weekAhead.getFullYear()}-${String(weekAhead.getMonth() + 1).padStart(2, "0")}-${String(weekAhead.getDate()).padStart(2, "0")}`;
+        const priority = (task: DashboardTask) => task.publishReady ? 2 : task.dueAt && task.dueAt < today ? 0 : task.dueAt && task.dueAt <= weekAheadKey ? 1 : 3;
         openTasks.sort((a, b) => {
-          if (a.publishReady !== b.publishReady) return a.publishReady ? -1 : 1;
+          const priorityDifference = priority(a) - priority(b);
+          if (priorityDifference) return priorityDifference;
           if (!a.dueAt) return b.dueAt ? 1 : a.title.localeCompare(b.title, "de");
           if (!b.dueAt) return -1;
-          return a.dueAt.localeCompare(b.dueAt);
+          return a.dueAt.localeCompare(b.dueAt) || a.title.localeCompare(b.title, "de");
         });
         setTasks(openTasks);
+        onSummaryChange({
+          open: openTasks.filter((task) => !task.publishReady).length,
+          overdue: openTasks.filter((task) => !task.publishReady && task.dueAt && task.dueAt < today).length,
+        });
       } catch {
-        if (!cancelled) setLoadError("Die Aufgaben konnten nicht geladen werden. Bitte versuche es erneut.");
+        if (!cancelled) {
+          setLoadError("Die Aufgaben konnten nicht geladen werden. Bitte versuche es erneut.");
+          onSummaryChange({ open: 0, overdue: 0, error: true });
+        }
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -92,7 +105,7 @@ export function DashboardTasks() {
     const refreshOnFocus = () => { void loadTasks(); };
     window.addEventListener("focus", refreshOnFocus);
     return () => { cancelled = true; window.removeEventListener("focus", refreshOnFocus); };
-  }, [retryKey]);
+  }, [retryKey, onSummaryChange]);
 
   useEffect(() => {
     const list = taskListRef.current;
@@ -109,7 +122,7 @@ export function DashboardTasks() {
       const averageRowHeight = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0) / rows.length;
       const eventListHeight = eventList.getBoundingClientRect().height;
       if (!averageRowHeight || !eventListHeight) return;
-      setVisibleCount(Math.min(tasks.length, Math.max(1, Math.ceil(eventListHeight / averageRowHeight))));
+      setVisibleCount(Math.min(tasks.length, 5, Math.max(1, Math.ceil(eventListHeight / averageRowHeight))));
     };
 
     updateVisibleCount();
@@ -119,11 +132,12 @@ export function DashboardTasks() {
     return () => observer.disconnect();
   }, [tasks]);
 
-  return <div className="task-list" ref={taskListRef}>
+  const today = localDateKey();
+  return <div className="task-list dashboard-task-list" ref={taskListRef}>
     {!ready ? <p className="task-empty">Aufgaben werden geladen …</p> : loadError ? <EmptyState className="empty-state-compact" title="Aufgaben gerade nicht verfügbar" description={loadError} action={<button className="btn" type="button" onClick={() => setRetryKey((key) => key + 1)}>Erneut laden</button>} /> : tasks.length ? tasks.map((task) => <Link className="task-row dashboard-task-row" href={task.eventId ? `/events/${task.eventId}?tab=aufgaben-nachweise` : "/aufgaben"} key={task.id}>
       <span className="task-check"><Icon name={task.publishReady ? "check" : "clock"} size={14}/></span>
-      <span className="dashboard-task-copy"><span className="task-title">{task.title}</span><span className="task-caption">{task.publishReady ? "Sponsorfreigabe erhalten · Beitrag kann veröffentlicht werden" : [task.sponsor, task.eventTitle].filter(Boolean).join(" · ")}</span></span>
-      <span className={`task-date ${task.dueAt && task.dueAt < new Date().toISOString().slice(0, 10) ? "overdue" : ""}`}>{task.dueAt ? formatEventDate(task.dueAt, { day: "2-digit", month: "short" }) : "Ohne Termin"}</span>
+      <span className="dashboard-task-copy"><span className="task-title">{task.title}</span><span className="task-caption">{[task.sponsor, task.eventTitle, task.publishReady ? "Sponsorfreigabe liegt vor · Veröffentlichung möglich" : ""].filter(Boolean).join(" · ")}</span></span>
+      <span className={`task-date ${!task.publishReady && task.dueAt && task.dueAt < today ? "overdue" : ""}`}>{task.publishReady ? "Zur Veröffentlichung" : task.dueAt ? `${task.dueAt < today ? "Überfällig · " : "Fällig "}${formatEventDate(task.dueAt, { day: "2-digit", month: "short" })}` : "Kein Fälligkeitstermin"}</span>
     </Link>).slice(0, visibleCount) : <EmptyState className="empty-state-compact" title="Keine offenen Aufgaben" description="Sobald offene Leistungen oder Aufgaben vorhanden sind, erscheinen hier die nächsten Fälligkeiten." action={<Link className="btn" href="/aufgaben">Zu den Aufgaben</Link>} />}
   </div>;
 }

@@ -117,7 +117,7 @@ export function TeamSettings() {
     }
   }
 
-  return <section className="settings-panel-content team-settings" aria-labelledby="team-settings-title">
+  return <section className="team-settings" aria-labelledby="team-settings-title">
     <div className="settings-section">
       <div className="settings-section-heading"><span className="settings-section-icon"><Icon name="users" size={16}/></span><div><h2 id="team-settings-title">Gemeinsamer Veranstalterbereich</h2><p>Jede Person nutzt ein eigenes Login und arbeitet mit denselben Events und Sponsoren.</p></div></div>
       {!isSupabaseConfigured ? <p className="auth-setup-message">Der Teamzugang ist verfügbar, sobald Supabase eingerichtet ist.</p> : <>
@@ -126,9 +126,31 @@ export function TeamSettings() {
           <div className="team-join-code-copy"><strong>Beitrittscode</strong><p>Teile diesen Code mit neuen Teammitgliedern. Er ist eine Stunde gültig und wird danach automatisch erneuert.</p></div>
           <div className="team-join-code-value">{loading ? <span className="subtitle">Code wird geladen …</span> : <><code>{joinCode || "—"}</code><button className="btn" type="button" title="Beitrittscode kopieren" aria-label="Beitrittscode kopieren" onClick={() => { void copyJoinCode(); }} disabled={!joinCode}><Icon name="file" size={14}/><span>Kopieren</span></button></>}</div>
           {joinCodeExpiresAt && <small className="team-join-code-expiry">Gültig bis {new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(joinCodeExpiresAt))} Uhr</small>}
-          <ol className="team-join-code-steps"><li>Du teilst den Code aus diesem Bereich.</li><li>Die neue Person wählt bei „Registrieren“ den Beitritt und gibt den Code ein.</li><li>Nach der Registrierung ergänzt sie im Wizard nur Vor- und Nachnamen.</li></ol>
+          <ol className="team-join-code-steps">
+            <li><strong>Code kopieren und teilen.</strong><span>Teile den Beitrittscode mit der neuen Person.</span></li>
+            <li><strong>Beitritt auswählen.</strong><span>Die Person klickt auf „Registrieren“, wählt den Beitritt und gibt den Code ein.</span></li>
+            <li><strong>Profil vervollständigen.</strong><span>Nach der Registrierung ergänzt sie im Wizard Vor- und Nachnamen.</span></li>
+          </ol>
         </div>}
-        <div className="team-members-list"><h3>Mitglieder</h3><p className="team-members-note">Zugänge zum Veranstalterbereich verwalten. Das persönliche Login bleibt beim Entfernen bestehen.</p>{loading ? <p className="subtitle">Mitglieder werden geladen …</p> : members.map((member) => { const initials = member.full_name.split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "SP"; return <div className="team-member-row" key={member.user_id}><span className="avatar">{initials}</span><div className="team-member-identity"><b>{member.full_name || "Name noch nicht hinterlegt"}</b><small className="team-member-email">{member.email}</small><small>{member.role === "owner" ? "Inhaber" : "Mitglied"}{member.user_id === currentUserId ? " · Du" : ""}</small></div>{isOwner && member.user_id !== currentUserId && <div className="team-member-actions"><button className="btn" type="button" disabled={Boolean(memberActionId)} onClick={() => { void changeMemberRole(member, member.role === "owner" ? "member" : "owner"); }}>{memberActionId === member.user_id ? "Wird gespeichert …" : member.role === "owner" ? "Zum Mitglied machen" : "Zum Inhaber ernennen"}</button><button className="btn btn-danger" type="button" disabled={Boolean(memberActionId)} onClick={() => { void removeMember(member); }}>Zugang entfernen</button></div>}</div>; })}</div>
+        <div className="team-members-list">
+          <h3>Mitglieder</h3>
+          <p className="team-members-note">Zugänge zum Veranstalterbereich verwalten. Das persönliche Login bleibt beim Entfernen bestehen.</p>
+          {loading ? <p className="subtitle">Mitglieder werden geladen …</p> : <div className="team-member-grid">{members.map((member) => {
+            const initials = member.full_name.split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "SP";
+            return <article className="team-member-card" key={member.user_id}>
+              <span className="avatar">{initials}</span>
+              <div className="team-member-identity">
+                <b>{member.full_name || "Name noch nicht hinterlegt"}</b>
+                <small className="team-member-email">{member.email}</small>
+                <small>{member.role === "owner" ? "Inhaber" : "Mitglied"}{member.user_id === currentUserId ? " · Du" : ""}</small>
+              </div>
+              {isOwner && member.user_id !== currentUserId && <div className="team-member-actions">
+                <button className="btn" type="button" disabled={Boolean(memberActionId)} onClick={() => { void changeMemberRole(member, member.role === "owner" ? "member" : "owner"); }}>{memberActionId === member.user_id ? "Wird gespeichert …" : member.role === "owner" ? "Zum Mitglied machen" : "Zum Inhaber ernennen"}</button>
+                <button className="btn btn-danger" type="button" disabled={Boolean(memberActionId)} onClick={() => { void removeMember(member); }}>Zugang entfernen</button>
+              </div>}
+            </article>;
+          })}</div>}
+        </div>
       </>}
       {message && <p className="team-feedback" role="status" aria-live="polite">{message}</p>}
     </div>
