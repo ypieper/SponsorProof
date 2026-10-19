@@ -62,6 +62,7 @@ export default function LandingPage() {
             <Link className="btn btn-primary" href="/login?type=organizer&mode=signup">Als Veranstalter starten <span aria-hidden="true">→</span></Link>
             <Link className="landing-demo-link" href="/demo">Produktdemo ansehen <span aria-hidden="true">↗</span></Link>
             <Link className="landing-text-link" href="#ablauf">So funktioniert sponso <span aria-hidden="true">↓</span></Link>
+            <Link className="landing-price-link" href="#preise">Preise ansehen <span aria-hidden="true">↓</span></Link>
           </div>
           <div className="landing-audience">Für Festivals, Stadtfeste, Vereine und Open-Air-Events</div>
         </div>
