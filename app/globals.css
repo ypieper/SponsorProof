@@ -3789,6 +3789,49 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
   .demo-sponsor-workspace-content .sponsor-portal-contract-benefit-list span { flex:none; }
   .demo-sponsor-workspace-content .sponsor-portal-document-row,
   .demo-sponsor-workspace-content .sponsor-invoice-card { min-width:0; }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-card {
+    grid-template-columns:minmax(0,1fr);
+    align-items:stretch;
+    gap:12px;
+    min-width:0;
+  }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-placeholder { display:none; }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-content,
+  .demo-sponsor-workspace-content .sponsor-portal-review-copy,
+  .demo-sponsor-workspace-content .sponsor-portal-review-footer,
+  .demo-sponsor-workspace-content .sponsor-portal-review-files { width:100%; min-width:0; }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-content > header { gap:8px; }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-card .sponsor-portal-review-footer { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-card .sponsor-portal-review-files { display:grid; grid-template-columns:minmax(0,1fr); }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-card .sponsor-portal-review-files .btn {
+    display:flex;
+    align-items:flex-start;
+    justify-content:flex-start;
+    width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    line-height:1.4;
+    text-align:left;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-card .sponsor-portal-review-actions {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    justify-self:stretch;
+    gap:7px;
+    width:100%;
+  }
+  .demo-sponsor-workspace-content .sponsor-portal-approval-card .sponsor-portal-review-actions .btn {
+    width:100%;
+    min-width:0;
+    min-height:42px;
+    padding:7px 8px;
+    line-height:1.3;
+    white-space:normal;
+  }
+  .demo-sponsor-workspace-content .sponsor-portal-returned-status { display:none; }
   .landing-collaboration-grid article { padding:18px; }
   .landing-pricing-card:hover { transform:none; }
 }
