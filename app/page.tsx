@@ -181,12 +181,12 @@ export default function LandingPage() {
             <Link className={`btn${item.featured ? " btn-primary" : ""}`} href="/login?type=organizer&mode=signup">Event starten <span aria-hidden="true">→</span></Link>
           </article>)}
         </div>
+        <p className="landing-pricing-note">Alle drei Pakete enthalten die Kernfunktionen. Die digitale Signatur ist optional; der Paketaufpreis steht jeweils in der Kachel.</p>
         <aside className="landing-enterprise-card">
           <div className="landing-enterprise-heading"><span>INDIVIDUELL</span><h3>Enterprise</h3><p>Für Veranstalter mit mehreren Events oder besonderen Anforderungen.</p></div>
           <ul><li>Mehrere Events in einem Veranstalterbereich</li><li>Individuelle Anzahl an Sponsoren und Verträgen</li><li>Alle Kernfunktionen enthalten</li></ul>
           <Link className="btn" href="/kontakt?anliegen=enterprise">Enterprise anfragen <span aria-hidden="true">→</span></Link>
         </aside>
-        <p className="landing-pricing-note">Alle Pakete enthalten die Kernfunktionen. Die digitale Signatur ist optional; der Gesamtaufpreis für das jeweilige Paket steht oben.</p>
       </section>
 
       <section className="landing-final-cta landing-reveal">

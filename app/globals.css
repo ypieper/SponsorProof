@@ -2068,7 +2068,7 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
 .landing-collaboration-grid li::before { position:absolute; left:0; top:.48em; width:7px; height:7px; border-radius:50%; background:#e75b40; content:""; }
 .landing-collaboration-grid article:nth-child(2) li::before { background:#4b8dc4; }
 .landing-pricing { padding:54px 0 74px; border-top:1px solid #e2e9ef; scroll-margin-top:25px; }
-.landing-pricing-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:13px; margin-top:30px; }
+.landing-pricing-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:30px; }
 .landing-pricing-card { position:relative; display:flex; align-items:flex-start; flex-direction:column; min-width:0; padding:20px 18px 17px; border:1px solid #e3eaf0; border-radius:15px; background:#fff; box-shadow:0 8px 24px rgba(25,45,64,.045); }
 .landing-pricing-card.is-featured { border-color:#e98670; box-shadow:0 12px 30px rgba(220,103,77,.1); }
 .landing-pricing-card h3 { margin:0; color:#263c51; font-size:17px; }
@@ -2092,10 +2092,7 @@ h1 { color: #172a3d; font-size: 30px; font-weight: 730; letter-spacing: -1.15px;
 .landing-enterprise-card > ul > li { position:relative; padding-left:14px; }
 .landing-enterprise-card > ul > li::before { position:absolute; left:0; color:#4b8dc4; font-weight:800; content:"✓"; }
 .landing-enterprise-card > .btn { min-height:36px; padding:0 12px; font-size:10px; text-decoration:none; white-space:nowrap; }
-.landing-pricing-note { margin:12px 0 0; color:#78899b; font-size:10px; line-height:1.5; }
-@media (min-width:901px) and (max-width:1100px) {
-  .landing-pricing-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-}
+.landing-pricing-note { margin:14px 0 0; color:#78899b; font-size:10px; line-height:1.5; }
 .landing-final-cta { display:flex; align-items:center; justify-content:space-between; gap:30px; padding:36px 38px; border-radius:22px; background:#192d40; box-shadow:0 18px 46px rgba(25,45,64,.13); }
 .landing-final-cta h2 { max-width:590px; margin-top:10px; color:#fff; font-size:32px; }
 .landing-final-cta .landing-eyebrow { color:#ff987f; }
