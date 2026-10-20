@@ -4311,15 +4311,28 @@ main.content > .page-heading:has(.event-heading-actions) .event-plan-badge { min
 .event-timeline-node svg { width: 11px; height: 11px; }
 .event-timeline-step b { font-size: 10px; line-height: 1.25; }
 .event-timeline-step small { font-size: 9px; line-height: 1.25; }
+/* The event label and subtitle repeat context already visible elsewhere; reclaim their vertical space. */
+main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main .eyebrow,
+main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main .subtitle { display: none; }
+main.content > .page-heading:has(.event-heading-actions) .event-page-logo { width: 68px; height: 38px; }
+main.content > .page-heading:has(.event-heading-actions) h1 { font-size: clamp(20px, 1.8vw, 24px); }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-actions .btn { height: 30px; }
+.event-timeline { margin-bottom: 8px; padding: 8px 12px; }
+.event-timeline-step { gap: 3px; }
+.event-timeline-step:not(:last-child)::after { top: 9px; }
+.event-timeline-node { width: 20px; height: 20px; }
+.event-timeline-node svg { width: 10px; height: 10px; }
+.event-timeline-step b { max-width: none; font-size: 9px; line-height: 1.2; }
+.event-timeline-step small { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; line-height: 1.2; }
 @media (max-width: 700px) {
-  main.content > .page-heading:has(.event-heading-actions) { gap: 10px; margin-bottom: 12px; }
+  main.content > .page-heading:has(.event-heading-actions) { gap: 8px; margin-bottom: 9px; }
   main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main { gap: 9px; }
-  main.content > .page-heading:has(.event-heading-actions) .event-page-logo { width: 66px; height: 38px; }
-  main.content > .page-heading:has(.event-heading-actions) h1 { font-size: 22px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-page-logo { width: 58px; height: 34px; }
+  main.content > .page-heading:has(.event-heading-actions) h1 { font-size: 20px; }
   main.content > .page-heading:has(.event-heading-actions) .event-heading-actions { gap: 6px; }
-  main.content > .page-heading:has(.event-heading-actions) .event-heading-actions .btn { height: 32px; }
-  .event-timeline { margin: 0 -4px 10px; padding: 9px 10px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-heading-actions .btn { height: 29px; }
+  .event-timeline { margin: 0 -4px 8px; padding: 7px 9px; }
   .event-timeline-steps { min-width: 720px; }
-  .event-timeline-step b { font-size: 9px; }
+  .event-timeline-step b { font-size: 8px; }
   .event-timeline-step small { font-size: 8px; }
 }
