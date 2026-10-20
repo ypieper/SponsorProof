@@ -4429,3 +4429,28 @@ main.content > .page-heading:has(.event-heading-actions) .event-heading-actions 
   .event-timeline-step b { font-size: 8px; }
   .event-timeline-step small { font-size: 8px; }
 }
+
+/* Keep the sponsor directory's summary useful while returning vertical space to the list. */
+main.content:has(> .sponsor-directory-page-heading) { padding-top:20px; }
+.sponsor-directory-page-heading { margin-bottom:14px; }
+.sponsor-directory-metrics { gap:9px; margin-bottom:14px; }
+.sponsor-directory-metrics .metric-card {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  min-height:58px;
+  padding:9px 14px;
+  border-radius:11px;
+  box-shadow:none;
+}
+.sponsor-directory-metrics .metric-card::after,
+.sponsor-directory-metrics .metric-icon { display:none; }
+.sponsor-directory-metrics .metric-value { margin:0; font-size:20px; }
+@media (max-width:700px) {
+  main.content:has(> .sponsor-directory-page-heading) { padding-top:16px; }
+  .sponsor-directory-metrics { gap:7px; margin-bottom:12px; }
+  .sponsor-directory-metrics .metric-card { min-height:54px; padding:8px 10px; }
+  .sponsor-directory-metrics .metric-top { font-size:10px; }
+  .sponsor-directory-metrics .metric-value { font-size:18px; }
+  .sponsor-directory-page-heading { margin-bottom:12px; }
+}
