@@ -730,7 +730,7 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
             const nextTask = instanceTasks.find((task) => task.status !== "Erledigt") ?? instanceTasks[0];
             return <details className="benefit-task-instance" key={instance}>
               <summary><span className="benefit-task-instance-title">{group.tasksPerUnit && group.quantity > 1 ? `Leistung ${instance} von ${group.quantity}` : "Aufgaben anzeigen"}</span><span className="benefit-task-instance-meta">{allInstanceTasks.every((task) => task.status === "Erledigt") ? "Alle Aufgaben erledigt" : nextTask ? `Nächster Schritt: ${nextTask.title}` : `${allInstanceTasks.length} Aufgaben`}</span></summary>
-              <div className="benefit-task-subtasks">{instanceTasks.map((task) => renderTaskDetailRow(task, false, allInstanceTasks.length > 1))}</div>
+              <div className="benefit-task-subtasks"><div className="benefit-task-subtask-table-head" aria-hidden="true"><span>Aufgabe & Bearbeiter</span><span>Fälligkeit</span><span>Nachweis & Aktion</span></div>{instanceTasks.map((task) => renderTaskDetailRow(task, false, allInstanceTasks.length > 1))}</div>
             </details>;
           })}</div>
         </section>;
