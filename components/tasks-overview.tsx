@@ -727,18 +727,9 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
           <div className="benefit-task-instances">{instances.map((instance) => {
             const instanceTasks = group.tasks.filter((task) => (task.workflowInstance ?? 1) === instance).sort((a, b) => (a.workflowOrder ?? 0) - (b.workflowOrder ?? 0));
             const allInstanceTasks = allTasks.filter((task) => (task.workflowInstance ?? 1) === instance);
-            const firstUpcomingIndex = instanceTasks.findIndex((task) => task.status !== "Erledigt");
-            const completedPrefix = firstUpcomingIndex === -1 ? instanceTasks : instanceTasks.slice(0, firstUpcomingIndex);
-            const upcomingTasks = firstUpcomingIndex === -1 ? [] : instanceTasks.slice(firstUpcomingIndex);
             return <details className="benefit-task-instance" key={instance}>
               <summary><span>{group.tasksPerUnit && group.quantity > 1 ? `Leistung ${instance} von ${group.quantity}` : "Details"}</span>{allInstanceTasks.length > 1 && <Status value={workflowStatus(allInstanceTasks)}/>}</summary>
-              <div className="benefit-task-subtasks">
-                {completedPrefix.length > 0 && <details className="benefit-task-completed-steps">
-                  <summary>{completedPrefix.length} {completedPrefix.length === 1 ? "Aufgabe" : "Aufgaben"} erledigt</summary>
-                  <div className="benefit-task-completed-list">{completedPrefix.map((task) => renderTaskDetailRow(task, false, allInstanceTasks.length > 1))}</div>
-                </details>}
-                {upcomingTasks.map((task) => renderTaskDetailRow(task, false, allInstanceTasks.length > 1))}
-              </div>
+              <div className="benefit-task-subtasks">{instanceTasks.map((task) => renderTaskDetailRow(task, false, allInstanceTasks.length > 1))}</div>
             </details>;
           })}</div>
         </section>;

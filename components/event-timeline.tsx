@@ -57,8 +57,20 @@ export function EventTimeline({ event, sponsors }: { event: StoredEvent; sponsor
     };
   }, [contracts, event.createdAt, event.id, eventSponsors]);
   const activeIndex = steps.findIndex((step) => !step.complete);
-  return <section className="event-timeline" aria-label="Event-Meilensteine"><div className="event-timeline-scroll"><ol className="event-timeline-steps">{steps.map((step, index) => {
-    const active = index === activeIndex;
-    return <li className={`event-timeline-step ${step.complete ? "complete" : active ? "active" : "upcoming"}`} key={step.title}><span className="event-timeline-node">{step.complete ? <Icon name="check" size={13}/> : <span/>}</span><b>{step.title}</b><small>{step.detail}</small></li>;
-  })}</ol></div></section>;
+  const completedPrefixLength = activeIndex === -1 ? steps.length : activeIndex;
+  const completedPrefix = steps.slice(0, completedPrefixLength);
+  const visibleSteps = steps.slice(completedPrefixLength);
+  return <section className="event-timeline" aria-label="Event-Meilensteine"><div className="event-timeline-scroll"><ol className={`event-timeline-steps ${completedPrefix.length ? "event-timeline-steps-condensed" : ""}`}>
+    {completedPrefix.length > 0 && <li className="event-timeline-step complete event-timeline-completed-group">
+      <details>
+        <summary><span className="event-timeline-node"><Icon name="check" size={11}/></span><b>{completedPrefix.length} {completedPrefix.length === 1 ? "Schritt" : "Schritte"} abgeschlossen</b><small>Details anzeigen</small></summary>
+        <ol className="event-timeline-completed-list">{completedPrefix.map((step) => <li key={step.title}><b>{step.title}</b><span>{step.detail}</span></li>)}</ol>
+      </details>
+    </li>}
+    {visibleSteps.map((step, index) => {
+      const absoluteIndex = completedPrefixLength + index;
+      const isActive = absoluteIndex === activeIndex;
+      return <li className={`event-timeline-step ${step.complete ? "complete" : isActive ? "active" : "upcoming"}`} key={step.title}><span className="event-timeline-node">{step.complete ? <Icon name="check" size={13}/> : <span/>}</span><b>{step.title}</b><small>{step.detail}</small></li>;
+    })}
+  </ol></div></section>;
 }
