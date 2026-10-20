@@ -34,8 +34,11 @@ export function Icon({ name, size = 18 }: { name: string; size?: number }) {
 export function SponsoLogo({ markSize = 32 }: { markSize?: number }) {
   return <>
     <span className="brand-mark" style={{ width: markSize, height: markSize }} aria-hidden="true">
-      <svg width="23" height="23" viewBox="0 0 32 32" fill="none">
-        <path d="M10 26V7h7a6 6 0 0 1 0 12h-7" stroke="currentColor" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" />
+      <svg width="30" height="30" viewBox="0 0 64 64" fill="none">
+        <g transform="rotate(-22 32 32)" strokeLinecap="round" strokeWidth="6.5">
+          <path d="M29 19a14 14 0 1 0 0 26" stroke="#F7DCE8" />
+          <path d="M45 19a14 14 0 1 0 0 26" stroke="currentColor" />
+        </g>
       </svg>
     </span>
     <span>pacct</span>

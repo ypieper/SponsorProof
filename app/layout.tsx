@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   title: { default: "pacct – Sponsoring einfach im Blick", template: "%s | pacct" },
   description: "Verwalte Sponsoren, Vereinbarungen, Leistungen, Aufgaben und Nachweise für deine Veranstaltungen an einem Ort.",
   keywords: ["Sponsoring verwalten", "Sponsorenmanagement", "Event-Sponsoring", "Sponsoring-Nachweise", "Festival organisieren"],
-  icons: { icon: "/pacct-logo.svg" },
+  icons: { icon: "/pacct-icon.svg" },
   openGraph: {
     type: "website",
     locale: "de_DE",
