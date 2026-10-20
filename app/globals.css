@@ -4243,7 +4243,10 @@ body, .app-frame { background: var(--canvas); }
 .sidebar .nav-link.active, .mobile-drawer .nav-link.active { background: linear-gradient(105deg, #f17a5b, #e96549) !important; border-color: #e96549 !important; color: #fff !important; box-shadow: 0 8px 18px rgba(10, 22, 34, .16); }
 .sidebar .sidebar-legal-links a[href="/kontakt"] { color: #ff9b7f; }
 .main-area { background: linear-gradient(180deg, #faf8f3 0, #f4f0e7 100%); }
-.topbar { background: rgba(255, 254, 250, .94); border-bottom-color: #e8e1d7; }
+.topbar { background: #142a3e; border-bottom-color: #294257; }
+.topbar .crumb { color:#afbecc; }
+.topbar .crumb b { color:#fffefa; }
+.topbar .icon-button.menu-toggle { border-color:#365168; background:#1d3a53; color:#fffefa; }
 .btn-primary { border-color: var(--action); background: linear-gradient(135deg, #5270d4, #3859c9); box-shadow: 0 6px 16px rgba(56, 89, 201, .2); }
 .btn-primary:hover { border-color: var(--action-strong); background: linear-gradient(135deg, #3c59bd, #263f9f); box-shadow: 0 8px 19px rgba(56, 89, 201, .24); }
 .icon-button:hover, .tab:hover { border-color: var(--accent-border); color: var(--accent-strong); }
