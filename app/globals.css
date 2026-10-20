@@ -2931,6 +2931,29 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
 .sponsor-portal-tabs { display: flex; gap: 24px; margin: 20px 0 14px; border-bottom: 1px solid #e3e9ed; }
 .sponsor-portal-tabs button { padding: 0 1px 11px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #7c8995; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
 .sponsor-portal-tabs button.active { border-color: var(--accent); color: var(--accent-strong); }
+.sponsor-portal-tab-count { display:inline-grid; min-width:19px; height:19px; place-items:center; margin-left:7px; padding:0 5px; border-radius:999px; background:#edf2f6; color:#536b80; font-size:10px; line-height:1; }
+.sponsor-portal-tabs button.active .sponsor-portal-tab-count { background:color-mix(in srgb, var(--accent) 12%, white); color:var(--accent-strong); }
+.sponsor-portal-event-list-tabs { display:flex; gap:9px; margin:24px 0 14px; border-bottom:1px solid #e3e9ed; }
+.sponsor-portal-event-list-tabs button { display:inline-flex; align-items:center; gap:9px; min-height:43px; padding:0 13px 10px; border:0; border-bottom:2px solid transparent; background:transparent; color:#718090; font:inherit; font-size:13px; font-weight:680; cursor:pointer; }
+.sponsor-portal-event-list-tabs button.active { border-color:var(--accent); color:#344657; }
+.sponsor-portal-event-list-tabs button > span { display:inline-grid; min-width:21px; height:21px; place-items:center; padding:0 6px; border-radius:999px; background:#edf2f6; color:#63788b; font-size:10px; }
+.sponsor-portal-event-list-tabs button.active > span { background:color-mix(in srgb, var(--accent) 13%, white); color:var(--accent-strong); }
+.sponsor-portal-event-list { grid-template-columns:repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap:14px; margin-top:0; }
+.sponsor-portal-event-card { min-height:100px; gap:18px; padding:18px 20px; border-radius:15px; }
+.sponsor-portal-event-card-logo { width:66px; height:60px; }
+.sponsor-portal-event-card-copy b { font-size:15px; }
+.sponsor-portal-event-card-copy small { font-size:11px; }
+.sponsor-portal-event-card-stats { gap:14px; }
+.sponsor-portal-event-card-stats > span { min-width:54px; }
+.sponsor-portal-event-card-stats .sponsor-portal-benefit-count-badge { display:inline-flex; align-items:center; gap:5px; min-width:0; padding:7px 10px; border-radius:999px; background:#edf3ff; color:#365e9a; }
+.sponsor-portal-event-card-stats .sponsor-portal-benefit-count-badge b { color:inherit; font-size:12px; }
+.sponsor-portal-event-card-stats .sponsor-portal-benefit-count-badge small { color:inherit; font-size:10px; font-weight:650; }
+.sponsor-portal-event-empty { margin-top:0; }
+@media (max-width: 680px) {
+  .sponsor-portal-event-card { padding:15px; }
+  .sponsor-portal-event-list-tabs { gap:2px; margin-top:19px; }
+  .sponsor-portal-event-list-tabs button { gap:6px; padding-right:9px; padding-left:9px; font-size:12px; }
+}
 .sponsor-portal-page .sponsor-invoice-area,
 .sponsor-portal-page .sponsor-document-area { padding:18px 21px; }
 .sponsor-portal-page .sponsor-invoice-area .table-head,
