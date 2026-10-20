@@ -76,19 +76,15 @@ export function EventBenefitsOverview({ eventId }: { eventId: string }) {
       const completed = tracked.filter((benefit) => benefitStatus(benefit, quantityBoundTasks.filter((task) => task.benefit_id === benefit.id)) === "Erledigt").length;
       const progress = tracked.length ? Math.round(completed / tracked.length * 100) : 0;
       return <SponsorGroup key={group.id} name={group.name} itemCount={group.benefits.length} itemLabel="Leistung" itemLabelPlural="Leistungen" headerAside={<div className="event-benefit-sponsor-progress"><span>{tracked.length ? `${completed} von ${tracked.length} Aufgabenleistungen erledigt` : "Keine aufgabenrelevanten Leistungen"}</span>{tracked.length > 0 && <Progress value={progress}/>}</div>}>
-        {group.benefits.map((benefit) => {
+        <div className="adaptive-table-wrap event-benefits-table-wrap"><table className="table adaptive-data-table event-benefits-data-table"><thead><tr><th>Leistung</th><th>Art</th><th>Nächster Schritt</th><th>Fortschritt</th><th>Status</th></tr></thead><tbody>{group.benefits.map((benefit) => {
           const benefitTasks = orderedTasks(quantityBoundTasks.filter((task) => task.benefit_id === benefit.id));
           const status = benefitStatus(benefit, benefitTasks);
           const done = status === "Erledigt";
           const progressValue = benefit.completionRequired === false ? null : benefitTasks.length ? Math.round(benefitTasks.filter((task) => task.status === "Erledigt").length / benefitTasks.length * 100) : done ? 100 : 0;
           const nextTask = benefitTasks.find((task) => task.status !== "Erledigt");
           const nextAction = nextTask ? nextTask.assigned_to_sponsor || nextTask.completion_type === "sponsor_upload" || nextTask.completion_type === "sponsor_approval" ? "Nächster Schritt: Sponsor" : "Nächster Schritt: Veranstalter" : null;
-          return <article className="event-benefit-card" key={benefit.id}>
-            <div className="event-benefit-card-main"><span className="benefit-kind-badge">{benefit.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><h4>{benefit.title}</h4>{benefit.description && <p>{benefit.description}</p>}{benefit.completionRequired === false ? <span className="benefit-requirement-note">Keine Aufgaben vorgesehen</span> : nextAction && <span className="event-benefit-next-action">{nextAction}{nextTask?.title ? ` · ${nextTask.title}` : ""}</span>}</div>
-            <div className="event-benefit-card-progress">{progressValue !== null && <><span>{benefitTasks.length ? `${benefitTasks.filter((task) => task.status === "Erledigt").length} von ${benefitTasks.length} Aufgaben` : "Fortschritt"}</span><Progress value={progressValue}/></>}</div>
-            <Status value={status}/>
-          </article>;
-        })}
+          return <tr key={benefit.id}><td data-label="Leistung"><b>{benefit.title}</b>{benefit.description && <small>{benefit.description}</small>}</td><td data-label="Art">{benefit.benefitType === "in_kind" ? "Sachleistung" : "Geldleistung"}</td><td data-label="Nächster Schritt">{benefit.completionRequired === false ? "Keine Aufgaben vorgesehen" : nextAction ? `${nextAction}${nextTask?.title ? ` · ${nextTask.title}` : ""}` : "Alle Aufgaben erledigt"}</td><td data-label="Fortschritt">{progressValue !== null ? <div className="event-benefit-table-progress"><Progress value={progressValue}/><small>{benefitTasks.length ? `${benefitTasks.filter((task) => task.status === "Erledigt").length} von ${benefitTasks.length} Aufgaben` : `${progressValue} %`}</small></div> : "—"}</td><td data-label="Status"><Status value={status}/></td></tr>;
+        })}</tbody></table></div>
       </SponsorGroup>;
     })}</div>
   </section>;
