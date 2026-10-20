@@ -3332,7 +3332,7 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
 /* Compact, table-like hierarchy for benefit workflows: benefit row, expandable unit rows, task details on demand. */
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) { overflow:hidden; border:0; border-bottom:1px solid #e6ebef; border-radius:0; background:transparent; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group):last-of-type { border-bottom:0; }
-.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading { min-height:44px; padding:8px 2px; border:0; border-radius:0; background:transparent; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading { min-height:44px; padding:8px 10px; border:0; border-left:3px solid #cbd8e3; border-radius:5px; background:#f4f7fa; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading > div { gap:6px 9px; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading h3 { flex:0 1 auto; min-width:0; font-size:13px; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading small { flex-basis:100%; padding-left:1px; font-size:10px; }
