@@ -75,7 +75,7 @@ export function EventBenefitsOverview({ eventId }: { eventId: string }) {
       const tracked = group.benefits.filter((benefit) => benefit.completionRequired !== false);
       const completed = tracked.filter((benefit) => benefitStatus(benefit, quantityBoundTasks.filter((task) => task.benefit_id === benefit.id)) === "Erledigt").length;
       const progress = tracked.length ? Math.round(completed / tracked.length * 100) : 0;
-      return <SponsorGroup key={group.id} name={group.name} itemCount={group.benefits.length} itemLabel="Leistung" itemLabelPlural="Leistungen" headerAside={<div className="event-benefit-sponsor-progress"><span>{tracked.length ? `${completed} von ${tracked.length} aufgabenrelevanten Leistungen erledigt` : "Keine aufgabenrelevanten Leistungen"}</span>{tracked.length > 0 && <Progress value={progress}/>}</div>}>
+      return <SponsorGroup key={group.id} name={group.name} itemCount={group.benefits.length} itemLabel="Leistung" itemLabelPlural="Leistungen" contentClassName="event-benefit-table-content" headerAside={<div className="event-benefit-sponsor-progress"><span>{tracked.length ? `${completed} von ${tracked.length} aufgabenrelevanten Leistungen erledigt` : "Keine aufgabenrelevanten Leistungen"}</span>{tracked.length > 0 && <Progress value={progress}/>}</div>}>
         <div className="adaptive-table-wrap event-benefits-table-wrap"><table className="table adaptive-data-table event-benefits-data-table"><thead><tr><th>Leistung</th><th>Nächster Schritt</th><th>Fortschritt</th><th>Status</th></tr></thead><tbody>{group.benefits.map((benefit) => {
           const benefitTasks = orderedTasks(quantityBoundTasks.filter((task) => task.benefit_id === benefit.id));
           const status = benefitStatus(benefit, benefitTasks);
