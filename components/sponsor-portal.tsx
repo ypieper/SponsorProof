@@ -491,14 +491,12 @@ export function SponsorPortal({ eventId, demoMode = false }: { eventId?: string;
           </div>
           {visibleEvents.length ? <div className="sponsor-portal-event-list" id="sponsor-events-panel" role="tabpanel" aria-labelledby={eventListTab === "ongoing" ? "sponsor-events-ongoing-tab" : "sponsor-events-completed-tab"}>{visibleEvents.map((event) => {
           const benefitCount = event.sponsor_assignments.reduce((sum, assignment) => sum + assignment.benefits.length, 0);
-          const contractCount = event.sponsor_assignments.reduce((sum, assignment) => sum + assignment.contracts.length, 0);
           return <Link className="sponsor-portal-event-card" href={`/sponsor/events/${event.id}`} key={event.id}>
             {event.organizer_logo_url ? <img className="sponsor-portal-event-card-logo" src={event.organizer_logo_url} alt={`Logo ${event.title}`} /> : <span className="sponsor-portal-event-card-logo sponsor-portal-event-card-logo-placeholder" aria-hidden="true">{event.title.slice(0, 1).toLocaleUpperCase("de-DE")}</span>}
             <span className="sponsor-portal-event-card-copy"><b>{event.title}</b><small>{[event.start_date && new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(`${event.start_date}T00:00:00`)), event.location].filter(Boolean).join(" · ") || "Event"}</small></span>
             <span className="sponsor-portal-event-card-stats" aria-label="Eventübersicht">
               {event.sponsor_assignments.length > 1 && <span><b>{event.sponsor_assignments.length}</b><small>Sponsor-Zuordnungen</small></span>}
               <span className="sponsor-portal-benefit-count-badge"><b>{benefitCount}</b><small>Leistungen</small></span>
-              <span><b>{contractCount}</b><small>Verträge</small></span>
             </span>
             <span className="sponsor-portal-event-card-arrow" aria-hidden="true">→</span>
           </Link>;
