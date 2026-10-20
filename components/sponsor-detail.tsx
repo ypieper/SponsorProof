@@ -159,7 +159,6 @@ export function SponsorDetail({ initialSponsor, contracts, events, activeTab, se
     <PageHeading eyebrow="SPONSOR-KUNDENKARTEI" title={sponsor.name} subtitle="Stammdaten und Vereinbarungen über alle Events hinweg." action={<div className="sponsor-profile-actions"><Link className="btn" href="/sponsors">← Alle Sponsoren</Link><button className="btn btn-primary" type="button" onClick={() => { setDraft(sponsor); setPostalCodeStatus("idle"); setEditing(true); }}><Icon name="settings" size={18}/> Stammdaten bearbeiten</button><button className="btn btn-danger" type="button" onClick={requestDelete}><Icon name="trash" size={18}/> Löschen</button></div>} />
     {deleteError && <p className="field-message error sponsor-delete-error" role="alert">{deleteError}</p>}
     {message && <p className="sponsor-feedback" role="status">{message}</p>}
-    <section className="panel sponsor-profile-card"><div className="sponsor-hero"><span className="sponsor-large" style={sponsor.color ? { background: sponsor.color } : undefined}>{sponsor.initials}</span><div><h2>{sponsor.name}</h2></div><div className="sponsor-profile-contact"><b>{contactName || "Ansprechperson fehlt"}</b><span>{sponsor.email || "E-Mail noch nicht hinterlegt"}</span></div></div></section>
     <Tabs items={tabs} active={activeTab} />
 
     {activeTab === "Übersicht" && <>
