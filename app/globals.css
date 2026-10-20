@@ -3346,19 +3346,35 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance > summary > .benefit-task-instance-title { grid-column:1; grid-row:1; align-self:center; min-width:0; color:#33495e; font-size:12px; font-weight:700; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance > summary > .benefit-task-instance-meta { grid-column:2; grid-row:1; justify-self:stretch; max-width:none; color:#536a7f; font-size:11px; line-height:1.4; text-align:left; white-space:normal; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtasks { margin:0 0 6px 13px; padding:0 0 0 10px; }
-.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask { grid-template-columns:minmax(0,1fr) minmax(130px,160px) minmax(190px,240px); gap:10px; padding:9px 8px; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask { grid-template-columns:minmax(0,1.2fr) minmax(110px,.8fr) minmax(120px,.8fr) minmax(180px,1fr); gap:10px; padding:9px 8px; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask-info { gap:3px; font-size:10px; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask-info b { font-size:11px; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtasks { overflow:hidden; margin:4px 0 8px; padding:0; border:1px solid #e2e8ee; border-radius:8px; background:#fff; }
-.benefit-task-subtask-table-head { display:grid; grid-template-columns:minmax(0,1fr) minmax(130px,160px) minmax(190px,240px); align-items:center; gap:10px; padding:7px 10px; background:#edf2f6; color:#637487; font-size:9px; font-weight:700; letter-spacing:.045em; text-transform:uppercase; }
+.benefit-task-subtask-table-head { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(110px,.8fr) minmax(120px,.8fr) minmax(180px,1fr); align-items:center; gap:10px; padding:7px 10px; background:#edf2f6; color:#637487; font-size:9px; font-weight:700; letter-spacing:.045em; text-transform:uppercase; }
+.benefit-task-assignee { display:grid; align-content:center; gap:3px; min-width:0; color:#43576a; font-size:11px; }
+.benefit-task-assignee > span { display:none; }
+.benefit-task-assignee > b { overflow:hidden; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask { padding:9px 10px; border-bottom:1px solid #e9eef2; }
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-due > span,
 .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .standalone-task-actions-label { display:none; }
+@media (min-width:761px) and (max-width:950px) {
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask-table-head { display:none; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask { grid-template-columns:minmax(0,1fr) minmax(120px,.7fr); }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-assignee { grid-column:2; grid-row:1; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-due { grid-column:1; grid-row:2; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .standalone-task-actions { grid-column:2; grid-row:2; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-assignee > span,
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-due > span,
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .standalone-task-actions-label { display:block; }
+}
 @media (max-width:760px) {
   .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask-table-head { display:none; }
   .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtasks { overflow:visible; margin:0 0 6px; padding:0; border:0; border-radius:0; background:transparent; }
   .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-due > span,
   .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .standalone-task-actions-label { display:block; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask { grid-template-columns:minmax(0,1fr) auto; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-assignee { grid-column:1/-1; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:8px; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-assignee > span { display:block; color:#788899; font-size:10px; }
   .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance > summary { grid-template-columns:minmax(0,1fr) 14px; gap:3px 10px; min-height:52px; padding:8px 10px; }
   .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance > summary > .benefit-task-instance-title { grid-column:1; grid-row:1; min-width:0; }
   .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance > summary > .benefit-task-instance-meta { grid-column:1; grid-row:2; max-width:none; padding:0; text-align:left; }
