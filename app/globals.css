@@ -3219,6 +3219,7 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
   .sponsor-portal-approval-card .sponsor-portal-review-actions .btn { width:auto; }
 }
 .benefit-task-groups { display: grid; gap: 17px; margin: 0 22px 24px; }
+.benefit-task-sponsor-content > .benefit-task-groups { gap:0; }
 .benefit-task-sponsor-groups { display:grid; gap:18px; margin:0 22px 24px; }
 .benefit-task-sponsor-group { min-width:0; }
 .benefit-task-sponsor-content { display:grid; gap:16px; padding:16px 18px; }
@@ -3249,6 +3250,13 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
 @media (max-width:760px) {
   .benefit-task-sponsor-groups,.event-benefit-sponsor-groups { margin:0 10px 14px; padding:0; }
   .benefit-task-sponsor-content { gap:12px; padding:12px; }
+  .benefit-task-group-summary { justify-content:flex-start; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading { align-items:flex-start; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading > div { width:100%; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading small { flex-basis:100%; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance > summary { flex-wrap:wrap; gap:6px 10px; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance-title { min-width:100px; }
+  .benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask { grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:10px 4px; }
   .event-benefit-sponsor-group > header { align-items:flex-start; flex-direction:column; gap:10px; }
   .event-benefits-overview > .table-head { align-items:stretch; flex-direction:column; }
   .event-benefit-sponsor-filter { width:100%; }
@@ -3276,6 +3284,9 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
 .benefit-task-instance > summary::before { width: 7px; height: 7px; flex: none; border-right: 1.5px solid #718293; border-bottom: 1.5px solid #718293; content: ""; transform: rotate(-45deg); transition: transform .15s ease; }
 .benefit-task-instance[open] > summary::before { transform: rotate(45deg); }
 .benefit-task-instance > summary > span:first-of-type { flex: 1; }
+.benefit-task-group-summary { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px 14px; color:#788899; font-size:11px; }
+.benefit-task-instance-title { flex:1; min-width:120px; }
+.benefit-task-instance-meta { color:#8794a2; font-size:10px; font-weight:500; white-space:nowrap; }
 .benefit-task-subtasks { padding-left: 18px; border-left: 2px solid #d7e1eb; margin: 0 0 0 18px; }
 .benefit-task-subtask { display: grid; grid-template-columns: minmax(0,1fr) minmax(160px,190px) minmax(220px,290px); align-items: center; gap: 16px; padding: 16px 18px; border-bottom: 1px solid #edf0f3; }
 .benefit-task-subtask > .status { justify-self: start; }
@@ -3307,6 +3318,20 @@ h2, h3 { line-height: 1.3; letter-spacing: -.025em; }
 .standalone-task-actions .task-proof-file { max-width:100%; }
 .standalone-task-group .benefit-task-due { display:grid; align-items:center; gap:4px; white-space:nowrap; }
 .standalone-task-group .benefit-task-subtask:last-child { border-radius: 0 0 11px 11px; }
+/* Compact, table-like hierarchy for benefit workflows: benefit row, expandable unit rows, task details on demand. */
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) { overflow:hidden; border:0; border-bottom:1px solid #e6ebef; border-radius:0; background:transparent; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group):last-of-type { border-bottom:0; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading { min-height:44px; padding:8px 2px; border:0; border-radius:0; background:transparent; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading > div { gap:6px 9px; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading h3 { flex:0 1 auto; min-width:0; font-size:13px; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) > .benefit-task-group-heading small { flex-basis:100%; padding-left:1px; font-size:10px; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instances { gap:0; padding:0; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance { border:0; border-top:1px solid #edf0f3; border-radius:0; background:transparent; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-instance > summary { min-height:36px; padding:6px 4px; font-size:11px; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtasks { margin:0 0 6px 13px; padding:0 0 0 10px; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask { grid-template-columns:minmax(0,1fr) minmax(130px,160px) minmax(190px,240px); gap:10px; padding:9px 8px; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask-info { gap:3px; font-size:10px; }
+.benefit-task-sponsor-content > .benefit-task-groups > .benefit-task-group:not(.standalone-task-group) .benefit-task-subtask-info b { font-size:11px; }
 @media (max-width: 760px) {
   .benefit-task-groups { margin: 0 10px 14px; }
   .benefit-task-instances { padding: 8px; }
