@@ -10,9 +10,10 @@ import { eventPlanLabel } from "@/lib/event-plan-labels";
 import { eventContractPackageLabel } from "@/lib/event-contract-package-labels";
 import { eventLifecycleStage, useEventMetrics } from "@/lib/event-metrics";
 import { useEventEntitlements } from "@/components/event-entitlements";
+import { EventLocationFields } from "@/components/event-location-fields";
 
 type EventDraft = Omit<StoredEvent, "id" | "createdAt" | "planCode" | "bookedPlanCode" | "entitlementStatus" | "hasPaidEventLicense" | "organizerLogoPath" | "organizerLogoUrl">;
-const emptyDraft: EventDraft = { title: "", startDate: "", endDate: "", location: "", responsible: "" };
+const emptyDraft: EventDraft = { title: "", startDate: "", endDate: "", location: "", locationStreet: "", locationPostalCode: "", locationCity: "", responsible: "" };
 
 export function EventsOverview() {
   const { requestUpgrade } = useEventEntitlements();
@@ -31,13 +32,22 @@ export function EventsOverview() {
   const [freeLimitHit, setFreeLimitHit] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  function updateLocation(value: Partial<Pick<EventDraft, "locationStreet" | "locationPostalCode" | "locationCity">>) {
+    setDraft((current) => {
+      const parts = { locationStreet: current.locationStreet, locationPostalCode: current.locationPostalCode, locationCity: current.locationCity, ...value };
+      const location = [parts.locationStreet.trim(), [parts.locationPostalCode.trim(), parts.locationCity.trim()].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      return { ...current, ...parts, location };
+    });
+    setFormError("");
+  }
+
   useEffect(() => {
     async function loadEvents() {
       try {
         if (isSupabaseConfigured) {
           const { data, error } = await fetchStoredEventsFromDatabase();
           if (error || !data) {
-            setMessage("Events konnten nicht aus Supabase geladen werden. Bitte prüfe, ob die Datenbankmigration ausgeführt wurde.");
+            setMessage("Die Events konnten nicht geladen werden. Bitte versuche es später erneut oder nutze das Kontaktformular, wenn der Fehler bestehen bleiben sollte.");
           } else {
             setCreatedEvents(data);
           }
@@ -108,7 +118,12 @@ export function EventsOverview() {
     formEvent.preventDefault();
     if (saving) return;
     const title = draft.title.trim();
-    const eventDetails = { ...draft, title, location: draft.location.trim(), responsible: draft.responsible.trim() };
+    if (!draft.locationStreet.trim() || !/^\d{5}$/.test(draft.locationPostalCode) || !draft.locationCity.trim()) {
+      setFormError("Bitte trage Straße, eine fünfstellige PLZ und den ermittelten Ort ein.");
+      return;
+    }
+    const location = [draft.locationStreet.trim(), `${draft.locationPostalCode} ${draft.locationCity.trim()}`].join(", ");
+    const eventDetails = { ...draft, title, location, locationStreet: draft.locationStreet.trim(), locationPostalCode: draft.locationPostalCode.trim(), locationCity: draft.locationCity.trim(), responsible: draft.responsible.trim() };
     setSaving(true);
     setFormError("");
     setFreeLimitHit(false);
@@ -187,7 +202,7 @@ export function EventsOverview() {
       {ready && activeEvents.length > 0 && displayedEvents.length === 0 && <EmptyState title="Alle Events abgeschlossen" description="Die abgeschlossenen Events sind ausgeblendet." action={<button className="btn" type="button" onClick={() => setShowCompletedEvents(true)}>Abgeschlossene Events anzeigen</button>} />}
       {ready && message && <p className="event-details-message" role="status">{message}</p>}
     </section>
-    {creating && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setCreating(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-event-title"><div className="create-modal-head"><div><h2 id="create-event-title">Event erstellen</h2><p>Trage die Stammdaten der Veranstaltung ein.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setCreating(false)}><Icon name="close" size={16}/></button></div><form onSubmit={createEvent}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Bezeichnung *</span><input autoFocus required maxLength={100} value={draft.title} onChange={(event) => { setDraft({ ...draft, title: event.target.value }); setFormError(""); }} placeholder="z. B. Stadtfest 2027" /></label><label className="settings-field"><span>Beginn *</span><input type="date" required value={draft.startDate} onChange={(event) => { setDraft({ ...draft, startDate: event.target.value, endDate: draft.endDate && draft.endDate < event.target.value ? "" : draft.endDate }); setFormError(""); }} /></label><label className="settings-field"><span>Ende *</span><input type="date" required min={draft.startDate || undefined} value={draft.endDate} onChange={(event) => { setDraft({ ...draft, endDate: event.target.value }); setFormError(""); }} /></label><label className="settings-field settings-field-full"><span>Veranstaltungsort *</span><input required maxLength={160} value={draft.location} onChange={(event) => { setDraft({ ...draft, location: event.target.value }); setFormError(""); }} placeholder="Straße, Ort" /></label></div>{formError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{formError}</p>}{freeLimitHit && createdEvents[0] && <button className="btn" type="button" onClick={() => { setCreating(false); requestUpgrade(createdEvents[0].id, createdEvents[0].title, "Schalte dein bestehendes Event frei, um einen weiteren Veranstaltungsplatz zu nutzen."); }}>Bestehendes Event freischalten</button>}<div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setCreating(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Wird gespeichert …" : "Event speichern"}</button></div></form></section></div>}
+    {creating && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setCreating(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-event-title"><div className="create-modal-head"><div><h2 id="create-event-title">Event erstellen</h2><p>Trage die Stammdaten der Veranstaltung ein.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setCreating(false)}><Icon name="close" size={16}/></button></div><form onSubmit={createEvent}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Bezeichnung *</span><input autoFocus required maxLength={100} value={draft.title} onChange={(event) => { setDraft({ ...draft, title: event.target.value }); setFormError(""); }} placeholder="z. B. Stadtfest 2027" /></label><label className="settings-field"><span>Beginn *</span><input type="date" required value={draft.startDate} onChange={(event) => { setDraft({ ...draft, startDate: event.target.value, endDate: draft.endDate && draft.endDate < event.target.value ? "" : draft.endDate }); setFormError(""); }} /></label><label className="settings-field"><span>Ende *</span><input type="date" required min={draft.startDate || undefined} value={draft.endDate} onChange={(event) => { setDraft({ ...draft, endDate: event.target.value }); setFormError(""); }} /></label><EventLocationFields required value={{ street: draft.locationStreet, postalCode: draft.locationPostalCode, city: draft.locationCity }} onChange={(location) => updateLocation({ ...(location.street !== undefined ? { locationStreet: location.street } : {}), ...(location.postalCode !== undefined ? { locationPostalCode: location.postalCode } : {}), ...(location.city !== undefined ? { locationCity: location.city } : {}) })} /></div>{formError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{formError}</p>}{freeLimitHit && createdEvents[0] && <button className="btn" type="button" onClick={() => { setCreating(false); requestUpgrade(createdEvents[0].id, createdEvents[0].title, "Schalte dein bestehendes Event frei, um einen weiteren Veranstaltungsplatz zu nutzen."); }}>Bestehendes Event freischalten</button>}<div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setCreating(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Wird gespeichert …" : "Event speichern"}</button></div></form></section></div>}
     {eventToDelete && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setEventToDelete(null); setDeleteConfirmation(""); } }}><section className="create-modal delete-event-modal" role="dialog" aria-modal="true" aria-labelledby="delete-event-title"><div className="create-modal-head"><div><h2 id="delete-event-title">Event endgültig löschen?</h2><p>Du löschst „{eventToDelete.title}“ und alle zugehörigen Daten im Veranstalterbereich.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => { setEventToDelete(null); setDeleteConfirmation(""); }}><Icon name="close" size={16}/></button></div><div className="delete-event-consequences"><strong>Das wird entfernt</strong><ul><li>Sponsorenzuordnungen und Verträge</li><li>Leistungen, Aufgaben und Nachweiseinträge</li><li>Reports und der Eventfortschritt</li></ul><p>Hochgeladene Fotos und Vertragsdateien bleiben zunächst im Dateispeicher, sind nach dem Löschen aber nicht mehr über dieses Event erreichbar.</p></div>{eventToDelete.hasPaidEventLicense && <div className="delete-event-license-warning" role="alert"><strong>Die Event-Lizenz geht verloren</strong><p>Die kostenpflichtige Freischaltung wird mit dem Event gelöscht und kann nicht auf ein anderes Event übertragen werden.</p></div>}<label className="settings-field"><span>Gib <b>löschen</b> ein, um fortzufahren</span><input autoFocus value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} placeholder="löschen" /></label><div className="create-modal-actions"><button className="btn" type="button" onClick={() => { setEventToDelete(null); setDeleteConfirmation(""); }}>Abbrechen</button><button className="btn btn-primary delete-event-confirm" type="button" onClick={deleteEvent} disabled={deleteConfirmation.trim() !== "löschen"}>Event endgültig löschen</button></div></section></div>}
   </main>;
 }

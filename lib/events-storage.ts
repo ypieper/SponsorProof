@@ -5,6 +5,9 @@ export type StoredEvent = {
   startDate: string;
   endDate: string;
   location: string;
+  locationStreet: string;
+  locationPostalCode: string;
+  locationCity: string;
   responsible: string;
   contactFirstName?: string;
   contactLastName?: string;
@@ -27,6 +30,9 @@ type EventRow = {
   start_date: string | null;
   end_date: string | null;
   location: string;
+  location_street?: string | null;
+  location_postal_code?: string | null;
+  location_city?: string | null;
   responsible: string;
   contact_first_name?: string;
   contact_last_name?: string;
@@ -51,6 +57,9 @@ function fromEventRow(
     startDate: row.start_date ?? "",
     endDate: row.end_date ?? "",
     location: row.location,
+    locationStreet: row.location_street ?? "",
+    locationPostalCode: row.location_postal_code ?? "",
+    locationCity: row.location_city ?? "",
     responsible: row.responsible,
     contactFirstName: row.contact_first_name ?? "",
     contactLastName: row.contact_last_name ?? "",
@@ -77,7 +86,7 @@ export async function fetchStoredEventsFromDatabase() {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const [{ data, error }, { data: entitlements, error: entitlementError }, { data: organizationEntitlements, error: organizationEntitlementError }, { data: packageBookings, error: packageBookingError }] = await Promise.all([
-    supabase.from("events").select("id, title, start_date, end_date, location, responsible, contact_first_name, contact_last_name, contact_email, contact_phone, organizer_logo_path, created_at, organization_id").order("created_at", { ascending: false }),
+    supabase.from("events").select("id, title, start_date, end_date, location, location_street, location_postal_code, location_city, responsible, contact_first_name, contact_last_name, contact_email, contact_phone, organizer_logo_path, created_at, organization_id").order("created_at", { ascending: false }),
     supabase.from("event_entitlements").select("event_id, plan_code, entitlement_status"),
     supabase.from("organization_entitlements").select("organization_id, is_active, expires_at"),
     supabase.from("event_contract_package_bookings").select("event_id, package_code, max_contracts, signature_addon_selected, base_amount_cents, signature_addon_amount_cents, total_amount_cents"),
@@ -98,6 +107,9 @@ export async function createStoredEventInDatabase(event: Omit<StoredEvent, "id" 
     event_end_date: event.endDate || null,
     event_location: event.location,
     event_responsible: event.responsible,
+    event_location_street: event.locationStreet,
+    event_location_postal_code: event.locationPostalCode,
+    event_location_city: event.locationCity,
   });
   if (error || typeof eventId !== "string") return { data: null, error: error ?? new Error("Event konnte nicht erstellt werden.") };
   return fetchStoredEventFromDatabase(eventId);
@@ -108,7 +120,7 @@ export async function fetchStoredEventFromDatabase(id: string) {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
   const [{ data, error }, { data: entitlement, error: entitlementError }, { data: packageBooking, error: packageBookingError }] = await Promise.all([
-    supabase.from("events").select("id, title, start_date, end_date, location, responsible, contact_first_name, contact_last_name, contact_email, contact_phone, organizer_logo_path, created_at, organization_id").eq("id", id).maybeSingle(),
+    supabase.from("events").select("id, title, start_date, end_date, location, location_street, location_postal_code, location_city, responsible, contact_first_name, contact_last_name, contact_email, contact_phone, organizer_logo_path, created_at, organization_id").eq("id", id).maybeSingle(),
     supabase.from("event_entitlements").select("event_id, plan_code, entitlement_status").eq("event_id", id).maybeSingle(),
     supabase.from("event_contract_package_bookings").select("package_code, max_contracts, signature_addon_selected, base_amount_cents, signature_addon_amount_cents, total_amount_cents").eq("event_id", id).maybeSingle(),
   ]);
@@ -127,7 +139,7 @@ export async function updateStoredEventDetails(id: string, event: Omit<StoredEve
   const supabase = createClient();
   const { error } = await supabase
     .from("events")
-    .update({ title: event.title, start_date: event.startDate || null, end_date: event.endDate || null, location: event.location, responsible: event.responsible, contact_first_name: event.contactFirstName ?? "", contact_last_name: event.contactLastName ?? "", contact_email: event.contactEmail ?? "", contact_phone: event.contactPhone ?? "", organizer_logo_path: event.organizerLogoPath })
+    .update({ title: event.title, start_date: event.startDate || null, end_date: event.endDate || null, location: event.location, location_street: event.locationStreet, location_postal_code: event.locationPostalCode, location_city: event.locationCity, responsible: event.responsible, contact_first_name: event.contactFirstName ?? "", contact_last_name: event.contactLastName ?? "", contact_email: event.contactEmail ?? "", contact_phone: event.contactPhone ?? "", organizer_logo_path: event.organizerLogoPath })
     .eq("id", id);
   if (error) return { data: null, error };
   return fetchStoredEventFromDatabase(id);

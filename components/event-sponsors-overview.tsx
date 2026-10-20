@@ -39,6 +39,8 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
   const [masterData, setMasterData] = useState<SponsorMasterData>(emptySponsorMasterData);
   const [postalCodeStatus, setPostalCodeStatus] = useState<PostalCodeStatus>("idle");
   const [contractValue, setContractValue] = useState("");
+  const [sponsorLogoFile, setSponsorLogoFile] = useState<File | null>(null);
+  const [sponsorWizardStep, setSponsorWizardStep] = useState(1);
   const [savingSponsor, setSavingSponsor] = useState(false);
   const [addedSponsor, setAddedSponsor] = useState<SponsorRecord | null>(null);
   const [databaseError, setDatabaseError] = useState("");
@@ -123,12 +125,18 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
     setMasterData(emptySponsorMasterData);
     setPostalCodeStatus("idle");
     setContractValue("");
+    setSponsorLogoFile(null);
+    setSponsorWizardStep(1);
     setAddingSponsor(true);
   }
 
   async function saveSponsor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = parseContractValueInput(contractValue);
+    if (sponsorLogoFile && (!sponsorLogoFile.type.startsWith("image/") || sponsorLogoFile.size > 5 * 1024 * 1024)) {
+      setDatabaseError("Bitte wähle ein Bild bis maximal 5 MB.");
+      return;
+    }
     if (addMode === "new" && postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim())) {
       setDatabaseError(postalCodeStatus === "invalid" ? "Bitte gib eine gültige PLZ ein." : postalCodeStatus === "unavailable" ? "Bitte trage den Ort manuell ein, wenn die PLZ-Prüfung gerade nicht verfügbar ist." : "Bitte warte, bis die PLZ geprüft wurde.");
       return;
@@ -145,12 +153,39 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
         setDatabaseError(result.error?.message.includes("SPONSOR_LIMIT_REACHED") ? "Das Sponsorenlimit dieses Events ist erreicht. Wähle im Dialog einen höheren Tarif oder löse einen Code ein." : `Sponsor konnte nicht gespeichert werden: ${result.error?.message ?? "Bitte versuche es erneut."}`);
         return;
       }
-      setDatabaseRecords((current) => [...current, result.data!].sort((a, b) => a.sponsor.name.localeCompare(b.sponsor.name, "de")));
-      window.dispatchEvent(new CustomEvent("sponsorproof:event-sponsors-updated", { detail: { eventId, record: result.data } }));
-      setAddedSponsor(result.data);
+      let savedRecord = result.data;
+      const supabase = createClient();
+      if (addMode === "existing") {
+        const { error: contactError } = await supabase.from("sponsors").update({
+          contact_first_name: masterData.contactFirstName.trim() || null,
+          contact_last_name: masterData.contactLastName.trim() || null,
+          email: masterData.email.trim() || null,
+          phone: masterData.phone.trim() || null,
+        }).eq("id", savedRecord.sponsor.id);
+        if (contactError) throw contactError;
+        savedRecord = { ...savedRecord, sponsor: { ...savedRecord.sponsor, contactFirstName: masterData.contactFirstName, contactLastName: masterData.contactLastName, email: masterData.email, phone: masterData.phone } };
+      }
+      if (sponsorLogoFile) {
+        const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
+        if (organizationError || typeof organizationId !== "string") throw organizationError ?? new Error("Der Veranstalterbereich konnte nicht ermittelt werden.");
+        const extension = sponsorLogoFile.type === "image/png" ? "png" : sponsorLogoFile.type === "image/webp" ? "webp" : "jpg";
+        const logoPath = `${organizationId}/sponsors/${savedRecord.sponsor.id}/branding/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from("sponsorproof-files").upload(logoPath, sponsorLogoFile, { contentType: sponsorLogoFile.type, upsert: false });
+        if (uploadError) throw uploadError;
+        const { error: logoError } = await supabase.from("sponsors").update({ logo_path: logoPath }).eq("id", savedRecord.sponsor.id);
+        if (logoError) {
+          await supabase.storage.from("sponsorproof-files").remove([logoPath]);
+          throw logoError;
+        }
+        savedRecord = { ...savedRecord, sponsor: { ...savedRecord.sponsor, logoPath } };
+      }
+      setDatabaseRecords((current) => [...current, savedRecord].sort((a, b) => a.sponsor.name.localeCompare(b.sponsor.name, "de")));
+      window.dispatchEvent(new CustomEvent("sponsorproof:event-sponsors-updated", { detail: { eventId, record: savedRecord } }));
+      setAddedSponsor(savedRecord);
       setMasterData(emptySponsorMasterData);
       setPostalCodeStatus("idle");
       setContractValue("");
+      setSponsorLogoFile(null);
       setSelectedSponsorId("");
       setSponsorSearch("");
       setAddMode("existing");
@@ -159,6 +194,26 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
     } finally {
       setSavingSponsor(false);
     }
+  }
+
+  function advanceSponsorWizard() {
+    setDatabaseError("");
+    if (sponsorWizardStep === 1) {
+      if (addMode === "existing" && !selectedSponsorId) return;
+      if (addMode === "new" && (!masterData.name.trim() || !masterData.street.trim() || !masterData.streetNumber.trim() || !masterData.postalCode.trim() || !masterData.city.trim())) {
+        setDatabaseError("Bitte ergänze die Pflichtangaben zu Sponsor und Anschrift.");
+        return;
+      }
+      if (addMode === "new" && postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim())) {
+        setDatabaseError(postalCodeStatus === "invalid" ? "Bitte gib eine gültige PLZ ein." : "Bitte warte, bis die PLZ geprüft wurde.");
+        return;
+      }
+    }
+    if (sponsorWizardStep === 2 && (!masterData.contactFirstName.trim() || !masterData.contactLastName.trim() || !masterData.email.trim())) {
+      setDatabaseError("Bitte ergänze Name und E-Mail der Ansprechperson.");
+      return;
+    }
+    setSponsorWizardStep((step) => Math.min(4, step + 1));
   }
 
   async function openContractCreation(sponsor: Sponsor) {
@@ -301,19 +356,24 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
         <button className="icon-button" type="button" aria-label="Dialog schließen" disabled={savingSponsor} onClick={() => setAddingSponsor(false)}><Icon name="close" size={16}/></button>
       </div>
       {addedSponsor ? <div className="add-sponsor-success">
+        <ol className="sponsor-wizard-progress" aria-label="Schritt 5 von 5">{["Stammdaten Event", "Ansprechperson", "Logo · optional", "Vertragswert", "Leistungen öffnen"].map((label, index) => <li key={label} className={index < 4 ? "complete" : "active"}><span>{index < 4 ? <Icon name="check" size={12}/> : 5}</span><small>{label}</small></li>)}</ol>
         <div className="add-sponsor-success-summary"><span className="sponsor-mark" style={{ background: addedSponsor.sponsor.color, color: "white" }}>{addedSponsor.sponsor.initials}</span><div><b>{addedSponsor.sponsor.name}</b><span>{addedSponsor.contracts.length ? `Vertragswert: ${formatContractValue(parseContractValue(addedSponsor.contracts[0].value))}` : "Sponsor dem Event zugeordnet"}</span></div><span className="add-sponsor-assignment-status"><Icon name="check" size={13}/> Zugeordnet</span></div>
-        <ol className="add-sponsor-next-steps" aria-label="Nächste Schritte"><li className="complete"><span>1</span>Sponsor zugeordnet</li><li className={addedSponsor.contracts.length ? "complete" : "pending"}><span>2</span>{addedSponsor.contracts.length ? "Vertragswert festgelegt" : "Vertragswert festlegen"}</li><li className="pending"><span>3</span>Leistungen vereinbaren</li></ol>
-        <div className="create-modal-actions"><button className="btn" type="button" onClick={() => setAddingSponsor(false)}>Später</button>{addedSponsor.contracts.length ? <Link className="btn btn-primary" href={`/events/${eventId}?tab=sponsoren&sponsor=${addedSponsor.sponsor.id}`}>Leistungen festlegen <Icon name="chevron" size={14}/></Link> : <button className="btn btn-primary" type="button" onClick={() => { setAddingSponsor(false); void openContractCreation(addedSponsor.sponsor); }}>Vertragswert festlegen <Icon name="chevron" size={14}/></button>}</div>
+        <ol className="add-sponsor-next-steps" aria-label="Nächste Schritte"><li className="complete"><span>1</span>Stammdaten</li><li className="complete"><span>2</span>Ansprechperson</li><li className="complete"><span>3</span>Logo optional</li><li className={addedSponsor.contracts.length ? "complete" : "pending"}><span>4</span>{addedSponsor.contracts.length ? "Vertragswert festgelegt" : "Vertragswert hinterlegt"}</li><li className="pending"><span>5</span>Leistungen öffnen</li></ol>
+        <div className="create-modal-actions"><button className="btn" type="button" onClick={() => setAddingSponsor(false)}>Später</button>{addedSponsor.contracts.length ? <Link className="btn btn-primary" href={`/events/${eventId}?tab=sponsoren&sponsor=${addedSponsor.sponsor.id}`}>Leistungen öffnen <Icon name="chevron" size={14}/></Link> : <button className="btn btn-primary" type="button" onClick={() => { setAddingSponsor(false); void openContractCreation(addedSponsor.sponsor); }}>Vertragswert hinterlegen <Icon name="chevron" size={14}/></button>}</div>
       </div> : <form onSubmit={saveSponsor}>
+        <ol className="sponsor-wizard-progress" aria-label={`Schritt ${sponsorWizardStep} von 5`}>
+          {["Stammdaten Event", "Ansprechperson", "Logo · optional", "Vertragswert", "Leistungen öffnen"].map((label, index) => <li key={label} className={index + 1 === sponsorWizardStep ? "active" : index + 1 < sponsorWizardStep ? "complete" : ""}><span>{index + 1 < sponsorWizardStep ? <Icon name="check" size={12}/> : index + 1}</span><small>{label}</small></li>)}
+        </ol>
         <div className="add-event-sponsor-content">
+          {sponsorWizardStep === 1 && <>
           {addMode === "existing" ? <>
-            <div className="add-sponsor-step-heading"><span>1</span><div><h3>Sponsor auswählen</h3><p>Die Stammdaten bleiben zentral in deiner Sponsorenbibliothek.</p></div></div>
+            <div className="add-sponsor-step-heading"><span>1</span><div><h3>Sponsor auswählen</h3><p>Wähle einen bestehenden Eintrag oder lege neue Stammdaten an.</p></div></div>
             <label className="settings-field add-sponsor-search"><span>Bibliothek durchsuchen</span><input type="search" value={sponsorSearch} onChange={(event) => setSponsorSearch(event.target.value)} placeholder="Name oder Ansprechperson" /></label>
             {libraryLoading ? <p className="task-empty">Sponsorenbibliothek wird geladen …</p> : filteredLibrarySponsors.length ? <div className="add-sponsor-library-list" role="radiogroup" aria-label="Sponsor aus der Bibliothek auswählen">
               {filteredLibrarySponsors.map(({ sponsor }) => {
                 const contact = [sponsor.contactFirstName, sponsor.contactLastName].filter(Boolean).join(" ");
                 return <label key={sponsor.id} className={`add-sponsor-library-option ${selectedSponsorId === sponsor.id ? "selected" : ""}`}>
-                  <input type="radio" name="library-sponsor" value={sponsor.id} checked={selectedSponsorId === sponsor.id} onChange={() => setSelectedSponsorId(sponsor.id)} />
+                  <input type="radio" name="library-sponsor" value={sponsor.id} checked={selectedSponsorId === sponsor.id} onChange={() => { setSelectedSponsorId(sponsor.id); setMasterData({ ...emptySponsorMasterData, name: sponsor.name, contactFirstName: sponsor.contactFirstName ?? "", contactLastName: sponsor.contactLastName ?? "", email: sponsor.email ?? "", phone: sponsor.phone ?? "" }); }} />
                   <span className="sponsor-mark" style={sponsor.color ? { background: sponsor.color, color: "white" } : undefined}>{sponsor.initials}</span>
                   <span className="add-sponsor-library-copy"><b>{sponsor.name}</b><small>{contact || sponsor.email || "Keine Ansprechperson hinterlegt"}</small></span>
                 </label>;
@@ -322,15 +382,26 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
             {availableLibrarySponsors.length > 0 && !libraryLoading && <button className="add-sponsor-new-link" type="button" onClick={() => { setAddMode("new"); setDatabaseError(""); }}>Neuen Sponsor anlegen</button>}
           </> : <>
             <div className="add-sponsor-new-heading"><div><div className="add-sponsor-step-heading"><span>1</span><div><h3>Neuen Sponsor anlegen</h3><p>Die Stammdaten werden deiner Bibliothek hinzugefügt.</p></div></div></div><button className="add-sponsor-new-link" type="button" onClick={() => setAddMode("existing")}>Zur Bibliothek</button></div>
-            <SponsorMasterDataFields value={masterData} onChange={setMasterData} onPostalCodeStatusChange={setPostalCodeStatus} />
+            <SponsorMasterDataFields section="company" value={masterData} onChange={setMasterData} onPostalCodeStatusChange={setPostalCodeStatus} />
           </>}
-          {contractsEnabled ? <section className="add-sponsor-contract-section">
-            <div className="add-sponsor-step-heading"><span>2</span><div><h3>Vertragswert für dieses Event</h3><p>Gib den vereinbarten Nettobetrag in Euro für dieses Event ein.</p></div></div>
+          </>}
+          {sponsorWizardStep === 2 && <>
+            <div className="add-sponsor-step-heading"><span>2</span><div><h3>Ansprechperson hinzufügen</h3><p>So lassen sich Rückfragen und Vertragsunterlagen direkt zuordnen.</p></div></div>
+            <SponsorMasterDataFields section="contact" value={masterData} onChange={setMasterData} onPostalCodeStatusChange={setPostalCodeStatus} />
+          </>}
+          {sponsorWizardStep === 3 && <section className="sponsor-logo-step">
+            <div className="add-sponsor-step-heading"><span>3</span><div><h3>Logo hinzufügen <small>Optional</small></h3><p>Ein Logo hilft, den Sponsor in Übersichten schnell wiederzuerkennen.</p></div></div>
+            <label className="settings-field"><span>Bilddatei (PNG, JPG oder WebP; bis 5 MB)</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(uploadEvent) => { setDatabaseError(""); setSponsorLogoFile(uploadEvent.target.files?.[0] ?? null); }} /></label>
+            {sponsorLogoFile && <p className="sponsor-logo-selected"><Icon name="check" size={13}/> {sponsorLogoFile.name}</p>}
+            <button className="add-sponsor-new-link" type="button" onClick={() => { setSponsorLogoFile(null); setSponsorWizardStep(4); }}>Ohne Logo fortfahren <Icon name="chevron" size={12}/></button>
+          </section>}
+          {sponsorWizardStep === 4 && (contractsEnabled ? <section className="add-sponsor-contract-section">
+            <div className="add-sponsor-step-heading"><span>4</span><div><h3>Vertragswert für dieses Event</h3><p>Gib den vereinbarten Nettobetrag in Euro für dieses Event ein.</p></div></div>
             <label className="settings-field"><span>Vertragswert netto (€) *</span><CurrencyField ariaLabel="Vertragswert netto in Euro" required value={contractValue} onChange={setContractValue} /></label>
-          </section> : <section className="add-sponsor-contract-section add-sponsor-upgrade-note"><div className="add-sponsor-step-heading"><span><Icon name="lock" size={14}/></span><div><h3>Vertrag und Vertragswert</h3><p>Ein Vertrag kann nach der Freischaltung eines Tarifs für dieses Event angelegt werden.</p></div></div><button className="btn" type="button" onClick={() => requestUpgrade(eventId, eventTitle, "Verträge und Vertragswerte")}>Tarife ansehen</button></section>}
+          </section> : <section className="add-sponsor-contract-section add-sponsor-upgrade-note"><div className="add-sponsor-step-heading"><span><Icon name="lock" size={14}/></span><div><h3>Vertrag und Vertragswert</h3><p>Ein Vertrag kann nach der Freischaltung eines Tarifs für dieses Event angelegt werden.</p></div></div><button className="btn" type="button" onClick={() => requestUpgrade(eventId, eventTitle, "Verträge und Vertragswerte")}>Tarife ansehen</button></section>)}
         </div>
         {databaseError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{databaseError}</p>}
-        <div className="create-modal-actions"><button className="btn" type="button" disabled={savingSponsor} onClick={() => setAddingSponsor(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingSponsor || libraryLoading || (addMode === "new" && postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim())) || (addMode === "existing" && (!selectedSponsorId || !availableLibrarySponsors.some((record) => record.sponsor.id === selectedSponsorId)))}>{savingSponsor ? "Wird gespeichert …" : addMode === "new" ? "Sponsor anlegen & hinzufügen" : "Zum Event hinzufügen"}</button></div>
+        <div className="create-modal-actions"><button className="btn" type="button" disabled={savingSponsor} onClick={() => sponsorWizardStep === 1 ? setAddingSponsor(false) : (setDatabaseError(""), setSponsorWizardStep((step) => Math.max(1, step - 1)))}>{sponsorWizardStep === 1 ? "Abbrechen" : "Zurück"}</button>{sponsorWizardStep < 4 ? <button className="btn btn-primary" type="button" disabled={sponsorWizardStep === 1 && (libraryLoading || (addMode === "existing" && (!selectedSponsorId || !availableLibrarySponsors.some((record) => record.sponsor.id === selectedSponsorId))))} onClick={advanceSponsorWizard}>Weiter <Icon name="chevron" size={14}/></button> : <button className="btn btn-primary" type="submit" disabled={savingSponsor || (contractsEnabled && !contractValue.trim())}>{savingSponsor ? "Wird gespeichert …" : "Sponsor hinzufügen"}</button>}</div>
       </form>}
     </section>
   </div>}{contractSponsor && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingContract) setContractSponsor(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-sponsor-contract-title"><div className="create-modal-head"><div><h2 id="create-sponsor-contract-title">Sponsor vervollständigen</h2><p>Lege für {contractSponsor.name} den Vertragswert für dieses Event fest. Danach kannst du den Vertrag und die vereinbarten Leistungen ergänzen.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={savingContract} onClick={() => setContractSponsor(null)}><Icon name="close" size={16}/></button></div><form onSubmit={saveContractForSponsor}><label className="settings-field"><span>Vertragswert netto (€) *</span><CurrencyField ariaLabel="Vertragswert netto in Euro" required value={contractValueDraft} onChange={setContractValueDraft}/></label>{databaseError && <p className="field-message error" role="alert">{databaseError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={savingContract} onClick={() => setContractSponsor(null)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingContract || !contractValueDraft.trim()}>{savingContract ? "Wird gespeichert …" : "Vertrag anlegen"}</button></div></form></section></div>}{pendingRemoval && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !removingSponsor) setPendingRemoval(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="remove-event-sponsor-title"><div className="create-modal-head"><div><h2 id="remove-event-sponsor-title">Sponsor aus Event entfernen?</h2><p>„{pendingRemoval.name}“ wird aus diesem Event entfernt. Der Vertrag und die zugehörigen Leistungen und Aufgaben werden gelöscht; die Sponsor-Stammdaten bleiben erhalten.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={removingSponsor} onClick={() => setPendingRemoval(null)}><Icon name="close" size={16}/></button></div>{databaseError && <p className="field-message error" role="alert">{databaseError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={removingSponsor} onClick={() => setPendingRemoval(null)}>Abbrechen</button><button className="btn btn-danger" type="button" disabled={removingSponsor} onClick={() => void confirmRemoveSponsor()}>{removingSponsor ? "Wird entfernt …" : "Aus Event entfernen"}</button></div></section></div>}</>;

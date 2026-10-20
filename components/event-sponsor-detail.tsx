@@ -982,7 +982,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
         sponsor,
         contract: contractForTemplate,
         grossValue: grossAmount,
-        event: { id: eventId, title: eventTitle, startDate: eventStartDate, endDate: eventEndDate, location: eventLocation, responsible: eventResponsible, organizerLogoPath: null, createdAt: "", planCode: "free", bookedPlanCode: "free", entitlementStatus: "active", hasPaidEventLicense: false },
+        event: { id: eventId, title: eventTitle, startDate: eventStartDate, endDate: eventEndDate, location: eventLocation, locationStreet: "", locationPostalCode: "", locationCity: "", responsible: eventResponsible, organizerLogoPath: null, createdAt: "", planCode: "free", bookedPlanCode: "free", entitlementStatus: "active", hasPaidEventLicense: false },
         benefits,
       });
       if (format === "docx") {

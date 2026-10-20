@@ -41,10 +41,11 @@ function Field({ label, value, onChange, type = "text", required = false, readOn
   </label>;
 }
 
-export function SponsorMasterDataFields({ value, onChange, onPostalCodeStatusChange }: {
+export function SponsorMasterDataFields({ value, onChange, onPostalCodeStatusChange, section = "all" }: {
   value: SponsorMasterData;
   onChange: Dispatch<SetStateAction<SponsorMasterData>>;
   onPostalCodeStatusChange: (status: PostalCodeStatus) => void;
+  section?: "all" | "company" | "contact";
 }) {
   const [postalCodeStatus, setPostalCodeStatus] = useState<PostalCodeStatus>("idle");
 
@@ -114,6 +115,7 @@ export function SponsorMasterDataFields({ value, onChange, onPostalCodeStatusCha
   }
 
   return <>
+    {(section === "all" || section === "company") && <>
     <section className="settings-section">
       <div className="settings-section-heading"><div><h2>Unternehmen und Anschrift</h2><p>Firmenname und vollständige Anschrift.</p></div></div>
       <div className="settings-grid">
@@ -125,6 +127,8 @@ export function SponsorMasterDataFields({ value, onChange, onPostalCodeStatusCha
         <Field label="USt-IdNr." value={value.vatId} onChange={(next) => update("vatId", next)} />
       </div>
     </section>
+    </>}
+    {(section === "all" || section === "contact") && <>
     <section className="settings-section">
       <div className="settings-section-heading"><div><h2>Ansprechperson</h2><p>Kontakt für Rückfragen und Vertragsunterlagen.</p></div></div>
       <div className="settings-grid">
@@ -134,5 +138,6 @@ export function SponsorMasterDataFields({ value, onChange, onPostalCodeStatusCha
         <Field label="Telefon" value={value.phone} onChange={(next) => update("phone", next)} type="tel" autoComplete="tel" />
       </div>
     </section>
+    </>}
   </>;
 }

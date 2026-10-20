@@ -8,6 +8,7 @@ export type SponsorRow = {
   sponsorship_value_cents: number;
   status: string;
   color: string | null;
+  logo_path?: string | null;
   legal_form: string | null;
   street: string | null;
   street_number: string | null;
@@ -70,6 +71,7 @@ export function sponsorFromRow(row: SponsorRow, contracts: SponsorContract[] = [
     progress: 0,
     status: displayStatus(row.status),
     color: row.color ?? undefined,
+    logoPath: row.logo_path ?? undefined,
     legalForm: row.legal_form ?? undefined,
     street: row.street ?? undefined,
     streetNumber: row.street_number ?? undefined,
@@ -140,6 +142,11 @@ export async function fetchSponsorRecords() {
     current.push(assignment.event_id);
     eventIdsBySponsor.set(assignment.sponsor_id, current);
   }
+  for (const contract of contracts) {
+    const current = eventIdsBySponsor.get(contract.sponsorId) ?? [];
+    if (!current.includes(contract.eventId)) current.push(contract.eventId);
+    eventIdsBySponsor.set(contract.sponsorId, current);
+  }
   const records = (sponsorResult.data ?? []).map((raw) => {
     const row = raw as SponsorRow;
     const relatedContracts = contracts.filter((contract) => contract.sponsorId === row.id);
@@ -167,21 +174,25 @@ export async function fetchSponsorRecord(id: string) {
 export async function fetchSponsorRecordsForEvent(eventId: string) {
   const { createClient } = await import("@/lib/supabase/client");
   const supabase = createClient();
-  const { data: assignments, error: assignmentError } = await supabase.from("event_sponsors").select("sponsor_id").eq("event_id", eventId);
-  if (assignmentError) return { data: null, error: assignmentError };
-  const sponsorIds = (assignments ?? []).map((row) => row.sponsor_id);
-  if (!sponsorIds.length) return { data: [], error: null };
-  const [sponsorResult, contractResult] = await Promise.all([
-    supabase.from("sponsors").select(sponsorColumns).in("id", sponsorIds).order("name"),
+  const [assignmentResult, contractResult] = await Promise.all([
+    supabase.from("event_sponsors").select("sponsor_id").eq("event_id", eventId),
     supabase.from("contracts").select(contractColumns).eq("event_id", eventId).order("created_at", { ascending: false }),
   ]);
-  if (sponsorResult.error) return { data: null, error: sponsorResult.error };
+  const { data: assignments, error: assignmentError } = assignmentResult;
+  if (assignmentError) return { data: null, error: assignmentError };
   if (contractResult.error) return { data: null, error: contractResult.error };
-  const contracts = (contractResult.data ?? []).map((row) => contractFromRow(row as ContractRow));
+  const eventContracts = (contractResult.data ?? []).map((row) => contractFromRow(row as ContractRow));
+  const sponsorIds = [...new Set([...(assignments ?? []).map((row) => row.sponsor_id), ...eventContracts.map((contract) => contract.sponsorId)])];
+  if (!sponsorIds.length) return { data: [], error: null };
+  const [sponsorResult] = await Promise.all([
+    supabase.from("sponsors").select(sponsorColumns).in("id", sponsorIds).order("name"),
+  ]);
+  if (sponsorResult.error) return { data: null, error: sponsorResult.error };
   return {
     data: (sponsorResult.data ?? []).map((raw) => {
       const row = raw as SponsorRow;
-      return { sponsor: sponsorFromRow(row, contracts.filter((contract) => contract.sponsorId === row.id), [eventId]), contracts: contracts.filter((contract) => contract.sponsorId === row.id) };
+      const contracts = eventContracts.filter((contract) => contract.sponsorId === row.id);
+      return { sponsor: sponsorFromRow(row, contracts, [eventId]), contracts };
     }),
     error: null,
   };

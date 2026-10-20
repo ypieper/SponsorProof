@@ -32,17 +32,23 @@ export async function GET(request: Request) {
     const eventIds = [...new Set(assignments.map((item) => item.event_id))];
     const sponsorIds = [...new Set(assignments.map((item) => item.sponsor_id))];
     if (summaryOnly) {
-      const [eventsResult, benefitsResult] = await Promise.all([
+      const [eventsResult, benefitsResult, contractsResult] = await Promise.all([
         admin.from("events").select("id, title, start_date, end_date, location, organizer_logo_path").in("id", eventIds),
         admin.from("benefits").select("id, event_id, sponsor_id").in("event_id", eventIds).in("sponsor_id", sponsorIds),
+        admin.from("contracts").select("event_id, sponsor_id, value_cents, signature_status, signed_at").in("event_id", eventIds).in("sponsor_id", sponsorIds),
       ]);
-      if (eventsResult.error || benefitsResult.error) throw eventsResult.error ?? benefitsResult.error;
+      if (eventsResult.error || benefitsResult.error || contractsResult.error) throw eventsResult.error ?? benefitsResult.error ?? contractsResult.error;
       const allowedAssignments = new Set(assignments.map((assignment) => `${assignment.event_id}:${assignment.sponsor_id}`));
       const benefitCounts = new Map<string, number>();
       for (const benefit of benefitsResult.data ?? []) {
         if (allowedAssignments.has(`${benefit.event_id}:${benefit.sponsor_id}`)) {
           benefitCounts.set(benefit.event_id, (benefitCounts.get(benefit.event_id) ?? 0) + 1);
         }
+      }
+      const signedVolumes = new Map<string, number>();
+      for (const contract of contractsResult.data ?? []) {
+        if (!allowedAssignments.has(`${contract.event_id}:${contract.sponsor_id}`) || (!contract.signed_at && contract.signature_status !== "signed")) continue;
+        signedVolumes.set(contract.event_id, (signedVolumes.get(contract.event_id) ?? 0) + (contract.value_cents ?? 0));
       }
       const events = await Promise.all((eventsResult.data ?? []).map(async (event) => {
         const { organizer_logo_path, ...eventData } = event;
@@ -53,18 +59,33 @@ export async function GET(request: Request) {
           ...eventData,
           organizer_logo_url: logo?.signedUrl ?? null,
           benefit_count: benefitCounts.get(event.id) ?? 0,
+          signed_volume_cents: signedVolumes.get(event.id) ?? 0,
         };
       }));
       return NextResponse.json({ profileRequired, profileName, events }, { headers: { "Cache-Control": "no-store" } });
     }
-    const [eventsResult, sponsorsResult, contractsResult, taskResult, benefitResult] = await Promise.all([
+    const [eventsResult, sponsorsResult, contractsResult, taskResult, benefitResult, reportMetricsResult, invoiceUpdatesResult, documentUpdatesResult] = await Promise.all([
       admin.from("events").select("id, organization_id, title, start_date, end_date, location, organizer_logo_path, contact_first_name, contact_last_name, contact_email, contact_phone").in("id", eventIds),
       admin.from("sponsors").select("id, name").in("id", sponsorIds),
       admin.from("contracts").select("id, event_id, sponsor_id, title, value_cents, signature_status, sponsor_signed_at, organizer_signed_at, signed_at, signing_document_id").in("event_id", eventIds),
       admin.from("tasks").select("id, event_id, sponsor_id, sponsor_name, benefit_id, title, due_at, status, source, workflow_order, workflow_instance, completion_type, requires_sponsor_approval, assigned_to_sponsor, sponsor_approval_status, sponsor_approved_at").in("event_id", eventIds),
       admin.from("benefits").select("id, event_id, sponsor_id, title, benefit_type, material_logistics, description, quantity, tasks_per_unit, status, due_at").in("event_id", eventIds).in("sponsor_id", sponsorIds),
+      admin.from("event_report_metrics").select("id, event_id, metric_name, metric_value").in("event_id", eventIds).order("created_at", { ascending: true }),
+      admin.from("event_sponsor_invoices").select("id, event_id, sponsor_id, updated_at, sponsor_visible").in("event_id", eventIds).in("sponsor_id", sponsorIds),
+      admin.from("sponsor_documents").select("id, event_id, sponsor_id, uploaded_at, uploaded_by_type, document_role, published_to_sponsor, status").in("event_id", eventIds).in("sponsor_id", sponsorIds),
     ]);
-    if (eventsResult.error || sponsorsResult.error || contractsResult.error || taskResult.error || benefitResult.error) throw eventsResult.error ?? sponsorsResult.error ?? contractsResult.error ?? taskResult.error ?? benefitResult.error;
+    if (eventsResult.error || sponsorsResult.error || contractsResult.error || taskResult.error || benefitResult.error || reportMetricsResult.error || invoiceUpdatesResult.error || documentUpdatesResult.error) throw eventsResult.error ?? sponsorsResult.error ?? contractsResult.error ?? taskResult.error ?? benefitResult.error ?? reportMetricsResult.error ?? invoiceUpdatesResult.error ?? documentUpdatesResult.error;
+    const reportMetricsByEvent = new Map<string, Array<{ id: string; name: string; value: string }>>();
+    for (const metric of reportMetricsResult.data ?? []) {
+      reportMetricsByEvent.set(metric.event_id, [...(reportMetricsByEvent.get(metric.event_id) ?? []), { id: metric.id, name: metric.metric_name, value: metric.metric_value }]);
+    }
+    const allowedAssignments = new Set(assignments.map((item) => `${item.event_id}:${item.sponsor_id}`));
+    const invoiceUpdates = (invoiceUpdatesResult.data ?? []).filter((invoice) => invoice.sponsor_visible && allowedAssignments.has(`${invoice.event_id}:${invoice.sponsor_id}`));
+    const documentUpdates = (documentUpdatesResult.data ?? []).filter((document) =>
+      document.status === "uploaded" && allowedAssignments.has(`${document.event_id}:${document.sponsor_id}`) &&
+      (document.uploaded_by_type === "sponsor" || document.document_role === "signed_contract" || document.published_to_sponsor) &&
+      (document.uploaded_by_type === "organizer" || document.document_role === "signed_contract")
+    );
     const organizationIds = [...new Set((eventsResult.data ?? []).flatMap((event) => event.organization_id ? [event.organization_id] : []))];
     const { data: organizations, error: organizationsError } = organizationIds.length
       ? await admin.from("organizations").select("id, name").in("id", organizationIds)
@@ -108,9 +129,10 @@ export async function GET(request: Request) {
       const returnedIds = new Set(feedback.flatMap((item) => item.evidence_file_id ? [item.evidence_file_id] : []));
       for (const item of feedback.filter((entry) => !entry.evidence_file_id)) {
         const hasWorkflow = Boolean(task.benefit_id && task.workflow_order !== null);
-        const sourceTaskIds = new Set(hasWorkflow
-          ? tasks.filter((candidate) => candidate.event_id === task.event_id && candidate.sponsor_id === task.sponsor_id && candidate.benefit_id === task.benefit_id && candidate.workflow_instance === task.workflow_instance && candidate.workflow_order !== null && candidate.workflow_order < (task.workflow_order ?? 0)).map((candidate) => candidate.id)
-          : [task.id]);
+        const previousSteps = hasWorkflow
+          ? tasks.filter((candidate) => candidate.event_id === task.event_id && candidate.sponsor_id === task.sponsor_id && candidate.benefit_id === task.benefit_id && candidate.workflow_instance === task.workflow_instance && candidate.workflow_order !== null && candidate.workflow_order < (task.workflow_order ?? 0))
+          : [];
+        const sourceTaskIds = new Set(previousSteps.length ? previousSteps.map((candidate) => candidate.id) : [task.id]);
         const legacyReturnedEvidence = evidenceRows.filter((evidence) => evidence.sponsor_visible && sourceTaskIds.has(evidence.task_id ?? "") && evidence.created_at <= item.created_at).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
         if (legacyReturnedEvidence) returnedIds.add(legacyReturnedEvidence.id);
       }
@@ -122,7 +144,7 @@ export async function GET(request: Request) {
       const orderedSteps = hasWorkflow
         ? tasks.filter((item) => item.event_id === task.event_id && item.sponsor_id === task.sponsor_id && item.benefit_id === task.benefit_id && item.workflow_instance === task.workflow_instance && item.workflow_order !== null && item.workflow_order < (task.workflow_order ?? 0) && item.status === "Erledigt")
         : [];
-      const sourceTaskIds = new Set(hasWorkflow ? orderedSteps.map((step) => step.id) : [task.id]);
+      const sourceTaskIds = new Set(orderedSteps.length ? orderedSteps.map((step) => step.id) : [task.id]);
       const latestReturnAt = latestReturnAtByApproval.get(task.id);
       const returnedIds = returnedEvidenceIdsByApproval.get(task.id) ?? new Set<string>();
       const activeEvidence = evidenceRows
@@ -145,15 +167,14 @@ export async function GET(request: Request) {
       const lastStep = orderedSteps.at(-1);
       const activeEvidenceId = activeEvidenceIdByApproval.get(task.id);
       const approvalEvidenceIds = new Set([...(activeEvidenceId ? [activeEvidenceId] : []), ...[...(returnedEvidenceIdsByApproval.get(task.id) ?? [])]]);
-      const sharedFiles = (hasWorkflow ? orderedSteps.flatMap((step) => evidenceByTask.get(step.id) ?? []) : evidenceByTask.get(task.id) ?? [])
+      const sharedFiles = (orderedSteps.length ? orderedSteps.flatMap((step) => evidenceByTask.get(step.id) ?? []) : evidenceByTask.get(task.id) ?? [])
         .filter((file) => approvalEvidenceIds.has(file.id))
         .sort((a, b) => b.created_at.localeCompare(a.created_at));
-      const ready = hasWorkflow
-        ? orderedSteps.length > 0 && orderedSteps.every((item) => item.status === "Erledigt") && Boolean(activeEvidenceId)
-        : Boolean(activeEvidenceId);
-      return { ...task, ready, planned_publish_date: lastStep?.due_at ?? task.due_at ?? null, files: sharedFiles };
+      const blockedBy = orderedSteps.find((item) => item.status !== "Erledigt");
+      const ready = !blockedBy && Boolean(activeEvidenceId);
+      return { ...task, ready, blocked_by: blockedBy?.title ?? null, planned_publish_date: lastStep?.due_at ?? task.due_at ?? null, files: sharedFiles };
     });
-    const portalSponsorApprovals = sponsorApprovals.filter((task) => task.sponsor_approval_status === "approved" || task.sponsor_approval_status === "changes_requested" || (task.ready && task.sponsor_approval_status !== "approved"));
+    const portalSponsorApprovals = sponsorApprovals;
     const approvalById = new Map(portalSponsorApprovals.map((task) => [task.id, task]));
     const benefitsWithTasks = benefits.map((benefit) => {
       const allBenefitTasks = tasks.filter((task) => task.event_id === benefit.event_id && task.sponsor_id === benefit.sponsor_id && task.benefit_id === benefit.id);
@@ -183,9 +204,10 @@ export async function GET(request: Request) {
           tasks: [
             ...sponsorAssignedTasks.filter((task) => task.workflow_instance === instance).map((task) => {
               const previousSteps = instanceTasks.filter((step) => step.workflow_order !== null && step.workflow_order < (task.workflow_order ?? 0));
-              const ready = previousSteps.every((step) => step.status === "Erledigt");
-              return { ...task, ready, planned_publish_date: null, files: evidenceByTask.get(task.id) ?? [] };
-            }).filter((task) => task.ready),
+              const blockedBy = previousSteps.find((step) => step.status !== "Erledigt");
+              const ready = !blockedBy;
+              return { ...task, ready, blocked_by: blockedBy?.title ?? null, planned_publish_date: null, files: evidenceByTask.get(task.id) ?? [] };
+            }),
             ...sponsorTasks.flatMap((task) => task.workflow_instance === instance && approvalById.has(task.id) ? [{ ...task, ...approvalById.get(task.id)! }] : []),
           ].sort((a, b) => (a.workflow_order ?? 0) - (b.workflow_order ?? 0)),
         };
@@ -227,15 +249,20 @@ export async function GET(request: Request) {
       organizer_name: organizationNames.get(organization_id) ?? "",
       organizer_logo_url: logo?.signedUrl ?? null,
       signature_addon_enabled: signatureEnabledEventIds.has(event.id),
+      report_metrics: reportMetricsByEvent.get(event.id) ?? [],
       sponsor_assignments: assignments.filter((assignment) => assignment.event_id === event.id).map((assignment) => ({
         sponsor_id: assignment.sponsor_id,
         sponsor_name: sponsors.find((sponsor) => sponsor.id === assignment.sponsor_id)?.name ?? "Sponsor",
+        tab_updates: {
+          invoices: invoiceUpdates.filter((invoice) => invoice.event_id === event.id && invoice.sponsor_id === assignment.sponsor_id).map(({ id, updated_at }) => ({ id, updated_at })),
+          documents: documentUpdates.filter((document) => document.event_id === event.id && document.sponsor_id === assignment.sponsor_id).map(({ id, uploaded_at }) => ({ id, uploaded_at })),
+        },
         tasks: tasks.filter((task) => {
           if (task.event_id !== event.id || task.sponsor_id !== assignment.sponsor_id || task.source !== "Manuell" || task.benefit_id) return false;
           const requiresApproval = task.completion_type === "sponsor_approval" || task.requires_sponsor_approval;
           if (!requiresApproval) return true;
           const approval = sponsorApprovals.find((item) => item.id === task.id);
-          return approval?.ready === true || task.sponsor_approval_status === "changes_requested";
+          return Boolean(approval) || task.sponsor_approval_status === "changes_requested";
         }).map((task) => {
           const approval = sponsorApprovals.find((item) => item.id === task.id);
           return {
@@ -247,7 +274,10 @@ export async function GET(request: Request) {
             requires_sponsor_approval: task.requires_sponsor_approval,
             sponsor_approval_status: task.sponsor_approval_status,
             sponsor_approved_at: task.sponsor_approved_at,
-            ready: approval?.ready ?? false,
+            // Standalone tasks have no workflow predecessor. Only approval tasks
+            // can be blocked by an earlier step (or missing evidence).
+            ready: approval ? approval.ready : true,
+            blocked_by: approval?.blocked_by ?? null,
             files: approval?.files ?? evidenceByTask.get(task.id) ?? [],
           };
         }),

@@ -96,7 +96,7 @@ export async function updateStoredTask(id: string, changes: { title?: string; sp
   if (changes.assignedToSponsor !== undefined) update.assigned_to_sponsor = changes.assignedToSponsor;
   if (changes.eventId !== undefined) {
     update.event_id = changes.eventId;
-    update.sponsor_id = null;
+    update.sponsor_id = changes.sponsorId ?? null;
   }
   const { error } = await createClient().from("tasks").update(update).eq("id", id);
   return { error };

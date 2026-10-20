@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Sponsor, SponsorContract } from "@/lib/sponsor-types";
-import { EmptyState, Icon, Metric, Progress, SponsoLogo, Status } from "@/components/ui";
+import { EmptyState, Icon, Progress, SponsoLogo, Status } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { fetchStoredBenefits } from "@/lib/benefits-storage";
 import { fetchStoredTasks } from "@/lib/tasks-storage";
@@ -12,9 +12,14 @@ import { fetchContractReportStates, saveContractReportState } from "@/lib/contra
 import { formatContractValue, parseContractValue } from "@/lib/event-contract-values";
 import { useEventEntitlements } from "@/components/event-entitlements";
 import { createCompletionReportPdf } from "@/lib/completion-report-pdf";
+import { deleteEventReportMetric, fetchEventReportMetrics, saveEventReportMetric, type EventReportMetric } from "@/lib/event-report-metrics-storage";
+import { formatEventReportMetricValue } from "@/lib/event-report-metric-format";
+
+const reportNumberFormat = new Intl.NumberFormat("de-DE");
 
 type ReportTask = { id: string; title: string; evidence: string };
 type SponsorReport = { sponsor: Sponsor; contract: SponsorContract; tasks: ReportTask[]; completed: number; ready: boolean; sent: boolean };
+type ManagedEventReportMetric = EventReportMetric & { isNew: boolean; dirty: boolean };
 
 function taskIdForBenefit(eventId: string, benefit: { id?: string; title: string }) {
   return benefit.id ? `benefit-${benefit.id}` : `benefit-${eventId}-${benefit.title.toLocaleLowerCase("de-DE").replace(/[^a-z0-9]+/g, "-")}`;
@@ -38,6 +43,82 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
   const [pendingSentReport, setPendingSentReport] = useState<SponsorReport | null>(null);
   const [updatingReportId, setUpdatingReportId] = useState<string | null>(null);
   const [reportAction, setReportAction] = useState<"download" | "share" | null>(null);
+  const [eventMetrics, setEventMetrics] = useState<ManagedEventReportMetric[]>([]);
+  const [eventMetricsLoading, setEventMetricsLoading] = useState(true);
+  const [savingEventMetricId, setSavingEventMetricId] = useState("");
+  const [deletingEventMetricId, setDeletingEventMetricId] = useState("");
+  const [eventMetricsError, setEventMetricsError] = useState("");
+  const [eventMetricsMessage, setEventMetricsMessage] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setEventMetricsLoading(true);
+    setEventMetricsError("");
+    void fetchEventReportMetrics(eventId).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        setEventMetricsError("Die Event-Kennzahlen konnten nicht geladen werden.");
+        return;
+      }
+      setEventMetrics((data ?? []).map((metric) => ({ ...metric, value: formatEventReportMetricValue(metric.value), isNew: false, dirty: false })));
+    }).catch(() => {
+      if (!cancelled) setEventMetricsError("Die Event-Kennzahlen konnten nicht geladen werden.");
+    }).finally(() => {
+      if (!cancelled) setEventMetricsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [eventId]);
+
+  function addEventMetric() {
+    setEventMetrics((current) => [...current, { id: `draft-${crypto.randomUUID()}`, name: "", value: "", isNew: true, dirty: true }]);
+    setEventMetricsError("");
+    setEventMetricsMessage("");
+  }
+
+  async function saveEventMetric(metric: ManagedEventReportMetric) {
+    if (!metric.name.trim() || !metric.value.trim()) {
+      setEventMetricsError("Bitte ergänze für jede Kennzahl einen Namen und einen Wert.");
+      setEventMetricsMessage("");
+      return;
+    }
+    setSavingEventMetricId(metric.id);
+    setEventMetricsError("");
+    setEventMetricsMessage("");
+    try {
+      const formattedValue = formatEventReportMetricValue(metric.value.trim());
+      const result = await saveEventReportMetric(eventId, { ...metric, value: formattedValue }, metric.isNew ? undefined : metric.id);
+      const error = result.error;
+      if (error) throw error;
+      const savedId = result.data?.id;
+      if (!savedId) throw new Error("Kennzahl konnte nicht gespeichert werden.");
+      setEventMetrics((current) => current.map((item) => item.id === metric.id ? { ...item, id: savedId, isNew: false, dirty: false, name: metric.name.trim(), value: formattedValue } : item));
+      setEventMetricsMessage("Die Kennzahl wurde gespeichert.");
+    } catch {
+      setEventMetricsError("Die Kennzahl konnte nicht gespeichert werden. Prüfe, ob der Name bereits verwendet wird.");
+    } finally {
+      setSavingEventMetricId("");
+    }
+  }
+
+  async function deleteEventMetric(metric: ManagedEventReportMetric) {
+    if (metric.isNew) {
+      setEventMetrics((current) => current.filter((item) => item.id !== metric.id));
+      return;
+    }
+    setDeletingEventMetricId(metric.id);
+    setEventMetricsError("");
+    setEventMetricsMessage("");
+    try {
+      const { error } = await deleteEventReportMetric(eventId, metric.id);
+      if (error) throw error;
+      setEventMetrics((current) => current.filter((item) => item.id !== metric.id));
+      setEventMetricsMessage("Die Kennzahl wurde entfernt.");
+    } catch {
+      setEventMetricsError("Die Kennzahl konnte nicht entfernt werden.");
+    } finally {
+      setDeletingEventMetricId("");
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -185,17 +266,24 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
     }
   }
 
-  const totalTasks = reports.reduce((sum, report) => sum + report.tasks.length, 0);
-  const totalCompleted = reports.reduce((sum, report) => sum + report.completed, 0);
-  const progress = totalTasks ? Math.round(totalCompleted / totalTasks * 100) : 0;
-
   return <>
-    <section className="metric-grid"><Metric label="Erfüllte Aufgaben" value={ready ? `${totalCompleted}` : "—"} note={`von ${totalTasks}`} icon="check"/><Metric label="Offene Aufgaben" value={ready ? `${Math.max(0, totalTasks - totalCompleted)}` : "—"} note="Nachweis ausstehend" icon="clock"/><Metric label="Gesamtfortschritt" value={ready ? `${progress} %` : "—"} note="über alle Sponsoren" icon="layers"/><Metric label="Abschlussreports bereit" value={ready ? `${reports.filter((report) => report.ready).length}` : "—"} note={`von ${reports.length} Sponsoren`} icon="file"/></section>
+    <section className="panel event-report-metrics-panel">
+      <div className="table-head"><div><h2>Event-Kennzahlen</h2><p className="subtitle">Lege Kennzahlen zum gesamten Event an. Gespeicherte Angaben erscheinen im Leistungsnachweis der Sponsoren schreibgeschützt.</p></div></div>
+      {eventMetricsLoading ? <p className="task-empty event-report-metrics-empty">Kennzahlen werden geladen …</p> : <div className="event-report-metrics-table-wrap"><table className="table event-report-metrics-table"><thead><tr><th>Kennzahl</th><th>Wert</th><th>Aktionen</th></tr></thead><tbody>
+        {eventMetrics.length === 0 ? <tr><td className="event-report-metrics-table-empty" colSpan={3}>Noch keine Kennzahlen hinterlegt. Füge zum Beispiel Besucherzahl oder Social-Media-Reichweite hinzu.</td></tr> : eventMetrics.map((metric) => <tr key={metric.id}>
+          <td><label className="event-report-metric-input"><span className="sr-only">Kennzahl</span><input type="text" maxLength={80} placeholder="z. B. Besucherzahl" value={metric.name} disabled={savingEventMetricId === metric.id || deletingEventMetricId === metric.id} onChange={(event) => setEventMetrics((current) => current.map((item) => item.id === metric.id ? { ...item, name: event.target.value, dirty: true } : item))}/></label></td>
+          <td><label className="event-report-metric-input"><span className="sr-only">Wert</span><input type="text" maxLength={120} placeholder="z. B. 12.500" value={metric.value} disabled={savingEventMetricId === metric.id || deletingEventMetricId === metric.id} onChange={(event) => setEventMetrics((current) => current.map((item) => item.id === metric.id ? { ...item, value: event.target.value, dirty: true } : item))} onBlur={() => setEventMetrics((current) => current.map((item) => item.id === metric.id ? { ...item, value: formatEventReportMetricValue(item.value) } : item))}/></label></td>
+          <td><div className="event-report-metric-actions"><button className="btn btn-primary" type="button" onClick={() => void saveEventMetric(metric)} disabled={!metric.dirty || !metric.name.trim() || !metric.value.trim() || savingEventMetricId === metric.id || deletingEventMetricId === metric.id}>{savingEventMetricId === metric.id ? "Speichert …" : "Speichern"}</button><button className="btn" type="button" onClick={() => void deleteEventMetric(metric)} disabled={savingEventMetricId === metric.id || deletingEventMetricId === metric.id}>{deletingEventMetricId === metric.id ? "Wird entfernt …" : "Entfernen"}</button></div></td>
+        </tr>)}
+      </tbody></table></div>}
+      <div className="event-report-metrics-footer"><button className="btn" type="button" onClick={addEventMetric} disabled={eventMetricsLoading}><Icon name="plus" size={14}/> Kennzahl hinzufügen</button></div>
+      {eventMetricsError && <p className="field-message error" role="alert">{eventMetricsError}</p>}{eventMetricsMessage && <p className="field-message success" role="status">{eventMetricsMessage}</p>}
+    </section>
     <section className="panel table-panel event-reports-panel"><div className="table-head"><div><h2>Fortschritt je Sponsor</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Ein Abschlussreport wird verfügbar, sobald alle Aufgaben eines Sponsors durch Nachweise abgeschlossen sind. Teile die PDF und bestätige den Versand anschließend hier.</p></div></div>{!ready ? <p className="task-empty">Reports werden geladen …</p> : loadError ? <EmptyState className="empty-state-compact" title="Reports gerade nicht verfügbar" description={loadError} action={<button className="btn" type="button" onClick={() => setRetryKey((key) => key + 1)}>Erneut laden</button>} /> : reports.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Reports" description="Reports erscheinen, sobald für dieses Event Sponsoren und Verträge angelegt sind." action={<Link className="btn" href={`/events/${eventId}?tab=sponsoren`}>Zu den Sponsoren</Link>} /> : <div className="adaptive-table-wrap"><table className="table adaptive-data-table event-reports-data-table"><thead><tr><th>Sponsor</th><th>Aufgaben erfüllt</th><th>Fortschritt</th><th>Status</th><th>Versand</th><th>Aktionen</th></tr></thead><tbody>{reports.map((report) => <tr key={report.contract.id}>
       <td data-label="Sponsor"><b className="report-sponsor-name">{report.sponsor.name}</b><small>{report.contract.title} · {report.contract.value}</small></td>
-      <td data-label="Aufgaben erfüllt">{report.completed} von {report.tasks.length}</td>
+      <td data-label="Aufgaben erfüllt">{reportNumberFormat.format(report.completed)} von {reportNumberFormat.format(report.tasks.length)}</td>
       <td data-label="Fortschritt"><Progress value={report.tasks.length ? Math.round(report.completed / report.tasks.length * 100) : 0}/></td>
-      <td data-label="Status"><Status value={report.ready ? "Erledigt" : "Offen"}/>{!report.ready && report.tasks.some((task) => !task.evidence) && <details className="event-report-missing-evidence"><summary>{report.tasks.filter((task) => !task.evidence).length} fehlende Nachweise</summary><ul>{report.tasks.filter((task) => !task.evidence).map((task) => <li key={task.id}>{task.title}</li>)}</ul><Link href={`/events/${eventId}?tab=aufgaben-nachweise`}>Zu Aufgaben &amp; Nachweisen</Link></details>}</td>
+      <td data-label="Status"><Status value={report.ready ? "Erledigt" : "Offen"}/>{!report.ready && report.tasks.some((task) => !task.evidence) && <details className="event-report-missing-evidence"><summary>{reportNumberFormat.format(report.tasks.filter((task) => !task.evidence).length)} fehlende Nachweise</summary><ul>{report.tasks.filter((task) => !task.evidence).map((task) => <li key={task.id}>{task.title}</li>)}</ul><Link href={`/events/${eventId}?tab=aufgaben-nachweise`}>Zu Aufgaben &amp; Nachweisen</Link></details>}</td>
       <td data-label="Versand"><span className={`status ${report.sent ? "status-done" : report.ready ? "status-progress" : "status-open"}`}>{report.sent ? "Versendet" : report.ready ? "Bereit" : "Nicht bereit"}</span></td>
       <td data-label="Aktionen"><div className="event-report-actions"><button className="btn btn-primary" type="button" onClick={async () => { if (await ensureFeature(eventId, eventTitle, "reports")) setSelectedReport(report); }} disabled={!ready || !report.ready}><Icon name="file" size={14}/> Report erstellen</button><button className={`btn event-report-sent-button${report.sent ? " is-sent" : ""}`} type="button" onClick={() => report.sent ? void updateReportSentStatus(report, false) : setPendingSentReport(report)} disabled={!ready || !report.ready || updatingReportId === report.contract.id}>{updatingReportId === report.contract.id ? "Speichert …" : report.sent ? "Versand zurücknehmen" : "Versand bestätigen"}</button></div></td>
     </tr>)}</tbody></table></div>}{message && <p className="task-feedback" role="status">{message}</p>}</section>
@@ -211,10 +299,10 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
         <div className="completion-report-event"><span>VERANSTALTUNG</span><strong>{eventTitle}</strong></div>
         <div className="completion-report-summary">
           <div><span>Vertragswert netto</span><b>{selectedReport.contract.value}</b></div>
-          <div><span>Leistungen nachgewiesen</span><b>{selectedReport.completed} von {selectedReport.tasks.length}</b></div>
+          <div><span>Leistungen nachgewiesen</span><b>{reportNumberFormat.format(selectedReport.completed)} von {reportNumberFormat.format(selectedReport.tasks.length)}</b></div>
           <div><span>Erstellt am</span><b>{new Intl.DateTimeFormat("de-DE", { dateStyle: "long" }).format(new Date())}</b></div>
         </div>
-        <div className="completion-report-section-heading"><div><span>LEISTUNGSÜBERSICHT</span><h3>Vereinbarte Leistungen</h3></div><span>{selectedReport.tasks.length} Nachweise</span></div>
+        <div className="completion-report-section-heading"><div><span>LEISTUNGSÜBERSICHT</span><h3>Vereinbarte Leistungen</h3></div><span>{reportNumberFormat.format(selectedReport.tasks.length)} Nachweise</span></div>
         <div className="completion-report-items">{selectedReport.tasks.map((task, index) => <article className="completion-report-item" key={task.id}><span className="completion-report-item-number">{String(index + 1).padStart(2, "0")}</span><div className="completion-report-item-content"><h4>{task.title}</h4><div className="completion-report-evidence"><Icon name="file" size={15}/><span><small>NACHWEIS</small><strong>{task.evidence || "Nachweis erbracht"}</strong></span></div></div><span className="completion-report-item-check" aria-label="Nachgewiesen">✓</span></article>)}</div>
         <footer className="completion-report-footer"><span>Erstellt mit <strong>pacct</strong></span><span>{selectedReport.sponsor.name} · {eventTitle}</span></footer>
       </div>

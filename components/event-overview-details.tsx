@@ -4,8 +4,9 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Icon } from "@/components/ui";
 import { updateStoredEventDetails } from "@/lib/events-storage";
 import { createClient } from "@/lib/supabase/client";
+import { EventLocationFields } from "@/components/event-location-fields";
 
-type EventDetails = { title: string; startDate: string; endDate: string; location: string; responsible: string; contactFirstName: string; contactLastName: string; contactEmail: string; contactPhone: string; organizerLogoPath: string | null; organizerLogoUrl?: string | null };
+type EventDetails = { title: string; startDate: string; endDate: string; location: string; locationStreet: string; locationPostalCode: string; locationCity: string; responsible: string; contactFirstName: string; contactLastName: string; contactEmail: string; contactPhone: string; organizerLogoPath: string | null; organizerLogoUrl?: string | null };
 const maxLogoSize = 5 * 1024 * 1024;
 const organizerLogoWidth = 1200;
 const organizerLogoHeight = 400;
@@ -55,7 +56,7 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
     setLogoFile(null);
     setRemoveLogo(false);
     setReady(true);
-  }, [eventId, initialDetails.title, initialDetails.startDate, initialDetails.endDate, initialDetails.location, initialDetails.responsible, initialDetails.contactFirstName, initialDetails.contactLastName, initialDetails.contactEmail, initialDetails.contactPhone, initialDetails.organizerLogoPath, initialDetails.organizerLogoUrl]);
+  }, [eventId, initialDetails.title, initialDetails.startDate, initialDetails.endDate, initialDetails.location, initialDetails.locationStreet, initialDetails.locationPostalCode, initialDetails.locationCity, initialDetails.responsible, initialDetails.contactFirstName, initialDetails.contactLastName, initialDetails.contactEmail, initialDetails.contactPhone, initialDetails.organizerLogoPath, initialDetails.organizerLogoUrl]);
 
   useEffect(() => {
     if (!logoFile) { setLogoFilePreview(""); return; }
@@ -83,8 +84,20 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
     setMessage("");
   }
 
+  function updateLocation(value: Partial<Pick<EventDetails, "locationStreet" | "locationPostalCode" | "locationCity">>) {
+    setDraft((current) => {
+      const parts = { locationStreet: current.locationStreet, locationPostalCode: current.locationPostalCode, locationCity: current.locationCity, ...value };
+      const location = [parts.locationStreet.trim(), [parts.locationPostalCode.trim(), parts.locationCity.trim()].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      return { ...current, ...parts, location };
+    });
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!draft.locationStreet.trim() || !/^\d{5}$/.test(draft.locationPostalCode) || !draft.locationCity.trim()) {
+      setMessage("Bitte trage Straße, eine fünfstellige PLZ und den ermittelten Ort ein.");
+      return;
+    }
     setSaving(true);
     setMessage("");
     let uploadedLogoPath = "";
@@ -104,7 +117,10 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
         if (uploadError) throw uploadError;
         organizerLogoPath = uploadedLogoPath;
       }
-      const savedDraft = { ...draft, title, location: draft.location.trim(), contactFirstName: draft.contactFirstName.trim(), contactLastName: draft.contactLastName.trim(), contactEmail: draft.contactEmail.trim(), contactPhone: draft.contactPhone.trim(), organizerLogoPath };
+      const locationStreet = draft.locationStreet.trim();
+      const locationPostalCode = draft.locationPostalCode.trim();
+      const locationCity = draft.locationCity.trim();
+      const savedDraft = { ...draft, title, locationStreet, locationPostalCode, locationCity, location: [locationStreet, `${locationPostalCode} ${locationCity}`].join(", "), contactFirstName: draft.contactFirstName.trim(), contactLastName: draft.contactLastName.trim(), contactEmail: draft.contactEmail.trim(), contactPhone: draft.contactPhone.trim(), organizerLogoPath };
       const { error } = await updateStoredEventDetails(eventId, savedDraft);
       if (error) throw error;
       let organizerLogoUrl: string | null = removeLogo ? null : draft.organizerLogoUrl ?? null;
@@ -149,7 +165,7 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
               <label className="settings-field settings-field-full"><span>Event-Name *</span><input autoFocus autoComplete="off" required maxLength={100} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
               <label className="settings-field"><span>Beginn</span><input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} required /></label>
               <label className="settings-field"><span>Ende</span><input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} required /></label>
-              <label className="settings-field settings-field-full"><span>Veranstaltungsort</span><input autoComplete="off" value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} required /></label>
+              <EventLocationFields required value={{ street: draft.locationStreet, postalCode: draft.locationPostalCode, city: draft.locationCity }} onChange={(location) => updateLocation({ ...(location.street !== undefined ? { locationStreet: location.street } : {}), ...(location.postalCode !== undefined ? { locationPostalCode: location.postalCode } : {}), ...(location.city !== undefined ? { locationCity: location.city } : {}) })} />
             </div>
           </section>
           <section className="event-edit-section event-edit-contact-section">

@@ -20,9 +20,10 @@ export async function POST(request: Request, context: Context) {
     return NextResponse.json({ error: "Die Datei konnte nicht gelesen werden." }, { status: 400 });
   }
   const file = formData.get("file");
-  if (!(file instanceof File)) return NextResponse.json({ error: "Bitte wähle eine Datei aus." }, { status: 400 });
-  const validatedFile = validateSponsorUploadFile({ name: file.name, contentType: file.type, size: file.size });
-  if (!validatedFile) return NextResponse.json({ error: "Bitte lade ein PDF, Bild oder Office-Dokument mit höchstens 25 MB hoch." }, { status: 400 });
+  const brandKitFileId = String(formData.get("brandKitFileId") ?? "").trim();
+  if (!brandKitFileId && !(file instanceof File)) return NextResponse.json({ error: "Bitte wähle eine Datei aus." }, { status: 400 });
+  const validatedFile = file instanceof File ? validateSponsorUploadFile({ name: file.name, contentType: file.type, size: file.size }) : null;
+  if (!brandKitFileId && !validatedFile) return NextResponse.json({ error: "Bitte lade ein PDF, Bild oder Office-Dokument mit höchstens 25 MB hoch." }, { status: 400 });
 
   const admin = createAdminClient();
   const { data: task, error: taskError } = await admin.from("tasks")
@@ -41,13 +42,33 @@ export async function POST(request: Request, context: Context) {
   const accountIds = (memberships ?? []).map((membership) => membership.account_id);
   if (!accountIds.length) return NextResponse.json({ error: "Du hast keinen Zugriff auf diese Aufgabe." }, { status: 403 });
   const { data: assignments, error: assignmentError } = await admin.from("sponsor_event_accounts")
-    .select("event_id")
+    .select("event_id, account_id")
     .eq("event_id", task.event_id)
     .eq("sponsor_id", task.sponsor_id)
     .in("account_id", accountIds);
   if (assignmentError) return NextResponse.json({ error: "Deine Sponsor-Zuordnung konnte nicht geprüft werden." }, { status: 500 });
   if (!assignments?.length) return NextResponse.json({ error: "Du hast keinen Zugriff auf diese Aufgabe." }, { status: 403 });
   if (task.status === "Erledigt") return NextResponse.json({ error: "Diese Aufgabe ist bereits abgeschlossen." }, { status: 409 });
+
+  let uploadBody: File | Blob;
+  let fileName: string;
+  let contentType: string;
+  if (brandKitFileId) {
+    const { data: brandFile, error: brandError } = await admin.from("sponsor_brand_kit_files")
+      .select("account_id, storage_path, file_name, content_type, size_bytes")
+      .eq("id", brandKitFileId).in("account_id", (assignments ?? []).map((assignment) => assignment.account_id)).maybeSingle();
+    if (brandError) return NextResponse.json({ error: "Die Datei aus dem Brand-Kit konnte nicht geladen werden." }, { status: 500 });
+    if (!brandFile || Number(brandFile.size_bytes) > 25 * 1024 * 1024) return NextResponse.json({ error: "Diese Datei ist nicht verfügbar oder zu groß." }, { status: 404 });
+    const { data: savedFile, error: downloadError } = await admin.storage.from(sponsorUploadBucket).download(brandFile.storage_path);
+    if (downloadError || !savedFile) return NextResponse.json({ error: "Die Datei aus dem Brand-Kit konnte nicht geladen werden." }, { status: 500 });
+    uploadBody = savedFile;
+    fileName = brandFile.file_name;
+    contentType = brandFile.content_type;
+  } else {
+    uploadBody = file as File;
+    fileName = validatedFile!.fileName;
+    contentType = validatedFile!.contentType;
+  }
 
   if (task.benefit_id && task.workflow_order !== null) {
     const { data: previousTasks, error: previousError } = await admin.from("tasks")
@@ -63,9 +84,9 @@ export async function POST(request: Request, context: Context) {
     }
   }
 
-  const storagePath = `${task.organization_id}/events/${task.event_id}/evidence/${crypto.randomUUID()}-${validatedFile.fileName.replace(/[^a-zA-Z0-9._-]+/g, "-")}`;
-  const { error: storageError } = await admin.storage.from(sponsorUploadBucket).upload(storagePath, file, {
-    contentType: validatedFile.contentType,
+  const storagePath = `${task.organization_id}/events/${task.event_id}/evidence/${crypto.randomUUID()}-${fileName.replace(/[^a-zA-Z0-9._-]+/g, "-")}`;
+  const { error: storageError } = await admin.storage.from(sponsorUploadBucket).upload(storagePath, uploadBody, {
+    contentType,
     upsert: false,
   });
   if (storageError) return NextResponse.json({ error: "Die Datei konnte nicht gespeichert werden." }, { status: 500 });
@@ -76,8 +97,8 @@ export async function POST(request: Request, context: Context) {
     benefit_id: task.benefit_id,
     task_id: task.id,
     storage_path: storagePath,
-    file_name: validatedFile.fileName,
-    content_type: validatedFile.contentType,
+    file_name: fileName,
+    content_type: contentType,
     uploaded_by: user.id,
   });
   if (evidenceError) {
