@@ -4229,16 +4229,25 @@ body, .app-frame { background: var(--canvas); }
 .event-reports-data-table th:nth-child(6) { width:28%; }
 .event-reports-data-table .progress-wrap { min-width:100px; }
 .event-reports-data-table .event-report-actions { justify-content:flex-start; }
-.event-benefits-data-table { min-width:900px; }
-.event-benefits-data-table th:first-child { width:25%; }
-.event-benefits-data-table th:nth-child(2) { width:13%; }
-.event-benefits-data-table th:nth-child(3) { width:30%; }
-.event-benefits-data-table th:nth-child(4) { width:20%; }
-.event-benefits-data-table th:nth-child(5) { width:12%; }
-.event-benefit-table-progress { display:grid; gap:4px; min-width:110px; }
+.event-benefits-data-table { min-width:860px; table-layout:fixed; }
+.event-benefits-data-table th:first-child { width:36%; }
+.event-benefits-data-table th:nth-child(2) { width:28%; }
+.event-benefits-data-table th:nth-child(3) { width:21%; }
+.event-benefits-data-table th:nth-child(4) { width:15%; }
+.event-benefits-data-table tbody td { padding-top:10px; padding-bottom:10px; vertical-align:top; }
+.event-benefit-name { display:flex; align-items:center; flex-wrap:wrap; gap:5px 8px; }
+.event-benefit-name b { color:#2b4055; font-size:11px; line-height:1.35; }
+.event-benefit-kind { display:inline-flex; align-items:center; width:max-content; padding:2px 6px; border-radius:999px; background:#f0f3f6; color:#718092; font-size:9px; font-weight:600; line-height:1.3; }
+.adaptive-data-table td > small.event-benefit-description { display:-webkit-box; overflow:hidden; margin-top:3px; color:#8190a0; font-size:10px; line-height:1.35; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.event-benefit-next-step { display:grid; justify-items:start; gap:3px; min-width:0; }
+.event-benefit-next-step > span { padding:2px 6px; border-radius:999px; background:#edf4f8; color:#5d7588; font-size:9px; font-weight:650; line-height:1.3; }
+.event-benefit-next-step > b { display:-webkit-box; overflow:hidden; color:#405267; font-size:10px; font-weight:600; line-height:1.35; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.event-benefit-muted { color:#8794a1; font-size:10px; }
+.event-benefit-table-progress { display:grid; gap:3px; min-width:0; }
 .event-benefit-table-progress .progress-wrap { min-width:0; }
 .event-benefit-table-progress .progress-track { flex:1; width:auto; }
-.event-benefit-table-progress small { color:#8190a0; font-size:9px; }
+.event-benefit-table-progress .progress-num { font-size:9px; }
+.event-benefit-table-progress small { color:#8190a0; font-size:9px; line-height:1.3; }
 .table tbody tr td { background-color:#fff; border-bottom-color:#e3e9ef; }
 .table tbody tr:hover td { background-color:#eaf1f7; }
 .table thead th { background-color:#edf2f6; border-bottom-color:#dbe4ec; color:#53677a; }
