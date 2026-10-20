@@ -4455,25 +4455,20 @@ main.content:has(> .sponsor-directory-page-heading) { padding-top:20px; }
   .sponsor-directory-page-heading { margin-bottom:12px; }
 }
 
-/* Denser benefit list in the organizer's sponsor workspace. */
-.sponsor-event-detail .sponsor-benefit-cards { gap:7px; }
-.sponsor-event-detail .sponsor-benefit-card { gap:5px 10px; padding:6px 10px; border-radius:10px; }
-.sponsor-event-detail .sponsor-benefit-card-disclosure summary { grid-template-columns:10px auto minmax(0,1fr); gap:6px; }
-.sponsor-event-detail .sponsor-benefit-card-disclosure summary::before { font-size:15px; }
-.sponsor-event-detail .benefit-kind-badge { padding:3px 7px; font-size:8px; }
-.sponsor-event-detail .sponsor-benefit-card-title { gap:2px; }
-.sponsor-event-detail .sponsor-benefit-card-title b { font-size:12px; line-height:1.3; }
-.sponsor-event-detail .sponsor-benefit-card-title small { font-size:9px; line-height:1.35; }
-.sponsor-event-detail .sponsor-benefit-card-expanded { gap:6px; padding-top:6px; }
-.sponsor-event-detail .sponsor-benefit-card-details { gap:6px; }
-.sponsor-event-detail .sponsor-benefit-card-details > div { gap:3px; padding:6px 8px; }
-.sponsor-event-detail .sponsor-benefit-card-details dt { font-size:9px; }
-.sponsor-event-detail .sponsor-benefit-card-details dd { font-size:10px; line-height:1.35; }
-.sponsor-event-detail .sponsor-benefit-filters { margin-bottom:8px; }
-.sponsor-filter-tasks .benefit-task-instance-complete > summary { background:#eff7f0!important; color:#397451!important; }
-.sponsor-filter-tasks .benefit-task-instance-complete > summary:hover { background:#e8f3e9!important; }
-.sponsor-filter-tasks .benefit-task-subtask.task-completed-row { border-bottom-color:#dcebdd; background:#f3f8f3; }
-.sponsor-filter-tasks .benefit-task-subtask.task-completed-row .benefit-task-subtask-info b { color:#397451; }
-@media (max-width:760px) {
-  .sponsor-event-detail .sponsor-benefit-card { padding:6px 9px; }
+/* Compact sponsor portal benefits; the green treatment appears only after every workflow is done. */
+.sponsor-portal-agreed-benefits { gap:8px; margin-top:12px; }
+.sponsor-portal-agreed-benefit { gap:0; padding:10px 12px; border-radius:10px; }
+.sponsor-portal-agreed-benefit > header { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px 10px; }
+.sponsor-portal-agreed-benefit > header > div { gap:2px; }
+.sponsor-portal-agreed-benefit > header b { font-size:13px; line-height:1.35; }
+.sponsor-portal-agreed-benefit > header > div > span { font-size:11px; line-height:1.4; }
+.sponsor-portal-agreed-benefit > header > .sponsor-benefit-type { grid-column:1; grid-row:1; align-self:start; padding:3px 7px; }
+.sponsor-portal-agreed-benefit > header > .sponsor-benefit-status { grid-column:3; grid-row:1; padding:4px 8px; font-size:9px; }
+.sponsor-portal-agreed-benefit.is-complete { border-color:#cfe5d3; background:#f0f8f1; box-shadow:inset 3px 0 #62a675; }
+@media (max-width:700px) {
+  .sponsor-portal-agreed-benefit { padding:10px; }
+  .sponsor-portal-agreed-benefit > header { grid-template-columns:auto minmax(0,1fr); align-items:start; gap:6px 9px; }
+  .sponsor-portal-agreed-benefit > header > .sponsor-benefit-type { grid-column:1; grid-row:1; }
+  .sponsor-portal-agreed-benefit > header > div { grid-column:2; grid-row:1; }
+  .sponsor-portal-agreed-benefit > header > .sponsor-benefit-status { grid-column:2; grid-row:2; }
 }

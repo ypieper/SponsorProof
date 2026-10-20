@@ -91,17 +91,15 @@ function DemoSponsorInvoice({ sponsorName }: { sponsorName: string }) {
 
 function SponsorBenefits({ benefits }: { benefits: PortalBenefit[] }) {
   return <section className="panel sponsor-portal-detail-panel sponsor-portal-benefits-list">
-    <div className="sponsor-portal-tab-heading"><h2>Leistungen</h2><p>Hier siehst du den Fortschritt deiner vereinbarten Leistungen.</p></div>
+    <div className="sponsor-portal-tab-heading"><h2>Leistungen</h2><p>Hier findest du deine vereinbarten Leistungen für dieses Event.</p></div>
     <div className="sponsor-portal-agreed-benefits">{benefits.map((benefit) => {
       const quantity = Math.max(1, benefit.quantity || 1);
       const workflowCount = benefit.tasks_per_unit ? quantity : 1;
       const units = benefit.units.slice(0, workflowCount);
-      const completed = Math.min(workflowCount, units.filter((unit) => unit.status === "Abgeschlossen").length);
-      const progress = Math.round(completed / workflowCount * 100);
-      return <article className="sponsor-portal-agreed-benefit" key={benefit.id}>
-        <header><div><span className="sponsor-benefit-type">{benefit.benefit_type === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><b>{benefit.title}</b><span>{[benefit.description, `Anzahl: ${quantity}`].filter(Boolean).join(" · ")}</span></div><strong>{completed} von {workflowCount} Aufgabenfolgen abgeschlossen</strong></header>
-        <div className="sponsor-portal-benefit-progress" role="progressbar" aria-label={`Fortschritt ${benefit.title}`} aria-valuemin={0} aria-valuemax={workflowCount} aria-valuenow={completed}><span style={{ width: `${progress}%` }}/></div>
-        {workflowCount > 1 && <div className="sponsor-portal-benefit-progress-units">{units.map((unit) => <span className={unit.status === "Abgeschlossen" ? "done" : unit.status === "In Bearbeitung" ? "progress" : ""} key={unit.instance}>Leistung {unit.instance}: {unit.status}</span>)}</div>}
+      const complete = units.length === workflowCount && units.every((unit) => unit.status === "Abgeschlossen");
+      const status = complete ? "Abgeschlossen" : units.some((unit) => unit.status === "In Bearbeitung") ? "In Bearbeitung" : "Offen";
+      return <article className={`sponsor-portal-agreed-benefit${complete ? " is-complete" : ""}`} key={benefit.id}>
+        <header><span className="sponsor-benefit-type">{benefit.benefit_type === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><div><b>{benefit.title}</b><span>{[benefit.description, `Anzahl: ${quantity}`].filter(Boolean).join(" · ")}</span></div><span className={`sponsor-benefit-status sponsor-benefit-status-${complete ? "done" : status === "In Bearbeitung" ? "progress" : "open"}`}>{status}</span></header>
       </article>;
     })}</div>
   </section>;
