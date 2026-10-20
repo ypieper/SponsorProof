@@ -35,13 +35,12 @@ export function SponsoLogo({ markSize = 32 }: { markSize?: number }) {
   return <>
     <span className="brand-mark" style={{ width: markSize, height: markSize }} aria-hidden="true">
       <svg width="30" height="30" viewBox="0 0 64 64" fill="none">
-        <g transform="rotate(-22 32 32)" strokeLinecap="round" strokeWidth="6.5">
-          <path d="M29 19a14 14 0 1 0 0 26" stroke="#F7DCE8" />
-          <path d="M45 19a14 14 0 1 0 0 26" stroke="currentColor" />
-        </g>
+        <path d="M18 51V19a4 4 0 0 1 4-4h11a13 13 0 1 1 0 26H18" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M51 28h-5a11 11 0 1 0 0 22h5" stroke="#F9C7B9" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M37 30h5" stroke="white" strokeWidth="5" strokeLinecap="round" />
       </svg>
     </span>
-    <span>pacct</span>
+    <span className="brand-wordmark"><span>pa</span><span className="brand-wordmark-cc">cc</span><span>t</span></span>
   </>;
 }
 

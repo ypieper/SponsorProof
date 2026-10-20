@@ -40,6 +40,7 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
   const [postalCodeStatus, setPostalCodeStatus] = useState<PostalCodeStatus>("idle");
   const [contractValue, setContractValue] = useState("");
   const [savingSponsor, setSavingSponsor] = useState(false);
+  const [addedSponsor, setAddedSponsor] = useState<SponsorRecord | null>(null);
   const [databaseError, setDatabaseError] = useState("");
   const [pendingRemoval, setPendingRemoval] = useState<Sponsor | null>(null);
   const [removingSponsor, setRemovingSponsor] = useState(false);
@@ -114,6 +115,7 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
   }, [eventId, getEntitlement, loadEntitlement]);
 
   function openAddSponsorForm() {
+    setAddedSponsor(null);
     setDatabaseError("");
     setAddMode("existing");
     setSelectedSponsorId("");
@@ -145,7 +147,7 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
       }
       setDatabaseRecords((current) => [...current, result.data!].sort((a, b) => a.sponsor.name.localeCompare(b.sponsor.name, "de")));
       window.dispatchEvent(new CustomEvent("sponsorproof:event-sponsors-updated", { detail: { eventId, record: result.data } }));
-      setAddingSponsor(false);
+      setAddedSponsor(result.data);
       setMasterData(emptySponsorMasterData);
       setPostalCodeStatus("idle");
       setContractValue("");
@@ -295,10 +297,14 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
   })}</tbody></table></div>}</section>{addingSponsor && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingSponsor) setAddingSponsor(false); }}>
     <section className="create-modal add-event-sponsor-modal" role="dialog" aria-modal="true" aria-labelledby="add-event-sponsor-title">
       <div className="create-modal-head">
-        <div><h2 id="add-event-sponsor-title">Sponsor zum Event hinzufügen</h2><p>Wähle einen Sponsor aus der Bibliothek und hinterlege den Vertragswert für dieses Event.</p></div>
+        <div><h2 id="add-event-sponsor-title">{addedSponsor ? "Sponsor ist zugeordnet" : "Sponsor zum Event hinzufügen"}</h2><p>{addedSponsor ? "Als Nächstes legst du die vereinbarten Leistungen fest. Daraus kannst du anschließend Aufgaben ableiten und den Vertrag vervollständigen." : "Ordne einen Sponsor zu, lege den Vertragswert fest und ergänze danach die Leistungen – alles in einem geführten Ablauf."}</p></div>
         <button className="icon-button" type="button" aria-label="Dialog schließen" disabled={savingSponsor} onClick={() => setAddingSponsor(false)}><Icon name="close" size={16}/></button>
       </div>
-      <form onSubmit={saveSponsor}>
+      {addedSponsor ? <div className="add-sponsor-success">
+        <div className="add-sponsor-success-summary"><span className="sponsor-mark" style={{ background: addedSponsor.sponsor.color, color: "white" }}>{addedSponsor.sponsor.initials}</span><div><b>{addedSponsor.sponsor.name}</b><span>{addedSponsor.contracts.length ? `Vertragswert: ${formatContractValue(parseContractValue(addedSponsor.contracts[0].value))}` : "Sponsor dem Event zugeordnet"}</span></div><span className="add-sponsor-assignment-status"><Icon name="check" size={13}/> Zugeordnet</span></div>
+        <ol className="add-sponsor-next-steps" aria-label="Nächste Schritte"><li className="complete"><span>1</span>Sponsor zugeordnet</li><li className={addedSponsor.contracts.length ? "complete" : "pending"}><span>2</span>{addedSponsor.contracts.length ? "Vertragswert festgelegt" : "Vertragswert festlegen"}</li><li className="pending"><span>3</span>Leistungen vereinbaren</li></ol>
+        <div className="create-modal-actions"><button className="btn" type="button" onClick={() => setAddingSponsor(false)}>Später</button>{addedSponsor.contracts.length ? <Link className="btn btn-primary" href={`/events/${eventId}?tab=sponsoren&sponsor=${addedSponsor.sponsor.id}`}>Leistungen festlegen <Icon name="chevron" size={14}/></Link> : <button className="btn btn-primary" type="button" onClick={() => { setAddingSponsor(false); void openContractCreation(addedSponsor.sponsor); }}>Vertragswert festlegen <Icon name="chevron" size={14}/></button>}</div>
+      </div> : <form onSubmit={saveSponsor}>
         <div className="add-event-sponsor-content">
           {addMode === "existing" ? <>
             <div className="add-sponsor-step-heading"><span>1</span><div><h3>Sponsor auswählen</h3><p>Die Stammdaten bleiben zentral in deiner Sponsorenbibliothek.</p></div></div>
@@ -325,7 +331,7 @@ export function EventSponsorsOverview({ eventId, eventTitle = "Event", sponsors,
         </div>
         {databaseError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{databaseError}</p>}
         <div className="create-modal-actions"><button className="btn" type="button" disabled={savingSponsor} onClick={() => setAddingSponsor(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingSponsor || libraryLoading || (addMode === "new" && postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim())) || (addMode === "existing" && (!selectedSponsorId || !availableLibrarySponsors.some((record) => record.sponsor.id === selectedSponsorId)))}>{savingSponsor ? "Wird gespeichert …" : addMode === "new" ? "Sponsor anlegen & hinzufügen" : "Zum Event hinzufügen"}</button></div>
-      </form>
+      </form>}
     </section>
   </div>}{contractSponsor && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingContract) setContractSponsor(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-sponsor-contract-title"><div className="create-modal-head"><div><h2 id="create-sponsor-contract-title">Sponsor vervollständigen</h2><p>Lege für {contractSponsor.name} den Vertragswert für dieses Event fest. Danach kannst du den Vertrag und die vereinbarten Leistungen ergänzen.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={savingContract} onClick={() => setContractSponsor(null)}><Icon name="close" size={16}/></button></div><form onSubmit={saveContractForSponsor}><label className="settings-field"><span>Vertragswert netto (€) *</span><CurrencyField ariaLabel="Vertragswert netto in Euro" required value={contractValueDraft} onChange={setContractValueDraft}/></label>{databaseError && <p className="field-message error" role="alert">{databaseError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={savingContract} onClick={() => setContractSponsor(null)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingContract || !contractValueDraft.trim()}>{savingContract ? "Wird gespeichert …" : "Vertrag anlegen"}</button></div></form></section></div>}{pendingRemoval && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !removingSponsor) setPendingRemoval(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="remove-event-sponsor-title"><div className="create-modal-head"><div><h2 id="remove-event-sponsor-title">Sponsor aus Event entfernen?</h2><p>„{pendingRemoval.name}“ wird aus diesem Event entfernt. Der Vertrag und die zugehörigen Leistungen und Aufgaben werden gelöscht; die Sponsor-Stammdaten bleiben erhalten.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={removingSponsor} onClick={() => setPendingRemoval(null)}><Icon name="close" size={16}/></button></div>{databaseError && <p className="field-message error" role="alert">{databaseError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={removingSponsor} onClick={() => setPendingRemoval(null)}>Abbrechen</button><button className="btn btn-danger" type="button" disabled={removingSponsor} onClick={() => void confirmRemoveSponsor()}>{removingSponsor ? "Wird entfernt …" : "Aus Event entfernen"}</button></div></section></div>}</>;
 }

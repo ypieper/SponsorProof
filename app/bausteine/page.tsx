@@ -22,11 +22,15 @@ const blockIconLabels: Record<string, string> = {
 };
 const emptyDraft = { title: "", category: "Werbung", description: "", icon: "stack", benefitType: "monetary" as BenefitType, materialLogistics: "", internalComment: "", defaultCompletionType: "file_required" as DefaultCompletionType, tasksPerUnit: true, subtasks: [] as DraftSubtask[] };
 const completionOptions: Array<{ value: CompletionType; label: string }> = [
-  { value: "file_required", label: "Datei erforderlich" },
-  { value: "organizer_approval", label: "Bestätigung durch Veranstalter" },
-  { value: "sponsor_approval", label: "Freigabe durch Sponsor" },
-  { value: "sponsor_upload", label: "Upload durch Sponsor" },
+  { value: "file_required", label: "Veranstalter lädt eine Datei hoch" },
+  { value: "organizer_approval", label: "Veranstalter bestätigt den Schritt" },
+  { value: "sponsor_approval", label: "Sponsor prüft und gibt frei" },
+  { value: "sponsor_upload", label: "Sponsor lädt eine Datei hoch" },
 ];
+
+function completionOwner(type: CompletionType) {
+  return type === "sponsor_approval" || type === "sponsor_upload" ? "Sponsor" : "Veranstalter";
+}
 
 function allowedCompletionTypesAfter(previous: CompletionType): CompletionType[] {
   if (previous === "file_required") return ["file_required", "organizer_approval", "sponsor_upload"];
@@ -225,7 +229,31 @@ export default function LibraryPage() {
   }
 
   function removeDraftSubtask(key: string) {
+    setMessage("");
     setDraft((current) => ({ ...current, subtasks: current.subtasks.filter((task) => task.key !== key) }));
+  }
+
+  function canMoveDraftSubtask(index: number, offset: -1 | 1) {
+    const target = index + offset;
+    if (target < 0 || target >= draft.subtasks.length) return false;
+    const reordered = [...draft.subtasks];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    return invalidWorkflowTransitionIndex(reordered) < 0;
+  }
+
+  function canSetCompletionType(index: number, completionType: CompletionType) {
+    const proposed = draft.subtasks.map((task, taskIndex) => taskIndex === index ? { ...task, completionType } : task);
+    return invalidWorkflowTransitionIndex(proposed) < 0;
+  }
+
+  function moveDraftSubtask(index: number, offset: -1 | 1) {
+    const target = index + offset;
+    if (target < 0 || target >= draft.subtasks.length) return;
+    const reordered = [...draft.subtasks];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    if (invalidWorkflowTransitionIndex(reordered) >= 0) return;
+    setMessage("");
+    setDraft((current) => ({ ...current, subtasks: reordered }));
   }
 
   function deleteBlock(block: LibraryBlock) {
@@ -388,28 +416,30 @@ export default function LibraryPage() {
                 <label className="settings-field"><span>Abschlussart</span><select value={draft.defaultCompletionType} onChange={(event) => setDraft((current) => ({ ...current, defaultCompletionType: event.target.value as DefaultCompletionType }))}><option value="file_required">Datei-Upload durch Veranstalter</option><option value="organizer_approval">Bestätigung durch Veranstalter</option><option value="none_required">Keine Aufgabe erforderlich</option></select></label>
                 <small>Diese Abschlussart gilt für die gesamte Leistung, solange keine Unteraufgaben angelegt sind.</small>
               </div>}
-              <label className="settings-checkbox benefit-template-task-frequency"><input type="checkbox" checked={draft.tasksPerUnit} onChange={(event) => setDraft((current) => ({ ...current, tasksPerUnit: event.target.checked }))}/><span><b>Aufgabenfolge je Einheit erstellen</b><small>Die Anzahl legst du bei der Zuordnung der Leistung im Event fest. Aktiv: Für jede Einheit entsteht eine eigene Aufgabenfolge. Deaktiviert: Eine Aufgabenfolge gilt für die gesamte Menge, z. B. eine Aufgabe für 20 Freikarten.</small></span></label>
+              <label className="settings-checkbox benefit-template-task-frequency"><input type="checkbox" checked={draft.tasksPerUnit} onChange={(event) => setDraft((current) => ({ ...current, tasksPerUnit: event.target.checked }))}/><span><b>Eigene Aufgabenfolge für jede Einheit</b><small>{draft.tasksPerUnit ? "Aktiv: Bei mehreren Einheiten wird dieser Ablauf für jede einzeln erstellt." : "Aus: Eine Aufgabenfolge gilt für die gesamte Menge, zum Beispiel ein Upload für 20 Freikarten."} Die Anzahl legst du später im Event fest.</small></span></label>
               <div className="benefit-template-subtasks">
                 <div className="benefit-template-subtasks-heading">
-                  <div><b>Unteraufgaben</b><p>Mehrere Schritte werden nacheinander gestartet. Bearbeiter und Fälligkeit legst du später im Event fest.</p></div>
-                  <button className="btn" type="button" onClick={addDraftSubtask} disabled={subtasksUnavailable}><Icon name="plus" size={14}/> Unteraufgabe hinzufügen</button>
+                  <div><b>Aufgabenfolge</b><p>Jeder Schritt wird nach dem vorherigen freigeschaltet. Zuständigkeiten und Fälligkeiten planst du später im Event.</p></div>
+                  <button className="btn" type="button" onClick={() => { setMessage(""); addDraftSubtask(); }} disabled={subtasksUnavailable}><Icon name="plus" size={14}/> Schritt hinzufügen</button>
                 </div>
                 {subtasksUnavailable && <p className="block-editor-migration-note">Unteraufgaben sind verfügbar, sobald die aktuelle Datenbankmigration eingespielt ist.</p>}
-                <div className="benefit-template-workflow-warning block-editor-workflow-warning"><b>Beachte bitte:</b><span>Datei-Uploads benötigen eine Veranstalter-Freigabe. Erst danach kann eine Sponsor-Freigabe folgen. Eine Sponsor-Freigabe-Aufgabe kann daher niemals direkt auf eine Datei-Aufgabe folgen.</span></div>
+                <div className="benefit-template-workflow-warning block-editor-workflow-warning"><b>So funktioniert die Reihenfolge</b><span>Der erste Schritt startet nach der Zuordnung im Event. Jeder weitere wird nach Abschluss des vorherigen freigeschaltet. Nicht unterstützte Übergänge werden automatisch verhindert.</span></div>
                 {draft.subtasks.length > 0 && <div className="benefit-template-subtask-list">{draft.subtasks.map((task, index) => {
-                  const allowed = index === 0 ? completionOptions.filter((option) => option.value !== "sponsor_approval").map((option) => option.value) : allowedCompletionTypesAfter(draft.subtasks[index - 1].completionType);
                   return <div className="benefit-template-subtask-row" key={task.key}>
-                    <span className="block-editor-subtask-number">{index + 1}</span>
-                    <div className="benefit-template-subtask-fields">
+                    <span className="block-editor-subtask-number" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                    <div className="benefit-template-subtask-card">
+                      <div className="benefit-template-step-heading"><div><b>Schritt {index + 1}</b><small>{index === 0 ? "Startet nach Zuordnung im Event" : `Wird nach Schritt ${index} freigeschaltet${draft.subtasks[index - 1].title ? ` · ${draft.subtasks[index - 1].title}` : ""}`}</small></div><span className={`benefit-template-step-owner ${completionOwner(task.completionType) === "Sponsor" ? "sponsor" : "organizer"}`}>{completionOwner(task.completionType)}</span></div>
+                      <div className="benefit-template-subtask-fields">
                       <div className="benefit-template-subtask-title">
-                        <label className="settings-field"><span>Aufgabenbezeichnung</span><input aria-label={`Unteraufgabe ${index + 1}`} required maxLength={100} value={task.title} onChange={(event) => updateDraftSubtask(task.key, event.target.value)} placeholder="z. B. Logo abstimmen und veröffentlichen"/></label>
-                        <small className="subtask-dependency-hint">{index === 0 ? "Startet sofort" : `Startet nach Abschluss von: ${draft.subtasks[index - 1].title || `Unteraufgabe ${index}`}`}</small>
+                        <label className="settings-field"><span>Was soll passieren? *</span><input aria-label={`Aufgabe in Schritt ${index + 1}`} required maxLength={100} value={task.title} onChange={(event) => updateDraftSubtask(task.key, event.target.value)} placeholder="z. B. Logo für die Website bereitstellen"/></label>
                       </div>
-                      <label className="settings-field"><span>Abschlussart</span><select value={task.completionType} onChange={(event) => setDraft((current) => ({ ...current, subtasks: current.subtasks.map((item) => item.key === task.key ? { ...item, completionType: event.target.value as CompletionType } : item) }))}>{completionOptions.map((option) => <option key={option.value} value={option.value} disabled={!allowed.includes(option.value)}>{option.label}{!allowed.includes(option.value) ? " (nicht möglich)" : ""}</option>)}</select></label>
+                      <label className="settings-field"><span>Wer erledigt und schließt ab?</span><select value={task.completionType} onChange={(event) => setDraft((current) => ({ ...current, subtasks: current.subtasks.map((item) => item.key === task.key ? { ...item, completionType: event.target.value as CompletionType } : item) }))}>{completionOptions.map((option) => { const allowed = canSetCompletionType(index, option.value); return <option key={option.value} value={option.value} disabled={!allowed}>{option.label}{!allowed ? " · in dieser Reihenfolge nicht möglich" : ""}</option>; })}</select></label>
+                      </div>
                     </div>
-                    <button className="icon-button" type="button" aria-label={`Unteraufgabe ${index + 1} entfernen`} onClick={() => removeDraftSubtask(task.key)}><Icon name="trash" size={14}/></button>
+                    <div className="benefit-template-step-controls"><button className="icon-button" type="button" aria-label={`Schritt ${index + 1} nach oben verschieben`} title="Nach oben verschieben" disabled={!canMoveDraftSubtask(index, -1)} onClick={() => moveDraftSubtask(index, -1)}><Icon name="chevron" size={14}/></button><button className="icon-button" type="button" aria-label={`Schritt ${index + 1} nach unten verschieben`} title="Nach unten verschieben" disabled={!canMoveDraftSubtask(index, 1)} onClick={() => moveDraftSubtask(index, 1)}><Icon name="chevron" size={14}/></button><button className="icon-button benefit-template-step-remove" type="button" aria-label={`Schritt ${index + 1} entfernen`} title="Schritt entfernen" onClick={() => removeDraftSubtask(task.key)}><Icon name="trash" size={14}/></button></div>
                   </div>;
                 })}</div>}
+                {draft.subtasks.length > 0 && <div className="benefit-template-workflow-preview"><b>Ablaufvorschau</b><ol>{draft.subtasks.map((task, index) => <li key={task.key}><span>{index + 1}</span><div><strong>{task.title.trim() || `Schritt ${index + 1}`}</strong><small>{completionOwner(task.completionType)}</small></div></li>)}</ol><small>Im Event wird zuerst Schritt 1 freigeschaltet. Weitere Schritte folgen nacheinander.</small></div>}
                 {invalidWorkflowTransitionIndex(draft.subtasks) >= 0 && <p className="form-error" role="alert">{invalidWorkflowTransitionIndex(draft.subtasks) === 0 ? "Die erste Unteraufgabe kann keine Sponsor-Freigabe sein, da dafür zuerst ein Dokument vorliegen muss." : "Diese Aufgabenfolge ist nicht möglich. Nach einem Sponsor-Upload kann nur eine Veranstalter-Bestätigung oder ein Datei-Upload folgen."}</p>}
               </div>
             </section>
