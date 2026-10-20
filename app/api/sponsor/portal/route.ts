@@ -2,24 +2,61 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return NextResponse.json({ error: "Bitte melde dich erneut an." }, { status: 401 });
+
+  const profileName = {
+    firstName: String(user.user_metadata?.first_name ?? "").trim(),
+    lastName: String(user.user_metadata?.last_name ?? "").trim(),
+  };
+  const profileRequired = !profileName.firstName || !profileName.lastName;
+  const searchParams = new URL(request.url).searchParams;
+  const requestedEventId = searchParams.get("eventId");
+  const summaryOnly = searchParams.get("summary") === "1" && !requestedEventId;
+  if (profileRequired) return NextResponse.json({ profileRequired, profileName, events: [] }, { headers: { "Cache-Control": "no-store" } });
 
   try {
     const admin = createAdminClient();
     const { data: memberships, error: membershipError } = await admin.from("sponsor_account_members").select("account_id").eq("user_id", user.id);
     if (membershipError) throw membershipError;
     const accountIds = (memberships ?? []).map((item) => item.account_id);
-    if (!accountIds.length) return NextResponse.json({ events: [] }, { headers: { "Cache-Control": "no-store" } });
+    if (!accountIds.length) return NextResponse.json({ profileRequired, profileName, events: [] }, { headers: { "Cache-Control": "no-store" } });
 
-    const { data: assignments, error: assignmentError } = await admin.from("sponsor_event_accounts").select("event_id, sponsor_id, account_id").in("account_id", accountIds);
+    const { data: allAssignments, error: assignmentError } = await admin.from("sponsor_event_accounts").select("event_id, sponsor_id, account_id").in("account_id", accountIds);
     if (assignmentError) throw assignmentError;
-    if (!assignments?.length) return NextResponse.json({ events: [] }, { headers: { "Cache-Control": "no-store" } });
+    const assignments = (allAssignments ?? []).filter((assignment) => !requestedEventId || assignment.event_id === requestedEventId);
+    if (!assignments.length) return NextResponse.json({ profileRequired, profileName, events: [] }, { headers: { "Cache-Control": "no-store" } });
 
     const eventIds = [...new Set(assignments.map((item) => item.event_id))];
     const sponsorIds = [...new Set(assignments.map((item) => item.sponsor_id))];
+    if (summaryOnly) {
+      const [eventsResult, benefitsResult] = await Promise.all([
+        admin.from("events").select("id, title, start_date, end_date, location, organizer_logo_path").in("id", eventIds),
+        admin.from("benefits").select("id, event_id, sponsor_id").in("event_id", eventIds).in("sponsor_id", sponsorIds),
+      ]);
+      if (eventsResult.error || benefitsResult.error) throw eventsResult.error ?? benefitsResult.error;
+      const allowedAssignments = new Set(assignments.map((assignment) => `${assignment.event_id}:${assignment.sponsor_id}`));
+      const benefitCounts = new Map<string, number>();
+      for (const benefit of benefitsResult.data ?? []) {
+        if (allowedAssignments.has(`${benefit.event_id}:${benefit.sponsor_id}`)) {
+          benefitCounts.set(benefit.event_id, (benefitCounts.get(benefit.event_id) ?? 0) + 1);
+        }
+      }
+      const events = await Promise.all((eventsResult.data ?? []).map(async (event) => {
+        const { organizer_logo_path, ...eventData } = event;
+        const { data: logo } = organizer_logo_path
+          ? await admin.storage.from("sponsorproof-files").createSignedUrl(organizer_logo_path, 60 * 60 * 24)
+          : { data: null };
+        return {
+          ...eventData,
+          organizer_logo_url: logo?.signedUrl ?? null,
+          benefit_count: benefitCounts.get(event.id) ?? 0,
+        };
+      }));
+      return NextResponse.json({ profileRequired, profileName, events }, { headers: { "Cache-Control": "no-store" } });
+    }
     const [eventsResult, sponsorsResult, contractsResult, taskResult, benefitResult] = await Promise.all([
       admin.from("events").select("id, organization_id, title, start_date, end_date, location, organizer_logo_path, contact_first_name, contact_last_name, contact_email, contact_phone").in("id", eventIds),
       admin.from("sponsors").select("id, name").in("id", sponsorIds),
@@ -225,7 +262,7 @@ export async function GET() {
       })),
     };
     }));
-    return NextResponse.json({ events: eventsWithLogos }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ profileRequired, profileName, events: eventsWithLogos }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Dein Sponsor-Bereich konnte nicht geladen werden." }, { status: 500 });
   }

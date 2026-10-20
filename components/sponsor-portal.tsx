@@ -28,6 +28,7 @@ type PortalBenefit = { id: string; title: string; benefit_type: "monetary" | "in
 type PortalApproval = PortalTask;
 type PortalPartnership = { sponsor_id: string; sponsor_name: string; tasks: PortalStandaloneTask[]; contracts: PortalContract[]; benefits: PortalBenefit[] };
 type PortalEvent = { id: string; title: string; start_date: string | null; end_date: string | null; location: string; organizer_logo_url: string | null; organizer_name: string; contact_first_name: string; contact_last_name: string; contact_email: string; contact_phone: string; signature_addon_enabled: boolean; sponsor_assignments: PortalPartnership[] };
+type PortalEventSummary = Pick<PortalEvent, "id" | "title" | "start_date" | "end_date" | "location" | "organizer_logo_url"> & { benefit_count: number };
 
 const demoFile: PortalFile = { id: "demo-document", file_name: "Beispiel-Nachweis.pdf", content_type: "application/pdf", created_at: "2026-10-17T12:22:00.000Z", url: "/downloads/pacct-muster-vertriebspartnervereinbarung.pdf" };
 const demoPortalEvent: PortalEvent = {
@@ -178,6 +179,7 @@ function SponsorUploadTaskCard({ task, benefitName, busy, disabled, onUpload }: 
 
 export function SponsorPortal({ eventId, demoMode = false }: { eventId?: string; demoMode?: boolean }) {
   const [events, setEvents] = useState<PortalEvent[]>(() => demoMode ? [demoPortalEvent] : []);
+  const [eventSummaries, setEventSummaries] = useState<PortalEventSummary[]>([]);
   const [loading, setLoading] = useState(!demoMode);
   const [profileRequired, setProfileRequired] = useState(false);
   const [profileName, setProfileName] = useState({ firstName: "", lastName: "" });
@@ -217,13 +219,13 @@ export function SponsorPortal({ eventId, demoMode = false }: { eventId?: string;
   const canShowTasks = activeManualTasks.length > 0 || hasSignedContract;
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const isEventCompleted = (event: PortalEvent) => {
+  const isEventCompleted = (event: Pick<PortalEvent, "start_date" | "end_date">) => {
     const lastEventDate = event.end_date || event.start_date;
     return Boolean(lastEventDate && lastEventDate < todayKey);
   };
-  const ongoingEvents = events.filter((event) => !isEventCompleted(event));
-  const completedEvents = events.filter(isEventCompleted);
-  const visibleEvents = eventListTab === "ongoing" ? ongoingEvents : completedEvents;
+  const ongoingSummaryEvents = eventSummaries.filter((event) => !isEventCompleted(event));
+  const completedSummaryEvents = eventSummaries.filter(isEventCompleted);
+  const visibleSummaryEvents = eventListTab === "ongoing" ? ongoingSummaryEvents : completedSummaryEvents;
   const displayedTab = activeTab === "documents" ? "documents" : activeTab === "tasks" && canShowTasks ? "tasks" : activeTab === "benefits" && canShowBenefits ? "benefits" : !hasSignedContract
     ? "contract"
     : activeTab === "tasks" && !canShowTasks
@@ -235,39 +237,21 @@ export function SponsorPortal({ eventId, demoMode = false }: { eventId?: string;
     if (showLoading) setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/sponsor/portal", { cache: "no-store" });
+      const query = eventId ? `?eventId=${encodeURIComponent(eventId)}` : "?summary=1";
+      const response = await fetch(`/api/sponsor/portal${query}`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Dein Sponsor-Bereich konnte nicht geladen werden.");
-      setEvents(result.events ?? []);
+      setProfileRequired(Boolean(result.profileRequired));
+      if (result.profileName) setProfileName(result.profileName);
+      if (eventId) setEvents(result.events ?? []);
+      else setEventSummaries(result.events ?? []);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Dein Sponsor-Bereich konnte nicht geladen werden.");
     } finally { if (showLoading) setLoading(false); }
-  }, []);
+  }, [eventId]);
   useEffect(() => {
     if (demoMode) return;
-    let active = true;
-    void createClient().auth.getUser().then(async ({ data, error: userError }) => {
-      if (!active) return;
-      if (userError || !data.user) {
-        setError("Bitte melde dich erneut an, um deinen Sponsor-Bereich zu öffnen.");
-        setLoading(false);
-        return;
-      }
-      const firstName = String(data.user.user_metadata?.first_name ?? "").trim();
-      const lastName = String(data.user.user_metadata?.last_name ?? "").trim();
-      setProfileName({ firstName, lastName });
-      if (!firstName || !lastName) {
-        setProfileRequired(true);
-        setLoading(false);
-        return;
-      }
-      await load();
-    }).catch(() => {
-      if (!active) return;
-      setError("Dein Profil konnte nicht geladen werden. Bitte melde dich erneut an.");
-      setLoading(false);
-    });
-    return () => { active = false; };
+    void load();
   }, [demoMode, load]);
   useEffect(() => {
     if (demoMode) return;
@@ -276,7 +260,7 @@ export function SponsorPortal({ eventId, demoMode = false }: { eventId?: string;
     let cancelled = false;
     const refreshContracts = async () => {
       try {
-        const response = await fetch("/api/sponsor/portal", { cache: "no-store" });
+        const response = await fetch(`/api/sponsor/portal?eventId=${encodeURIComponent(eventId ?? "")}`, { cache: "no-store" });
         if (!response.ok || cancelled) return;
         const result = await response.json();
         if (!cancelled) setEvents(result.events ?? []);
@@ -286,7 +270,7 @@ export function SponsorPortal({ eventId, demoMode = false }: { eventId?: string;
     };
     const interval = window.setInterval(() => { void refreshContracts(); }, 15000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [demoMode, events]);
+  }, [demoMode, eventId, events]);
   useEffect(() => {
     if (demoMode) {
       setActiveTab("tasks");
@@ -484,18 +468,17 @@ export function SponsorPortal({ eventId, demoMode = false }: { eventId?: string;
         <FirstLoginWalkthrough audience="sponsor" />
         {error && <p className="field-message error" role="alert">{error}</p>}{message && <p className="field-message success" role="status">{message}</p>}
         <form className="panel sponsor-invite-form" onSubmit={(event) => void redeemInvite(event)}><label htmlFor="sponsor-invite-code"><b>Event mit Einladungscode freischalten</b><span>Der Code verknüpft genau deine Sponsor-Zuordnung in diesem Event. Leerzeichen und Groß-/Kleinschreibung sind egal.</span></label><div><input id="sponsor-invite-code" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={96} value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Einladungscode eingeben" required/><button className="btn btn-primary" type="submit" disabled={redeeming}>{redeeming ? "Wird verknüpft …" : "Event freischalten"}</button></div></form>
-        {loading ? <section className="panel"><p className="task-empty">Deine Partnerschaften werden geladen …</p></section> : events.length ? <>
+        {loading ? <section className="panel"><p className="task-empty">Deine Partnerschaften werden geladen …</p></section> : eventSummaries.length ? <>
           <div className="sponsor-portal-event-list-tabs" role="tablist" aria-label="Events nach Status">
-            <button type="button" role="tab" id="sponsor-events-ongoing-tab" aria-selected={eventListTab === "ongoing"} aria-controls="sponsor-events-panel" className={eventListTab === "ongoing" ? "active" : ""} onClick={() => setEventListTab("ongoing")}>Laufende Events<span>{ongoingEvents.length}</span></button>
-            <button type="button" role="tab" id="sponsor-events-completed-tab" aria-selected={eventListTab === "completed"} aria-controls="sponsor-events-panel" className={eventListTab === "completed" ? "active" : ""} onClick={() => setEventListTab("completed")}>Abgeschlossene Events<span>{completedEvents.length}</span></button>
+            <button type="button" role="tab" id="sponsor-events-ongoing-tab" aria-selected={eventListTab === "ongoing"} aria-controls="sponsor-events-panel" className={eventListTab === "ongoing" ? "active" : ""} onClick={() => setEventListTab("ongoing")}>Laufende Events<span>{ongoingSummaryEvents.length}</span></button>
+            <button type="button" role="tab" id="sponsor-events-completed-tab" aria-selected={eventListTab === "completed"} aria-controls="sponsor-events-panel" className={eventListTab === "completed" ? "active" : ""} onClick={() => setEventListTab("completed")}>Abgeschlossene Events<span>{completedSummaryEvents.length}</span></button>
           </div>
-          {visibleEvents.length ? <div className="sponsor-portal-event-list" id="sponsor-events-panel" role="tabpanel" aria-labelledby={eventListTab === "ongoing" ? "sponsor-events-ongoing-tab" : "sponsor-events-completed-tab"}>{visibleEvents.map((event) => {
-          const benefitCount = event.sponsor_assignments.reduce((sum, assignment) => sum + assignment.benefits.length, 0);
+          {visibleSummaryEvents.length ? <div className="sponsor-portal-event-list" id="sponsor-events-panel" role="tabpanel" aria-labelledby={eventListTab === "ongoing" ? "sponsor-events-ongoing-tab" : "sponsor-events-completed-tab"}>{visibleSummaryEvents.map((event) => {
+          const benefitCount = event.benefit_count;
           return <Link className="sponsor-portal-event-card" href={`/sponsor/events/${event.id}`} key={event.id}>
             {event.organizer_logo_url ? <img className="sponsor-portal-event-card-logo" src={event.organizer_logo_url} alt={`Logo ${event.title}`} /> : <span className="sponsor-portal-event-card-logo sponsor-portal-event-card-logo-placeholder" aria-hidden="true">{event.title.slice(0, 1).toLocaleUpperCase("de-DE")}</span>}
             <span className="sponsor-portal-event-card-copy"><b>{event.title}</b><small>{[event.start_date && new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(`${event.start_date}T00:00:00`)), event.location].filter(Boolean).join(" · ") || "Event"}</small></span>
             <span className="sponsor-portal-event-card-stats" aria-label="Eventübersicht">
-              {event.sponsor_assignments.length > 1 && <span><b>{event.sponsor_assignments.length}</b><small>Sponsor-Zuordnungen</small></span>}
               <span className="sponsor-portal-benefit-count-badge"><b>{benefitCount}</b><small>Leistungen</small></span>
             </span>
             <span className="sponsor-portal-event-card-arrow" aria-hidden="true">→</span>
