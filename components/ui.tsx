@@ -35,10 +35,10 @@ export function SponsoLogo({ markSize = 32 }: { markSize?: number }) {
   return <>
     <span className="brand-mark" style={{ width: markSize, height: markSize }} aria-hidden="true">
       <svg width="23" height="23" viewBox="0 0 32 32" fill="none">
-        <path d="M23.4 10.7c-1.8-1.8-4.5-2.7-7.3-2.7-4.3 0-7.2 2.1-7.2 5.2 0 2.7 2.1 4.1 6.8 5l1.8.3c4.2.8 6.3 2.1 6.3 4.8 0 3.1-2.9 5.2-7.6 5.2-3.2 0-5.9-1-7.8-2.9" stroke="currentColor" strokeWidth="3.1" strokeLinecap="round" />
+        <path d="M10 26V7h7a6 6 0 0 1 0 12h-7" stroke="currentColor" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
-    <span>sponso</span>
+    <span>pacct</span>
   </>;
 }
 

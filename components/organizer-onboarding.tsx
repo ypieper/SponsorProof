@@ -124,5 +124,5 @@ export function OrganizerOnboarding() {
       {error && <p className="field-message error" role="alert">{error}</p>}
       <button className="btn btn-primary onboarding-submit" type="submit" disabled={saving || loading || (data.requiresOrganizationDetails && postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && data.organization.city.trim()))}>{saving ? "Angaben werden gespeichert …" : "Angaben speichern und weiter"}<Icon name="arrow" size={15}/></button>
     </form>}
-  </section><p className="onboarding-footer">Deine Angaben werden sicher in sponso gespeichert.</p></main>;
+  </section><p className="onboarding-footer">Deine Angaben werden sicher in pacct gespeichert.</p></main>;
 }

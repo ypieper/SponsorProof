@@ -154,7 +154,7 @@ export function WorkspaceDataExport() {
         files: fileManifest,
       }, null, 2));
       zip.file("LESE-MICH.txt", [
-        "sponso – vollständiger Datenexport",
+        "pacct – vollständiger Datenexport",
         `Veranstalterbereich: ${organizationName}`,
         `Erstellt am: ${new Intl.DateTimeFormat("de-DE", { dateStyle: "long", timeStyle: "short" }).format(new Date(exportedAt))}`,
         "",
@@ -167,7 +167,7 @@ export function WorkspaceDataExport() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `sponso-export-${new Date().toISOString().slice(0, 10)}-${safeFilename(organizationName)}.zip`;
+      anchor.download = `pacct-export-${new Date().toISOString().slice(0, 10)}-${safeFilename(organizationName)}.zip`;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       setMessage(`Export abgeschlossen: ${Object.values(tables).reduce((sum, rows) => sum + rows.length, 0)} Datensätze und ${files.length} Dateien.`);

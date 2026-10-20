@@ -9,7 +9,7 @@ type Audience = "organizer" | "sponsor";
 
 const walkthroughs = {
   organizer: {
-    title: "Dein Start mit sponso",
+    title: "Dein Start mit pacct",
     intro: "In drei kurzen Schritten findest du dich in deinem Veranstalterbereich zurecht.",
     steps: [
       { title: "Event anlegen", text: "Lege eine Veranstaltung an. Dort bündelst du Sponsoren, Vereinbarungen und den Fortschritt.", href: "/events", link: "Zu den Events", icon: "calendar" },

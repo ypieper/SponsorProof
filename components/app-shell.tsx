@@ -103,7 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       : path === "/admin/commission-rules" ? "Provisionsregeln"
       : path.startsWith("/admin") ? "Administration"
       : "Sponsoring verwalten";
-    document.title = `${title} | sponso`;
+    document.title = `${title} | pacct`;
   }, [path]);
 
   if (path.startsWith("/login") || path === "/admin/login" || path === "/onboarding" || path === "/partner" || path === "/sponsor" || path.startsWith("/sponsor/")) return <>{children}</>;
@@ -112,7 +112,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (isMobileMode) return <>{children}</>;
   return <div className="app-frame">
     <aside className="sidebar">
-      <Link href={adminNavigationOnly ? "/admin/users" : "/dashboard"} className="brand" aria-label={adminNavigationOnly ? "sponso Administration" : "sponso Übersicht öffnen"}><SponsoLogo /></Link>
+      <Link href={adminNavigationOnly ? "/admin/users" : "/dashboard"} className="brand" aria-label={adminNavigationOnly ? "pacct Administration" : "pacct Übersicht öffnen"}><SponsoLogo /></Link>
       <div className="nav-label">{adminNavigationOnly ? "Plattform" : "Veranstalterbereich"}</div>
       <nav className="nav-list">{adminNavigationOnly ? adminNavigation.map((item) => {
         const active = path === item.href || (item.href !== "/admin/users" && path.startsWith(`${item.href}/`));
@@ -130,7 +130,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className={`main-area ${path === "/dashboard" ? "dashboard-main-area" : ""}`}>
       <header className="topbar"><MobileMenu isPlatformAdmin={adminNavigationOnly} isSalesPartner={isSalesPartner}/><div className="crumb">{adminNavigationOnly ? "Plattform" : "Veranstalterbereich"} <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? (adminNavigation.find((item) => item.href === path)?.label ?? "Benutzer") : path === "/dashboard" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Vertragsbausteine" : path.includes("einstellungen") ? "Einstellungen" : "Veranstalterbereich"}</b></div><div className="top-actions">{!adminNavigationOnly && <><Link className="btn top-event-mode-link" href="/event-modus" aria-label="Event-Modus öffnen" title="Event-Modus öffnen"><Icon name="camera" size={15}/><span>Event-Modus öffnen</span></Link><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link></>}<LogoutButton/></div></header>
       {children}
-      <footer className="app-footer"><span>© {new Date().getFullYear()} sponso</span><nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
+      <footer className="app-footer"><span>© {new Date().getFullYear()} pacct</span><nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
     </div>
   </div>;
 }

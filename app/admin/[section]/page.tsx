@@ -4,7 +4,7 @@ import { privatePageMetadata } from "@/lib/seo";
 import { getAuthorizedPlatformAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
-export const metadata = privatePageMetadata("Plattformverwaltung", "Verwalte die sponso-Plattform.");
+export const metadata = privatePageMetadata("Plattformverwaltung", "Verwalte die pacct-Plattform.");
 
 const sections: Record<string, AdminSection> = {
   users: "users",

@@ -88,7 +88,7 @@ export function MobileMenu({ isPlatformAdmin = false, isSalesPartner = false }: 
       <div className="mobile-menu-backdrop" aria-hidden="true" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}/>
       <div className="mobile-drawer" id="mobile-primary-navigation">
         <div className="mobile-drawer-head">
-          <Link href={isPlatformAdmin ? "/admin/users" : "/dashboard"} className="brand" aria-label={isPlatformAdmin ? "sponso Administration" : "sponso Übersicht öffnen"}><SponsoLogo /></Link>
+          <Link href={isPlatformAdmin ? "/admin/users" : "/dashboard"} className="brand" aria-label={isPlatformAdmin ? "pacct Administration" : "pacct Übersicht öffnen"}><SponsoLogo /></Link>
           <button ref={closeRef} className="icon-button" type="button" aria-label="Menü schließen" onClick={() => { setOpen(false); toggleRef.current?.focus(); }}><Icon name="close" size={17}/></button>
         </div>
         <div className="nav-label">{isPlatformAdmin ? "Plattform" : "Veranstalterbereich"}</div>
