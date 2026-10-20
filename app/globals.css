@@ -4167,3 +4167,38 @@ body, .app-frame { background: var(--canvas); }
   .btn-primary, .nav-link.active { transition: transform .18s ease, box-shadow .18s ease, background .18s ease; }
   .btn-primary:hover { transform: translateY(-1px); }
 }
+
+/* Keep the event identity and milestones compact so the active workspace gets more room. */
+main.content > .page-heading:has(.event-heading-actions) {
+  gap: 12px;
+  margin-bottom: 14px;
+}
+main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main { gap: 11px; }
+main.content > .page-heading:has(.event-heading-actions) .event-page-logo { width: 84px; height: 42px; padding: 4px 7px; }
+main.content > .page-heading:has(.event-heading-actions) .eyebrow { margin-bottom: 3px; font-size: 9px; }
+main.content > .page-heading:has(.event-heading-actions) h1 { font-size: clamp(22px, 2vw, 27px); line-height: 1.1; }
+main.content > .page-heading:has(.event-heading-actions) .subtitle { margin-top: 4px; font-size: 11px; line-height: 1.35; }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-actions { gap: 7px; }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-actions .btn { height: 34px; padding-inline: 10px; font-size: 11px; }
+main.content > .page-heading:has(.event-heading-actions) .event-lifecycle-status,
+main.content > .page-heading:has(.event-heading-actions) .event-plan-badge { min-height: 22px; padding: 3px 7px; font-size: 9px; }
+.event-timeline { margin-bottom: 12px; padding: 11px 14px; border-radius: 12px; }
+.event-timeline-steps { padding: 1px 0; }
+.event-timeline-step { gap: 4px; padding-inline: 5px; }
+.event-timeline-step:not(:last-child)::after { top: 10px; }
+.event-timeline-node { width: 22px; height: 22px; }
+.event-timeline-node svg { width: 11px; height: 11px; }
+.event-timeline-step b { font-size: 10px; line-height: 1.25; }
+.event-timeline-step small { font-size: 9px; line-height: 1.25; }
+@media (max-width: 700px) {
+  main.content > .page-heading:has(.event-heading-actions) { gap: 10px; margin-bottom: 12px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main { gap: 9px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-page-logo { width: 66px; height: 38px; }
+  main.content > .page-heading:has(.event-heading-actions) h1 { font-size: 22px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-heading-actions { gap: 6px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-heading-actions .btn { height: 32px; }
+  .event-timeline { margin: 0 -4px 10px; padding: 9px 10px; }
+  .event-timeline-steps { min-width: 720px; }
+  .event-timeline-step b { font-size: 9px; }
+  .event-timeline-step small { font-size: 8px; }
+}
