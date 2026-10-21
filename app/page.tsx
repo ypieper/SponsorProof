@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { PublicPageFrame } from "@/components/public-page-frame";
 import { LandingMotion } from "./landing/landing-motion";
@@ -49,6 +50,12 @@ const eventPackageFeatures = [
   "Leistungsberichte je Sponsor erstellen",
 ];
 
+const references = [
+  { name: "Die Glühwerkstatt", logo: "/references/die-gluehwerkstatt.png", width: 1210, height: 450, style: "gluehwerkstatt" },
+  { name: "Waikiki Open-Air", logo: "/references/waikiki-open-air.png", width: 1689, height: 1654, style: "waikiki" },
+  { name: "Filme mit Freunden", logo: "/references/filme-mit-freunden.png", width: 1820, height: 1820, style: "filme" },
+];
+
 export default function LandingPage() {
   return <PublicPageFrame brandHref="/">
     <LandingMotion><main className="landing-page">
@@ -81,6 +88,22 @@ export default function LandingPage() {
             <div className="landing-flow-row"><span className="landing-flow-icon proof">▣</span><div><b>Nachweise</b><small>Dokumentiert & gebündelt</small></div><span className="landing-flow-check">✓</span></div>
             <div className="landing-flow-footer"><span className="landing-flow-dot"/>Ein gemeinsamer Stand für alle</div>
           </div>
+        </div>
+      </section>
+
+      <section className="landing-references" aria-labelledby="landing-references-title">
+        <div className="landing-references-heading landing-reveal">
+          <span className="landing-eyebrow">REFERENZEN</span>
+          <h2 id="landing-references-title">Für echte Events gemacht.</h2>
+          <p>Diese Veranstaltungen nutzen pacct für ihre Sponsoringarbeit.</p>
+        </div>
+        <div className="landing-references-grid">
+          {references.map((reference, index) => <figure className={`landing-reference landing-reveal landing-reveal-delay-${index + 1}`} key={reference.name}>
+            <div className={`landing-reference-logo landing-reference-logo-${reference.style}`}>
+              <Image src={reference.logo} alt={`Logo von ${reference.name}`} width={reference.width} height={reference.height} sizes="(max-width: 700px) 80vw, 320px" />
+            </div>
+            <figcaption>{reference.name}</figcaption>
+          </figure>)}
         </div>
       </section>
 
