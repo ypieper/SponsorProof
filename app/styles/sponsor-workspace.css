@@ -139,14 +139,14 @@
 .sponsor-task-brand-kit-options > button small { color:#84919c; font-size:9px; }
 .sponsor-task-brand-kit-preview { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .sponsor-task-brand-kit-preview a { color:var(--accent-strong); font-size:11px; }
-.sponsor-portal-content { width: min(100% - 64px, 1240px); margin: 0 auto; padding: clamp(30px, 4vw, 52px) 0; }
+.sponsor-portal-content { width: min(100% - 76px, 1364px); margin: 0 auto; padding: clamp(30px, 4vw, 52px) 0; }
 .sponsor-profile-setup { width:min(100%,560px); margin:0 auto; padding:clamp(22px,5vw,36px); }
 .sponsor-profile-setup > .eyebrow { color:var(--accent-strong); font-size:10px; font-weight:800; letter-spacing:.15em; }
 .sponsor-profile-setup h1 { margin:9px 0 7px; color:#263545; font-size:clamp(24px,4vw,32px); letter-spacing:-.04em; }
 .sponsor-profile-setup > p:not(.field-message) { margin:0 0 20px; color:#718090; font-size:13px; line-height:1.6; }
 .sponsor-profile-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .sponsor-profile-form .btn { grid-column:1/-1; min-height:44px; justify-content:center; gap:8px; margin-top:3px; }
-.sponsor-portal-footer { display:flex; align-items:center; justify-content:space-between; gap:18px; width:min(100% - 64px,1200px); margin:0 auto; padding:18px 0 24px; border-top:1px solid #e3e9ee; color:#7d8995; font-size:11px; }
+.sponsor-portal-footer { display:flex; align-items:center; justify-content:space-between; gap:18px; width:min(100% - 76px,1364px); margin:0 auto; padding:18px 0 24px; border-top:1px solid #e3e9ee; color:#7d8995; font-size:11px; }
 .sponsor-portal-footer nav { display:flex; flex-wrap:wrap; gap:18px; }
 .sponsor-portal-footer a { color:#657586; text-decoration:none; }
 .sponsor-portal-footer a:hover { color:var(--accent-strong); }
@@ -397,6 +397,9 @@
 .sponsor-portal-empty h2 { color: #354657; font-size: 17px; }
 .sponsor-portal-empty p { color: #7b8792; font-size: 12px; line-height: 1.6; }
 .sponsor-simple-signature-note { margin: 22px 2px 0; color: #7d8995; font-size: 11px; line-height: 1.6; }
+@media (max-width: 1050px) {
+  .sponsor-portal-content,.sponsor-portal-footer { width:min(100% - 48px,1364px); }
+}
 @media (max-width: 700px) {
   .auth-page { display: block; padding: 14px; }
   .auth-choice-layout { width: 100%; padding: 22px; border-radius: 19px; }
@@ -421,10 +424,10 @@
   .auth-legal-links { order: 3; padding: 15px 12px; gap: 12px; }
   .sponsor-portal-header { min-height: 60px; padding-inline: 16px; }
   .sponsor-portal-header > div { gap: 10px; }
-  .sponsor-portal-content { width: min(100% - 24px, 1200px); padding-top: 30px; }
+  .sponsor-portal-content { width: calc(100% - 34px); padding-top: 30px; }
   .sponsor-profile-form { grid-template-columns:minmax(0,1fr); }
   .sponsor-profile-form .btn { grid-column:auto; width:100%; }
-  .sponsor-portal-footer { width:min(100% - 24px,1200px); align-items:flex-start; flex-direction:column; gap:12px; }
+  .sponsor-portal-footer { width:calc(100% - 34px); align-items:flex-start; flex-direction:column; gap:12px; }
   .sponsor-portal-footer nav { gap:12px 16px; }
   .sponsor-portal-contract { align-items: flex-start; flex-direction: column; }
   .sponsor-portal-contract-heading { align-items:flex-start; flex-direction:column; }
