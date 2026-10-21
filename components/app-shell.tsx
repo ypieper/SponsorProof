@@ -9,12 +9,11 @@ import { MobileMenu, adminNavigation, navigation } from "@/components/mobile-men
 import { LogoutButton } from "@/components/logout-button";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
 import { clearLegacyBrowserData } from "@/lib/clear-legacy-browser-data";
 
-type UserDisplay = { name: string; initials: string; organization: string };
+type UserDisplay = { name: string; initials: string };
 
-const defaultUserDisplay: UserDisplay = { name: "Benutzer", initials: "SP", organization: "Veranstalter" };
+const defaultUserDisplay: UserDisplay = { name: "Benutzer", initials: "SP" };
 
 function userDisplayName(firstName: string, lastName: string, email: string) {
   const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
@@ -36,12 +35,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     clearLegacyBrowserData();
-    const loadOrganization = () => {
-      if (!isSupabaseConfigured) return;
-      void fetchOrganizerSettings().then(({ data }) => {
-        if (active) setUserDisplay((current) => ({ ...current, organization: data?.organization?.trim() || defaultUserDisplay.organization }));
-      }).catch(() => undefined);
-    };
     const loadUser = () => {
       if (!isSupabaseConfigured) return;
       void createClient().auth.getUser().then(({ data }) => {
@@ -54,7 +47,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       }).catch(() => undefined);
     };
 
-    if (!path.startsWith("/login")) loadOrganization();
     loadUser();
     if (isSupabaseConfigured) {
       void fetch("/api/admin/access").then((response) => response.ok ? response.json() : null)
@@ -62,12 +54,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         .catch(() => undefined);
       void fetch("/api/partner", { cache: "no-store" }).then((response) => { if (active) setIsSalesPartner(response.ok); }).catch(() => undefined);
     }
-    window.addEventListener("sponsorproof:organizer-settings-updated", loadOrganization);
     window.addEventListener("sponsorproof:user-account-updated", loadUser);
 
     return () => {
       active = false;
-      window.removeEventListener("sponsorproof:organizer-settings-updated", loadOrganization);
       window.removeEventListener("sponsorproof:user-account-updated", loadUser);
     };
   }, [path]);
@@ -110,25 +100,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (["/", "/demo", "/agb", "/impressum", "/datenschutz", "/kontakt", "/landing"].includes(path)) return <>{children}</>;
   const isMobileMode = path === "/event-modus";
   if (isMobileMode) return <>{children}</>;
-  return <div className="app-frame">
-    <aside className="sidebar">
-      <Link href={adminNavigationOnly ? "/admin/users" : "/dashboard"} className="brand" aria-label={adminNavigationOnly ? "pacct Administration" : "pacct Übersicht öffnen"}><SponsoLogo /></Link>
-      <div className="nav-label">{adminNavigationOnly ? "Plattform" : "Veranstalterbereich"}</div>
-      <nav className="nav-list">{adminNavigationOnly ? adminNavigation.map((item) => {
+  return <div className={`app-frame${adminNavigationOnly ? "" : " organizer-app-frame"}`}>
+    {adminNavigationOnly && <aside className="sidebar">
+      <Link href="/admin/users" className="brand" aria-label="pacct Administration"><SponsoLogo /></Link>
+      <div className="nav-label">Plattform</div>
+      <nav className="nav-list">{adminNavigation.map((item) => {
         const active = path === item.href || (item.href !== "/admin/users" && path.startsWith(`${item.href}/`));
         return <Link href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</Link>;
-      }) : [...navigation, ...(isSalesPartner ? [{ label: "Vertriebspartner", href: "/partner", icon: "spark" }] : [])].map((item) => {
-        const route = item.href.split("?")[0];
-        const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
-        return <Link href={item.href} key={item.label} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}><span className="nav-icon"><Icon name={item.icon} size={17}/></span>{item.label}</Link>;
       })}</nav>
-      {!adminNavigationOnly && <div className="sidebar-bottom">
-        <nav className="sidebar-legal-links" aria-label="Kontakt"><Link href="/kontakt">Kontakt</Link></nav>
-        <Link className="profile" href="/einstellungen?tab=profile" aria-label="Einstellungen und Meine Daten öffnen" title="Meine Daten bearbeiten"><span className="avatar">{userDisplay.initials}</span><div><b title={userDisplay.name}>{userDisplay.name}</b><small title={userDisplay.organization}>{userDisplay.organization}</small></div><span style={{marginLeft:"auto",color:"#8a94a0"}}><Icon name="chevron" size={16}/></span></Link>
-      </div>}
-    </aside>
+    </aside>}
     <div className={`main-area ${path === "/dashboard" ? "dashboard-main-area" : ""}`}>
-      <header className="topbar"><MobileMenu isPlatformAdmin={adminNavigationOnly} isSalesPartner={isSalesPartner}/><div className="crumb">{adminNavigationOnly ? "Plattform" : "Veranstalterbereich"} <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{path.startsWith("/admin") ? (adminNavigation.find((item) => item.href === path)?.label ?? "Benutzer") : path === "/dashboard" ? "Übersicht" : path === "/events" ? "Events" : path.startsWith("/events/") ? "Event" : path === "/aufgaben" ? "Aufgaben" : path.includes("sponsors") ? "Sponsoren" : path.includes("bausteine") ? "Vertragsbausteine" : path.includes("einstellungen") ? "Einstellungen" : "Veranstalterbereich"}</b></div><div className="top-actions">{!adminNavigationOnly && <><Link className="btn top-event-mode-link" href="/event-modus" aria-label="Event-Modus öffnen" title="Event-Modus öffnen"><Icon name="camera" size={15}/><span>Event-Modus öffnen</span></Link><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title="Meine Daten">{userDisplay.initials}</Link></>}<LogoutButton/></div></header>
+      {adminNavigationOnly ? <header className="topbar"><MobileMenu isPlatformAdmin/><div className="crumb">Plattform <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{adminNavigation.find((item) => item.href === path)?.label ?? "Benutzer"}</b></div><div className="top-actions"><LogoutButton/></div></header> : <header className="topbar organizer-topbar">
+        <MobileMenu isSalesPartner={isSalesPartner}/>
+        <Link href="/dashboard" className="brand organizer-topbar-brand" aria-label="pacct Übersicht öffnen"><SponsoLogo /></Link>
+        <nav className="organizer-top-navigation" aria-label="Hauptnavigation">{[...navigation, ...(isSalesPartner ? [{ label: "Vertriebspartner", href: "/partner", icon: "spark" }] : [])].map((item) => {
+          const route = item.href.split("?")[0];
+          const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
+          return <Link href={item.href} key={item.label} className={`organizer-top-navigation-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>{item.label}</Link>;
+        })}</nav>
+        <div className="top-actions"><Link className="btn top-event-mode-link" href="/event-modus" aria-label="Event-Modus öffnen" title="Event-Modus öffnen"><Icon name="camera" size={15}/><span>Event-Modus öffnen</span></Link><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title={userDisplay.name}>{userDisplay.initials}</Link><LogoutButton/></div>
+      </header>}
       {children}
       <footer className="app-footer"><span>© {new Date().getFullYear()} pacct</span><nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
     </div>
