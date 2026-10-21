@@ -1,6 +1,6 @@
 /* Organizer navigation preview: the existing mobile drawer remains the fallback. */
 .organizer-app-frame .main-area { margin-left:0; }
-.organizer-topbar { position:sticky; top:16px; z-index:30; height:68px; gap:14px; margin:16px 24px 0; padding-inline:18px; border:1px solid #294257; border-radius:18px; background:#142a3e; box-shadow:0 8px 16px rgba(20,42,62,.18),0 27px 48px rgba(20,42,62,.26),0 42px 72px rgba(20,42,62,.11); transition:transform .3s ease, box-shadow .3s ease; }
+.organizer-topbar { position:sticky; top:16px; z-index:30; height:68px; gap:14px; margin:16px 24px 0; padding-inline:18px; border:1px solid #294257; border-radius:18px; background:#142a3e; box-shadow:0 5px 14px rgba(20,42,62,.11),0 14px 28px rgba(20,42,62,.08); transition:transform .3s ease, box-shadow .3s ease; }
 .organizer-topbar .organizer-topbar-brand { flex:none; margin:0; padding:0 12px 0 0; border-right:1px solid #365168; color:#fffefa; font-size:21px; }
 .organizer-topbar .organizer-topbar-brand:focus-visible,
 .organizer-top-navigation-link:focus-visible { outline:2px solid #ffb09a; outline-offset:3px; }
@@ -22,13 +22,14 @@
 .organizer-account-dropdown .logout-button:hover { background:#f3efe6; color:#172b3d; }
 .organizer-account-dropdown .logout-error { display:block; padding:4px 9px 8px; }
 
-@keyframes organizer-topbar-float {
-  0%, 100% { transform:translateY(0); box-shadow:0 8px 16px rgba(20,42,62,.18),0 27px 48px rgba(20,42,62,.26),0 42px 72px rgba(20,42,62,.11); }
-  50% { transform:translateY(-4px); box-shadow:0 11px 19px rgba(20,42,62,.22),0 35px 58px rgba(20,42,62,.3),0 50px 84px rgba(20,42,62,.13); }
+@keyframes workspace-header-float {
+  0%, 100% { transform:translateY(0); box-shadow:0 5px 14px rgba(20,42,62,.11),0 14px 28px rgba(20,42,62,.08); }
+  50% { transform:translateY(-2px); box-shadow:0 7px 16px rgba(20,42,62,.13),0 17px 32px rgba(20,42,62,.09); }
 }
 
 @media (min-width:701px) and (prefers-reduced-motion:no-preference) {
-  .organizer-topbar:not(:hover):not(:focus-within) { animation:organizer-topbar-float 8s ease-in-out infinite; }
+  .organizer-topbar:not(:hover):not(:focus-within),
+  .sponsor-portal-page:not(.sponsor-portal-demo-embedded) > .sponsor-portal-header:not(:hover):not(:focus-within) { animation:workspace-header-float 8s ease-in-out infinite; }
 }
 
 @media (max-width:1250px) {
