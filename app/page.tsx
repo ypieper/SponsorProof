@@ -91,22 +91,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-references" aria-labelledby="landing-references-title">
-        <div className="landing-references-heading landing-reveal">
-          <span className="landing-eyebrow">REFERENZEN</span>
-          <h2 id="landing-references-title">Für echte Events gemacht.</h2>
-          <p>Diese Veranstaltungen nutzen pacct für ihre Sponsoringarbeit.</p>
-        </div>
-        <div className="landing-references-grid">
-          {references.map((reference, index) => <figure className={`landing-reference landing-reveal landing-reveal-delay-${index + 1}`} key={reference.name}>
-            <div className={`landing-reference-logo landing-reference-logo-${reference.style}`}>
-              <Image src={reference.logo} alt={`Logo von ${reference.name}`} width={reference.width} height={reference.height} unoptimized />
-            </div>
-            <figcaption>{reference.name}</figcaption>
-          </figure>)}
-        </div>
-      </section>
-
       <section className="landing-problem landing-reveal" aria-label="Herausforderung im Sponsoringalltag">
         <p>Wenn Absprachen, Aufgaben und Fotos an verschiedenen Orten liegen, kostet jeder nächste Schritt Zeit.</p>
         <span>Ein klarer Ablauf hilft deinem Team, den Überblick zu behalten.</span>
@@ -148,6 +132,24 @@ export default function LandingPage() {
             <div className="landing-story-float landing-story-float-one"><span>↗</span><div><b>Aufgabe erledigt</b><small>Nachweis ergänzt</small></div></div>
             <div className="landing-story-float landing-story-float-two"><span>✓</span><div><b>Alles dokumentiert</b><small>Bericht bereit</small></div></div>
           </div>
+        </div>
+      </section>
+
+      <section className="landing-references landing-reveal" aria-labelledby="landing-references-title">
+        <h2 id="landing-references-title">REFERENZEN</h2>
+        <div className="landing-references-grid">
+          {references.map((reference) => <div className={`landing-reference-logo landing-reference-logo-${reference.style}`} key={reference.name}>
+            {reference.style === "gluehwerkstatt" ? (
+              <svg role="img" aria-label={`Logo von ${reference.name}`} viewBox="300 60 610 330" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <filter id="landing-gluehwerkstatt-cutout" colorInterpolationFilters="sRGB">
+                    <feColorMatrix type="matrix" values="0 0 0 0 .149  0 0 0 0 .235  0 0 0 0 .318  2.125 0 0 0 -1.125" />
+                  </filter>
+                </defs>
+                <image href={reference.logo} width="1210" height="450" filter="url(#landing-gluehwerkstatt-cutout)" />
+              </svg>
+            ) : <Image src={reference.logo} alt={`Logo von ${reference.name}`} width={reference.width} height={reference.height} unoptimized />}
+          </div>)}
         </div>
       </section>
 
