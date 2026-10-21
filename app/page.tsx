@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { PublicPageFrame } from "@/components/public-page-frame";
 import { LandingMotion } from "./landing/landing-motion";
@@ -48,12 +47,6 @@ const eventPackageFeatures = [
   "Leistungen und Aufgaben koordinieren",
   "Nachweise und Fotos dokumentieren",
   "Leistungsberichte je Sponsor erstellen",
-];
-
-const references = [
-  { name: "Die Glühwerkstatt", logo: "/references/die-gluehwerkstatt.png", width: 1210, height: 450, style: "gluehwerkstatt" },
-  { name: "Waikiki Open-Air", logo: "/references/waikiki-open-air.png", width: 1689, height: 1654, style: "waikiki" },
-  { name: "Filme mit Freunden", logo: "/references/filme-mit-freunden.png", width: 1820, height: 1820, style: "filme" },
 ];
 
 export default function LandingPage() {
@@ -132,24 +125,6 @@ export default function LandingPage() {
             <div className="landing-story-float landing-story-float-one"><span>↗</span><div><b>Aufgabe erledigt</b><small>Nachweis ergänzt</small></div></div>
             <div className="landing-story-float landing-story-float-two"><span>✓</span><div><b>Alles dokumentiert</b><small>Bericht bereit</small></div></div>
           </div>
-        </div>
-      </section>
-
-      <section className="landing-references landing-reveal" aria-labelledby="landing-references-title">
-        <h2 id="landing-references-title">REFERENZEN</h2>
-        <div className="landing-references-grid">
-          {references.map((reference) => <div className={`landing-reference-logo landing-reference-logo-${reference.style}`} key={reference.name}>
-            {reference.style === "gluehwerkstatt" ? (
-              <svg role="img" aria-label={`Logo von ${reference.name}`} viewBox="300 60 610 330" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <filter id="landing-gluehwerkstatt-cutout" colorInterpolationFilters="sRGB">
-                    <feColorMatrix type="matrix" values="0 0 0 0 .149  0 0 0 0 .235  0 0 0 0 .318  2.125 0 0 0 -1.125" />
-                  </filter>
-                </defs>
-                <image href={reference.logo} width="1210" height="450" filter="url(#landing-gluehwerkstatt-cutout)" />
-              </svg>
-            ) : <Image src={reference.logo} alt={`Logo von ${reference.name}`} width={reference.width} height={reference.height} unoptimized />}
-          </div>)}
         </div>
       </section>
 

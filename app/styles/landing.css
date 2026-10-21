@@ -13,13 +13,6 @@
 .landing-price-link { display:none; }
 .landing-text-link:hover, .landing-final-contact:hover { color:#bd482f; }
 .landing-audience { margin-top:36px; padding-top:18px; border-top:1px solid #dce5ec; color:#8492a0; font-size:12px; }
-.landing-references { display:grid; grid-template-columns:132px minmax(0,1fr); align-items:center; gap:28px; margin-bottom:38px; padding:22px 0; border-top:1px solid #e2e9ef; border-bottom:1px solid #e2e9ef; }
-.landing-references h2 { margin:0; color:#8492a0; font-size:11px; font-weight:800; letter-spacing:.15em; }
-.landing-references-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:center; gap:16px; }
-.landing-reference-logo { display:grid; min-width:0; height:110px; overflow:hidden; place-items:center; }
-.landing-reference-logo svg { display:block; width:220px; max-width:100%; height:auto; opacity:.55; }
-.landing-reference-logo img { display:block; width:auto; max-width:100%; max-height:95px; height:auto; object-fit:contain; filter:grayscale(1) brightness(.72); opacity:.65; }
-.landing-reference-logo-filme img { width:170px; max-width:none; max-height:none; transform:translateY(12px); }
 .landing-hero-visual { position:relative; display:grid; min-height:445px; place-items:center; isolation:isolate; }
 .landing-visual-orbit { position:absolute; z-index:-1; border-radius:50%; background:#f9e7e1; }
 .landing-visual-orbit-one { width:360px; height:360px; right:6px; top:20px; opacity:.82; }
@@ -218,12 +211,6 @@
   .landing-text-link,.landing-price-link { font-size:13px; }
   .landing-price-link { color:#415a70; font-weight:700; text-decoration:none; }
   .landing-audience { margin-top:17px; padding-top:13px; font-size:11px; line-height:1.5; }
-  .landing-references { grid-template-columns:minmax(0,1fr); gap:8px; margin-bottom:24px; padding:18px 0; }
-  .landing-references-grid { gap:8px; }
-  .landing-reference-logo { height:90px; }
-  .landing-reference-logo svg { width:180px; }
-  .landing-reference-logo img { max-height:78px; }
-  .landing-reference-logo-filme img { width:148px; max-height:none; transform:translateY(9px); }
   .landing-hero-visual { min-height:315px; }
   .landing-flow-card { width:min(100%,360px); padding:21px 20px 16px; }
   .landing-visual-orbit-one { right:0; width:300px; height:300px; }
