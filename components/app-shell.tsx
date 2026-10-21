@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { Icon, SponsoLogo } from "@/components/ui";
 import { MobileMenu, adminNavigation, navigation } from "@/components/mobile-menu";
 import { LogoutButton } from "@/components/logout-button";
+import { OrganizerAccountMenu } from "@/components/organizer-account-menu";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { clearLegacyBrowserData } from "@/lib/clear-legacy-browser-data";
@@ -118,7 +119,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           const active = path === route || (route !== "/" && path.startsWith(`${route}/`));
           return <Link href={item.href} key={item.label} className={`organizer-top-navigation-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>{item.label}</Link>;
         })}</nav>
-        <div className="top-actions"><Link className="btn top-event-mode-link" href="/event-modus" aria-label="Event-Modus öffnen" title="Event-Modus öffnen"><Icon name="camera" size={15}/><span>Event-Modus öffnen</span></Link><Link className="avatar top-user-avatar" href="/einstellungen?tab=profile" aria-label="Meine Daten öffnen" title={userDisplay.name}>{userDisplay.initials}</Link><LogoutButton/></div>
+        <div className="top-actions"><Link className="btn top-event-mode-link" href="/event-modus" aria-label="Event-Modus öffnen" title="Event-Modus öffnen"><Icon name="camera" size={15}/><span>Event-Modus öffnen</span></Link><OrganizerAccountMenu initials={userDisplay.initials} name={userDisplay.name}/></div>
       </header>}
       {children}
       <footer className="app-footer"><span>© {new Date().getFullYear()} pacct</span><nav aria-label="Rechtliche Hinweise"><Link href="/agb">AGB</Link><Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
