@@ -101,6 +101,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (["/", "/demo", "/agb", "/impressum", "/datenschutz", "/kontakt", "/landing"].includes(path)) return <>{children}</>;
   const isMobileMode = path === "/event-modus";
   if (isMobileMode) return <>{children}</>;
+  const currentOrganizerPage = navigation.find((item) => path === item.href || path.startsWith(`${item.href}/`))?.label ?? "Übersicht";
   return <div className={`app-frame${adminNavigationOnly ? "" : " organizer-app-frame"}`}>
     {adminNavigationOnly && <aside className="sidebar">
       <Link href="/admin/users" className="brand" aria-label="pacct Administration"><SponsoLogo /></Link>
@@ -112,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     </aside>}
     <div className={`main-area ${path === "/dashboard" ? "dashboard-main-area" : ""}`}>
       {adminNavigationOnly ? <header className="topbar"><MobileMenu isPlatformAdmin/><div className="crumb">Plattform <span style={{padding:"0 7px",color:"#c1c7ce"}}>/</span> <b>{adminNavigation.find((item) => item.href === path)?.label ?? "Benutzer"}</b></div><div className="top-actions"><LogoutButton/></div></header> : <header className="topbar organizer-topbar">
-        <MobileMenu isSalesPartner={isSalesPartner}/>
+        <div className="organizer-compact-navigation"><MobileMenu isSalesPartner={isSalesPartner}/><span className="organizer-current-page">{currentOrganizerPage}</span></div>
         <Link href="/dashboard" className="brand organizer-topbar-brand" aria-label="pacct Übersicht öffnen"><SponsoLogo /></Link>
         <nav className="organizer-top-navigation" aria-label="Hauptnavigation">{[...navigation, ...(isSalesPartner ? [{ label: "Vertriebspartner", href: "/partner", icon: "spark" }] : [])].map((item) => {
           const route = item.href.split("?")[0];

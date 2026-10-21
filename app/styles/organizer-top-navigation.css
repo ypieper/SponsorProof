@@ -1,15 +1,17 @@
 /* Organizer navigation preview: the existing mobile drawer remains the fallback. */
 .organizer-app-frame .main-area { margin-left:0; }
-.organizer-topbar { position:relative; z-index:30; height:68px; gap:20px; margin:16px 24px 0; padding-inline:24px; border:1px solid #294257; border-radius:18px; background:#142a3e; box-shadow:0 12px 28px rgba(20,42,62,.14); }
-.organizer-topbar .organizer-topbar-brand { flex:none; margin:0; padding:0 17px 0 0; border-right:1px solid #365168; color:#fffefa; font-size:21px; }
+.organizer-topbar { position:relative; z-index:30; height:68px; gap:14px; margin:16px 24px 0; padding-inline:18px; border:1px solid #294257; border-radius:18px; background:#142a3e; box-shadow:0 12px 28px rgba(20,42,62,.14); }
+.organizer-topbar .organizer-topbar-brand { flex:none; margin:0; padding:0 12px 0 0; border-right:1px solid #365168; color:#fffefa; font-size:21px; }
 .organizer-topbar .organizer-topbar-brand:focus-visible,
 .organizer-top-navigation-link:focus-visible { outline:2px solid #ffb09a; outline-offset:3px; }
 .organizer-top-navigation { display:flex; flex:1; min-width:0; align-items:center; justify-content:center; gap:4px; }
-.organizer-top-navigation-link { display:inline-flex; align-items:center; min-height:39px; padding:0 10px; border:1px solid transparent; border-radius:10px; color:#c5d1dc; font-size:12px; font-weight:600; white-space:nowrap; transition:color .15s ease, border-color .15s ease, background .15s ease; }
+.organizer-top-navigation-link { display:inline-flex; align-items:center; min-height:39px; padding:0 8px; border:1px solid transparent; border-radius:10px; color:#c5d1dc; font-size:12px; font-weight:600; white-space:nowrap; transition:color .15s ease, border-color .15s ease, background .15s ease; }
 .organizer-top-navigation-link:hover { border-color:#365168; background:#1b374e; color:#fffefa; }
 .organizer-top-navigation-link.active,
 .organizer-top-navigation-link.active:hover { border-color:#f17a5b; background:#1b374e; color:#fffefa; font-weight:700; }
 .organizer-topbar .top-actions { flex:none; }
+.organizer-compact-navigation { display:none; min-width:0; align-items:center; gap:8px; }
+.organizer-current-page { min-width:0; max-width:140px; overflow:hidden; color:#fffefa; font-size:12px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
 .organizer-account-menu { position:relative; }
 .organizer-account-trigger { border:0; cursor:pointer; }
 .organizer-account-trigger[aria-expanded="true"] { box-shadow:0 0 0 2px #f17a5b; }
@@ -20,14 +22,21 @@
 .organizer-account-dropdown .logout-button:hover { background:#f3efe6; color:#172b3d; }
 .organizer-account-dropdown .logout-error { display:block; padding:4px 9px 8px; }
 
-@media (max-width:1350px) {
+@media (max-width:1250px) {
   .organizer-topbar:has(.organizer-top-navigation-link:nth-child(7)) .organizer-top-navigation { display:none; }
+  .organizer-topbar:has(.organizer-top-navigation-link:nth-child(7)) .organizer-compact-navigation { display:flex; }
   .organizer-topbar:has(.organizer-top-navigation-link:nth-child(7)) .menu-toggle { display:inline-flex; flex:none; }
   .organizer-topbar:has(.organizer-top-navigation-link:nth-child(7)) .top-actions { margin-left:auto; }
 }
 
-@media (max-width:1200px) {
+@media (max-width:1120px) {
+  .organizer-topbar .top-event-mode-link { width:36px; min-width:36px; padding:0; font-size:0; }
+  .organizer-topbar .top-event-mode-link span { display:none; }
+}
+
+@media (max-width:1000px) {
   .organizer-top-navigation { display:none; }
+  .organizer-compact-navigation { display:flex; }
   .organizer-topbar .menu-toggle { display:inline-flex; flex:none; }
   .organizer-topbar { justify-content:flex-start; }
   .organizer-topbar .top-actions { margin-left:auto; }
@@ -35,6 +44,7 @@
 
 @media (max-width:700px) {
   .organizer-topbar { height:56px; margin:10px 12px 0; padding-inline:12px; border-radius:14px; gap:10px; }
-  .organizer-topbar .organizer-topbar-brand { padding-right:0; border-right:0; font-size:19px; }
+  .organizer-topbar .organizer-topbar-brand { padding-right:0; border-right:0; }
+  .organizer-topbar .organizer-topbar-brand .brand-wordmark { display:none; }
 }
 
