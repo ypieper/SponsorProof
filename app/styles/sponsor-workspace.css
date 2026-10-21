@@ -785,8 +785,8 @@
 .sponsor-portal-page:not(.sponsor-portal-demo-embedded) > .sponsor-portal-header .sponsor-portal-main-nav a.active,
 .sponsor-portal-page:not(.sponsor-portal-demo-embedded) > .sponsor-portal-header .sponsor-portal-main-nav a.active:hover {
   border-color:#f17a5b;
-  background:#1b374e;
-  color:#fffefa;
+  background:#f17a5b;
+  color:#142a3e;
   font-weight:700;
 }
 .sponsor-portal-page:not(.sponsor-portal-demo-embedded) > .sponsor-portal-header .sponsor-portal-main-nav a.active::after { display:none; }
