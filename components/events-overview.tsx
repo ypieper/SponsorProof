@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { createStoredEventInDatabase, deleteStoredEventFromDatabase, fetchStoredEventsFromDatabase, formatEventDateRange, type StoredEvent } from "@/lib/events-storage";
 import { EmptyState, Icon } from "@/components/ui";
@@ -16,6 +17,7 @@ type EventDraft = Omit<StoredEvent, "id" | "createdAt" | "planCode" | "bookedPla
 const emptyDraft: EventDraft = { title: "", startDate: "", endDate: "", location: "", locationStreet: "", locationPostalCode: "", locationCity: "", responsible: "" };
 
 export function EventsOverview() {
+  const router = useRouter();
   const { requestUpgrade } = useEventEntitlements();
   const [createdEvents, setCreatedEvents] = useState<StoredEvent[]>([]);
   const [ready, setReady] = useState(false);
@@ -31,6 +33,10 @@ export function EventsOverview() {
   const [formError, setFormError] = useState("");
   const [freeLimitHit, setFreeLimitHit] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [eventToDuplicate, setEventToDuplicate] = useState<StoredEvent | null>(null);
+  const [duplicateDraft, setDuplicateDraft] = useState({ title: "", startDate: "", endDate: "" });
+  const [duplicateError, setDuplicateError] = useState("");
+  const [duplicating, setDuplicating] = useState(false);
 
   function updateLocation(value: Partial<Pick<EventDraft, "locationStreet" | "locationPostalCode" | "locationCity">>) {
     setDraft((current) => {
@@ -186,6 +192,43 @@ export function EventsOverview() {
     }
   }
 
+  function openDuplicateDialog(event: StoredEvent) {
+    const copySuffix = " (Kopie)";
+    setDuplicateDraft({ title: `${event.title.slice(0, 100 - copySuffix.length)}${copySuffix}`, startDate: "", endDate: "" });
+    setDuplicateError("");
+    setEventToDuplicate(event);
+  }
+
+  async function duplicateEvent(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    if (!eventToDuplicate || duplicating) return;
+    const title = duplicateDraft.title.trim();
+    if (!title || title.length > 100) {
+      setDuplicateError("Bitte gib einen Eventnamen mit höchstens 100 Zeichen ein.");
+      return;
+    }
+    if (!duplicateDraft.startDate || !duplicateDraft.endDate || duplicateDraft.endDate < duplicateDraft.startDate) {
+      setDuplicateError("Bitte lege einen gültigen Beginn und ein Ende fest.");
+      return;
+    }
+    setDuplicating(true);
+    setDuplicateError("");
+    try {
+      const response = await fetch(`/api/events/${eventToDuplicate.id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, startDate: duplicateDraft.startDate, endDate: duplicateDraft.endDate }),
+      });
+      const result = await response.json();
+      if (!response.ok || typeof result.eventId !== "string") throw new Error(result.error ?? "Das Event konnte nicht dupliziert werden.");
+      router.push(`/events/${result.eventId}?tab=sponsoren`);
+    } catch (reason) {
+      setDuplicateError(reason instanceof Error ? reason.message : "Das Event konnte nicht dupliziert werden. Bitte versuche es erneut.");
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   return <main className="content">
     <div className="page-heading"><div><div className="eyebrow">VERANSTALTERBEREICH</div><h1>Events</h1><p className="subtitle">Alle Veranstaltungen und ihren aktuellen Fortschritt im Überblick.</p></div><button className="btn btn-primary" type="button" onClick={() => { setMessage(""); setCreating(true); }}><Icon name="plus" size={16}/> Event erstellen</button></div>
     <section>
@@ -195,7 +238,7 @@ export function EventsOverview() {
         {displayedEvents.map((event) => {
           const progress = event.trackedBenefits ? Math.round(event.completed / event.trackedBenefits * 100) : 0;
           const planLabel = event.planCode === "enterprise" ? "Enterprise" : event.contractPackage ? eventContractPackageLabel(event.contractPackage.maxContracts, event.contractPackage.code) : eventPlanLabel(event.bookedPlanCode);
-          return <tr key={event.id}><td data-label="Event"><Link className="events-data-name" href={`/events/${event.id}`}>{event.title}</Link><small className="events-data-meta">{event.date} · {event.location}</small><span className="event-plan-badge events-data-plan">{planLabel}</span></td><td data-label="Status"><span className={`event-lifecycle-status event-lifecycle-${event.stage.color}`}>{eventMetrics.loading ? "Wird geladen …" : eventMetrics.error ? "Nicht verfügbar" : event.stage.label}</span></td><td data-label="Vertragsvolumen">{event.metricsLoading ? "—" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(event.sponsorship)}</td><td data-label="Sponsoren">{event.metricsLoading ? "—" : event.sponsors}</td><td data-label="Leistungsfortschritt"><div className="events-data-progress"><div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div><b>{event.metricsLoading ? "—" : `${progress} %`}</b><small>{event.metricsLoading ? "Wird geladen …" : `${event.completed} von ${event.trackedBenefits} Leistungen`}</small></div></td><td data-label="Aktionen"><button className="btn event-delete-button event-overview-delete" type="button" onClick={() => { setDeleteConfirmation(""); setEventToDelete({ id: event.id, title: event.title, hasPaidEventLicense: event.hasPaidEventLicense }); }}><Icon name="close" size={14}/> Löschen</button></td></tr>;
+          return <tr key={event.id}><td data-label="Event"><Link className="events-data-name" href={`/events/${event.id}`}>{event.title}</Link><small className="events-data-meta">{event.date} · {event.location}</small><span className="event-plan-badge events-data-plan">{planLabel}</span></td><td data-label="Status"><span className={`event-lifecycle-status event-lifecycle-${event.stage.color}`}>{eventMetrics.loading ? "Wird geladen …" : eventMetrics.error ? "Nicht verfügbar" : event.stage.label}</span></td><td data-label="Vertragsvolumen">{event.metricsLoading ? "—" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(event.sponsorship)}</td><td data-label="Sponsoren">{event.metricsLoading ? "—" : event.sponsors}</td><td data-label="Leistungsfortschritt"><div className="events-data-progress"><div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div><b>{event.metricsLoading ? "—" : `${progress} %`}</b><small>{event.metricsLoading ? "Wird geladen …" : `${event.completed} von ${event.trackedBenefits} Leistungen`}</small></div></td><td data-label="Aktionen"><div className="events-data-row-actions"><button className="btn event-duplicate-button" type="button" onClick={() => openDuplicateDialog(event)}><Icon name="copy" size={14}/> Duplizieren</button><button className="btn event-delete-button event-overview-delete" type="button" onClick={() => { setDeleteConfirmation(""); setEventToDelete({ id: event.id, title: event.title, hasPaidEventLicense: event.hasPaidEventLicense }); }}><Icon name="close" size={14}/> Löschen</button></div></td></tr>;
         })}
       </tbody></table></div>
       {ready && activeEvents.length === 0 && <EmptyState title="Noch keine Events" description="Lege deine erste Veranstaltung an, um Sponsoren und Leistungen zu verwalten." action={<button className="btn btn-primary" type="button" onClick={() => setCreating(true)}><Icon name="plus" size={14}/> Event erstellen</button>} />}
@@ -203,6 +246,7 @@ export function EventsOverview() {
       {ready && message && <p className="event-details-message" role="status">{message}</p>}
     </section>
     {creating && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setCreating(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-event-title"><div className="create-modal-head"><div><h2 id="create-event-title">Event erstellen</h2><p>Trage die Stammdaten der Veranstaltung ein.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setCreating(false)}><Icon name="close" size={16}/></button></div><form onSubmit={createEvent}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Bezeichnung *</span><input autoFocus required maxLength={100} value={draft.title} onChange={(event) => { setDraft({ ...draft, title: event.target.value }); setFormError(""); }} placeholder="z. B. Stadtfest 2027" /></label><label className="settings-field"><span>Beginn *</span><input type="date" required value={draft.startDate} onChange={(event) => { setDraft({ ...draft, startDate: event.target.value, endDate: draft.endDate && draft.endDate < event.target.value ? "" : draft.endDate }); setFormError(""); }} /></label><label className="settings-field"><span>Ende *</span><input type="date" required min={draft.startDate || undefined} value={draft.endDate} onChange={(event) => { setDraft({ ...draft, endDate: event.target.value }); setFormError(""); }} /></label><EventLocationFields required value={{ street: draft.locationStreet, postalCode: draft.locationPostalCode, city: draft.locationCity }} onChange={(location) => updateLocation({ ...(location.street !== undefined ? { locationStreet: location.street } : {}), ...(location.postalCode !== undefined ? { locationPostalCode: location.postalCode } : {}), ...(location.city !== undefined ? { locationCity: location.city } : {}) })} /></div>{formError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{formError}</p>}{freeLimitHit && createdEvents[0] && <button className="btn" type="button" onClick={() => { setCreating(false); requestUpgrade(createdEvents[0].id, createdEvents[0].title, "Schalte dein bestehendes Event frei, um einen weiteren Veranstaltungsplatz zu nutzen."); }}>Bestehendes Event freischalten</button>}<div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setCreating(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Wird gespeichert …" : "Event speichern"}</button></div></form></section></div>}
+    {eventToDuplicate && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !duplicating) setEventToDuplicate(null); }} onKeyDown={(event) => { if (event.key === "Escape" && !duplicating) setEventToDuplicate(null); }}><section className="create-modal event-duplicate-modal" role="dialog" aria-modal="true" aria-labelledby="duplicate-event-title"><div className="create-modal-head"><div><h2 id="duplicate-event-title">Event duplizieren</h2><p>„{eventToDuplicate.title}“ wird als neues Event mit frischem Fortschritt angelegt.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={duplicating} onClick={() => setEventToDuplicate(null)}><Icon name="close" size={16}/></button></div><form onSubmit={(event) => void duplicateEvent(event)}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Neuer Eventname *</span><input autoFocus required maxLength={100} value={duplicateDraft.title} onChange={(event) => { setDuplicateDraft((current) => ({ ...current, title: event.target.value })); setDuplicateError(""); }}/></label><label className="settings-field"><span>Beginn *</span><input type="date" required value={duplicateDraft.startDate} onChange={(event) => { setDuplicateDraft((current) => ({ ...current, startDate: event.target.value, endDate: current.endDate && current.endDate < event.target.value ? "" : current.endDate })); setDuplicateError(""); }}/></label><label className="settings-field"><span>Ende *</span><input type="date" required min={duplicateDraft.startDate || undefined} value={duplicateDraft.endDate} onChange={(event) => { setDuplicateDraft((current) => ({ ...current, endDate: event.target.value })); setDuplicateError(""); }}/></label></div><div className="event-duplicate-summary"><strong>Wird übernommen</strong><p>Sponsoren, Leistungen, Aufgabenabläufe sowie Ort und Ansprechpartner.</p><strong>Wird zurückgesetzt</strong><p>Aufgaben starten offen. Nachweise, Verträge, Rechnungen, Kennzahlen und bisherige Sponsorzugänge werden nicht übernommen. Für jeden Sponsor wird ein neuer Einladungscode angelegt.</p><small>Das neue Event erhält die für neue Events geltende Freischaltung; eine bezahlte Einzellizenz wird nicht kopiert.</small></div>{duplicateError && <p className="field-message error" role="alert">{duplicateError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={duplicating} onClick={() => setEventToDuplicate(null)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={duplicating || !duplicateDraft.title.trim() || !duplicateDraft.startDate || !duplicateDraft.endDate}>{duplicating ? "Event wird dupliziert …" : "Event duplizieren"}</button></div></form></section></div>}
     {eventToDelete && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { setEventToDelete(null); setDeleteConfirmation(""); } }}><section className="create-modal delete-event-modal" role="dialog" aria-modal="true" aria-labelledby="delete-event-title"><div className="create-modal-head"><div><h2 id="delete-event-title">Event endgültig löschen?</h2><p>Du löschst „{eventToDelete.title}“ und alle zugehörigen Daten im Veranstalterbereich.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => { setEventToDelete(null); setDeleteConfirmation(""); }}><Icon name="close" size={16}/></button></div><div className="delete-event-consequences"><strong>Das wird entfernt</strong><ul><li>Sponsorenzuordnungen und Verträge</li><li>Leistungen, Aufgaben und Nachweiseinträge</li><li>Reports und der Eventfortschritt</li></ul><p>Hochgeladene Fotos und Vertragsdateien bleiben zunächst im Dateispeicher, sind nach dem Löschen aber nicht mehr über dieses Event erreichbar.</p></div>{eventToDelete.hasPaidEventLicense && <div className="delete-event-license-warning" role="alert"><strong>Die Event-Lizenz geht verloren</strong><p>Die kostenpflichtige Freischaltung wird mit dem Event gelöscht und kann nicht auf ein anderes Event übertragen werden.</p></div>}<label className="settings-field"><span>Gib <b>löschen</b> ein, um fortzufahren</span><input autoFocus value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} placeholder="löschen" /></label><div className="create-modal-actions"><button className="btn" type="button" onClick={() => { setEventToDelete(null); setDeleteConfirmation(""); }}>Abbrechen</button><button className="btn btn-primary delete-event-confirm" type="button" onClick={deleteEvent} disabled={deleteConfirmation.trim() !== "löschen"}>Event endgültig löschen</button></div></section></div>}
   </main>;
 }

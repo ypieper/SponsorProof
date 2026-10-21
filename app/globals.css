@@ -4502,6 +4502,10 @@ body, .app-frame { background: var(--canvas); }
 .events-data-progress b { font-size:10px; font-variant-numeric:tabular-nums; }
 .events-data-progress small { grid-column:1/-1; }
 .events-data-table td:last-child { text-align:right; }
+.events-data-row-actions { display:flex; justify-content:flex-end; gap:6px; }
+.events-data-row-actions .btn { min-height:32px; height:auto; padding:5px 8px; font-size:10px; white-space:nowrap; }
+.event-duplicate-button { border-color:#dce5ec; background:#fff; color:#526b82; }
+.event-duplicate-button:hover { border-color:#b8c9d7; background:#f7fafc; color:#294861; }
 .events-data-table .event-delete-button { opacity:1; }
 .sponsor-contract-data-table { min-width:820px; }
 .sponsor-contract-data-table th:first-child { width:28%; }
@@ -4573,6 +4577,12 @@ body, .app-frame { background: var(--canvas); }
 .events-data-table .event-lifecycle-status { min-height:23px; padding:4px 8px; font-size:9px; }
 .events-data-table .event-delete-button { min-height:32px; height:32px; padding:0 9px; border:1px solid #e4eaf0; border-radius:8px; background:#fff; color:#65768a; font-size:10px; }
 .events-data-table .event-delete-button:hover { border-color:#e2cbc8; background:#fff8f7; color:#9a5149; }
+.event-duplicate-modal { width:min(100%,620px); max-height:min(90vh,820px); overflow:auto; }
+.event-duplicate-modal form { display:grid; gap:16px; }
+.event-duplicate-summary { display:grid; gap:5px; padding:13px 15px; border:1px solid #e3eaf0; border-radius:10px; background:#f8fafb; }
+.event-duplicate-summary strong { color:#40566b; font-size:11px; }
+.event-duplicate-summary p { margin:0 0 5px; color:#718090; font-size:11px; line-height:1.5; }
+.event-duplicate-summary small { color:#8994a0; font-size:10px; line-height:1.45; }
 @media (max-width:760px) {
   .adaptive-table-wrap { overflow:visible; }
   .adaptive-table-wrap:has(.events-data-table) { overflow:visible; border:0; border-radius:0; background:transparent; box-shadow:none; }
@@ -4589,6 +4599,8 @@ body, .app-frame { background: var(--canvas); }
   .adaptive-data-table .sponsor-name b { white-space:normal; }
   .adaptive-data-table td:last-child { grid-column:1/-1; text-align:left; }
   .adaptive-data-table td:last-child > .btn,.adaptive-data-table td:last-child > .event-report-actions,.adaptive-data-table td:last-child > .event-sponsor-table-actions { justify-self:stretch; }
+  .events-data-row-actions { width:100%; justify-content:flex-start; }
+  .events-data-row-actions .btn { flex:1 1 0; justify-content:center; padding-inline:5px; }
   .event-sponsor-table-actions,.event-report-actions { justify-content:flex-start; }
   .event-sponsor-table-actions .btn,.event-report-actions .btn { flex:1 1 auto; }
   .event-sponsor-data-table .event-sponsor-invitation-code .btn { white-space:normal; }
