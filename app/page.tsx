@@ -100,7 +100,7 @@ export default function LandingPage() {
         <div className="landing-references-grid">
           {references.map((reference, index) => <figure className={`landing-reference landing-reveal landing-reveal-delay-${index + 1}`} key={reference.name}>
             <div className={`landing-reference-logo landing-reference-logo-${reference.style}`}>
-              <Image src={reference.logo} alt={`Logo von ${reference.name}`} width={reference.width} height={reference.height} sizes="(max-width: 700px) 80vw, 320px" />
+              <Image src={reference.logo} alt={`Logo von ${reference.name}`} width={reference.width} height={reference.height} unoptimized />
             </div>
             <figcaption>{reference.name}</figcaption>
           </figure>)}
