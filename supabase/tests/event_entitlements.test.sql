@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(43);
+select plan(42);
 
 -- Isolated users and organizations; all rows roll back at the end of this test.
 insert into auth.users (id, aud, role, email, encrypted_password, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
@@ -94,7 +94,7 @@ select is((select plan_code from public.event_entitlements where event_id = '300
 
 reset role;
 select throws_ok($$select public.add_sponsor_to_event('30000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000011', null)$$, 'P0001', 'SPONSOR_LIMIT_REACHED', 'Eleventh Event-tier sponsor is blocked');
-select lives_ok($$do $body$ begin for n in 1..12 loop perform public.add_sponsor_to_event('30000000-0000-4000-8000-000000000003', ('40000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, null); end loop; end $body$$$, 'Event Pro accepts more than ten sponsors');
+select lives_ok($test$do $body$ begin for n in 1..12 loop perform public.add_sponsor_to_event('30000000-0000-4000-8000-000000000003', ('40000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, null); end loop; end $body$;$test$, 'Event Pro accepts more than ten sponsors');
 select is((select count(*)::integer from public.event_sponsors where event_id = '30000000-0000-4000-8000-000000000003'), 12, 'Event Pro retains all twelve sponsor assignments');
 select is(public.redeem_event_activation_code('30000000-0000-4000-8000-000000000004', repeat('a', 64)), 'event', 'Valid Event code is redeemed');
 select is((select activation_source from public.event_entitlements where event_id = '30000000-0000-4000-8000-000000000004'), 'code', 'Successful redemption records code activation source');

@@ -1,16 +1,17 @@
 "use client";
 
+import { benefitWorkflowCount } from "@/lib/benefit-workflow";
+import type { DashboardTaskSummary } from "@/components/dashboard-metrics";
+import { EmptyState, Icon } from "@/components/ui";
+import { fetchStoredBenefits } from "@/lib/benefits-storage";
+import { fetchStoredEventsFromDatabase, formatEventDate } from "@/lib/events-storage";
+import { fetchStoredEvidence } from "@/lib/evidence-storage";
+import { fetchSponsorRecords } from "@/lib/sponsors-storage";
+import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { fetchStoredTasks } from "@/lib/tasks-storage";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { EmptyState, Icon } from "@/components/ui";
-import { fetchStoredEventsFromDatabase, formatEventDate } from "@/lib/events-storage";
-import { fetchSponsorRecords } from "@/lib/sponsors-storage";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { fetchStoredBenefits } from "@/lib/benefits-storage";
-import { fetchStoredTasks } from "@/lib/tasks-storage";
-import { fetchStoredEvidence } from "@/lib/evidence-storage";
-import { createClient } from "@/lib/supabase/client";
-import type { DashboardTaskSummary } from "@/components/dashboard-metrics";
 
 type DashboardTask = { id: string; title: string; eventId: string; eventTitle: string; sponsor: string; dueAt: string; publishReady: boolean };
 
@@ -58,7 +59,7 @@ export function DashboardTasks({ onSummaryChange }: { onSummaryChange: (summary:
           if (task.source !== "Leistung") return true;
           if (!task.benefit_id) return false;
           const benefit = benefitsById.get(task.benefit_id);
-          return Boolean(benefit && benefit.completionRequired !== false && task.workflow_instance <= (benefit.tasksPerUnit ? benefit.quantity : 1));
+          return Boolean(benefit && benefit.completionRequired !== false && task.workflow_instance <= (benefitWorkflowCount(benefit.quantity, benefit.tasksPerUnit)));
         });
         quantityBoundTasks.filter((task) => task.source === "Leistung" || task.source === "Manuell").filter((task) => Boolean(userId && task.assigned_to === userId && !task.assigned_to_sponsor)).forEach((task) => {
           const completed = evidenceIds.has(task.id) || task.status === "Erledigt";

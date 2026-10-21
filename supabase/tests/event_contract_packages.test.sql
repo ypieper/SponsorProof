@@ -24,17 +24,17 @@ values
 on conflict (event_id) do nothing;
 insert into public.sponsors (id, organization_id, name, initials)
 select ('84000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, '82000000-0000-4000-8000-000000000001', 'Package Sponsor ' || n, 'P' || n
-from generate_series(1, 7) n
+from generate_series(1, 11) n
 on conflict (id) do nothing;
 
-select is((select base_amount_cents from public.event_contract_packages where code = 'contracts_5'), 9900::bigint, 'Five-contract package costs 99 euros');
-select is((select base_amount_cents from public.event_contract_packages where code = 'contracts_7'), 12900::bigint, 'Seven-contract package costs 129 euros');
-select is((select base_amount_cents from public.event_contract_packages where code = 'contracts_10'), 16900::bigint, 'Ten-contract package costs 169 euros');
-select is((select base_amount_cents from public.event_contract_packages where code = 'contracts_15'), 22900::bigint, 'Fifteen-contract package costs 229 euros');
-select is((select max_contracts * signature_addon_per_contract_cents from public.event_contract_packages where code = 'contracts_5'), 2000::bigint, 'Five-contract signature add-on costs 20 euros');
-select is((select max_contracts * signature_addon_per_contract_cents from public.event_contract_packages where code = 'contracts_7'), 2800::bigint, 'Seven-contract signature add-on costs 28 euros');
-select is((select max_contracts * signature_addon_per_contract_cents from public.event_contract_packages where code = 'contracts_10'), 4000::bigint, 'Ten-contract signature add-on costs 40 euros');
-select is((select max_contracts * signature_addon_per_contract_cents from public.event_contract_packages where code = 'contracts_15'), 6000::bigint, 'Fifteen-contract signature add-on costs 60 euros');
+select is((select base_amount_cents from public.event_contract_packages where code = 'contracts_5'), 9900::bigint, 'Starter costs 99 euros');
+select is((select base_amount_cents from public.event_contract_packages where code = 'contracts_7'), 17900::bigint, 'Plus costs 179 euros');
+select is((select base_amount_cents from public.event_contract_packages where code = 'contracts_10'), 23900::bigint, 'Pro costs 239 euros');
+select ok(not (select is_active from public.event_contract_packages where code = 'contracts_15'), 'The legacy package is no longer offered');
+select is((select max_contracts * signature_addon_per_contract_cents from public.event_contract_packages where code = 'contracts_5'), 4000::bigint, 'Starter signature add-on covers ten sponsors');
+select is((select max_contracts * signature_addon_per_contract_cents from public.event_contract_packages where code = 'contracts_7'), 8000::bigint, 'Plus signature add-on covers twenty sponsors');
+select is((select max_contracts * signature_addon_per_contract_cents from public.event_contract_packages where code = 'contracts_10'), 12000::bigint, 'Pro signature add-on covers thirty sponsors');
+select is((select count(*)::integer from public.event_contract_packages where is_active), 3, 'Three current packages are offered');
 select ok(not has_table_privilege('authenticated', 'public.event_contract_package_bookings', 'INSERT'), 'Browser users cannot insert package bookings');
 select ok(not has_function_privilege('authenticated', 'public.record_confirmed_event_package_payment(uuid,text,boolean,bigint,text,text)', 'EXECUTE'), 'Only trusted server code can confirm package payments');
 
@@ -48,7 +48,7 @@ reset role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
 select lives_ok($$select public.record_confirmed_event_package_payment('83000000-0000-4000-8000-000000000001', 'contracts_5', false, 9900, 'pi-package-five', 'evt-package-five')$$, 'Trusted confirmed payment records the package');
-select lives_ok($$select public.record_confirmed_event_package_payment('83000000-0000-4000-8000-000000000002', 'contracts_7', true, 15700, 'pi-package-seven', 'evt-package-seven')$$, 'Trusted confirmed payment records package and signature add-on');
+select lives_ok($$select public.record_confirmed_event_package_payment('83000000-0000-4000-8000-000000000002', 'contracts_7', true, 25900, 'pi-package-seven', 'evt-package-seven')$$, 'Trusted confirmed payment records package and signature add-on');
 select lives_ok($$select public.record_confirmed_event_package_payment('83000000-0000-4000-8000-000000000001', 'contracts_5', false, 9900, 'pi-package-five', 'evt-package-five')$$, 'Duplicate webhook event is idempotent');
 select is((select count(*)::integer from public.event_package_payment_events where provider_event_id = 'evt-package-five'), 1, 'Idempotent retry is recorded once');
 select throws_ok($$select public.record_confirmed_event_package_payment('83000000-0000-4000-8000-000000000001', 'contracts_5', true, 12000, 'pi-wrong-amount', 'evt-wrong-amount')$$, 'P0001', 'Confirmed payment amount does not match the server package price', 'Server rejects amounts that differ from the configured total');
@@ -59,9 +59,9 @@ set local role authenticated;
 select ok(public.event_feature_enabled('83000000-0000-4000-8000-000000000001', 'contracts'), 'Paid package enables core features');
 select ok(not public.event_signature_addon_enabled('83000000-0000-4000-8000-000000000001'), 'Package without add-on cannot sign');
 select ok(public.event_signature_addon_enabled('83000000-0000-4000-8000-000000000002'), 'Package with add-on enables signing');
-select lives_ok($$do $body$ begin for n in 1..5 loop perform public.add_sponsor_to_event('83000000-0000-4000-8000-000000000001', ('84000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, 10000); end loop; end $body$$$, 'Five-contract package accepts five contracts');
-select throws_ok($$select public.add_sponsor_to_event('83000000-0000-4000-8000-000000000001', '84000000-0000-4000-8000-000000000006', 10000)$$, 'P0001', 'EVENT_CONTRACT_PACKAGE_LIMIT_REACHED', 'Sixth contract is blocked server-side');
-select is((select count(*)::integer from public.contracts where event_id = '83000000-0000-4000-8000-000000000001'), 5, 'Failed sixth contract leaves existing contracts intact');
+select lives_ok($test$do $body$ begin for n in 1..10 loop perform public.add_sponsor_to_event('83000000-0000-4000-8000-000000000001', ('84000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, 10000); end loop; end $body$;$test$, 'Starter accepts ten contracts');
+select throws_ok($$select public.add_sponsor_to_event('83000000-0000-4000-8000-000000000001', '84000000-0000-4000-8000-000000000011', 10000)$$, 'P0001', 'SPONSOR_LIMIT_REACHED', 'Eleventh contract is blocked server-side');
+select is((select count(*)::integer from public.contracts where event_id = '83000000-0000-4000-8000-000000000001'), 10, 'Rejected eleventh contract leaves existing contracts intact');
 reset role;
 
 select * from finish();

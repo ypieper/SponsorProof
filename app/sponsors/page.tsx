@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Modal } from "@/components/modal";
+import { emptySponsorMasterData, SponsorMasterDataFields, type PostalCodeStatus, type SponsorMasterData } from "@/components/sponsor-master-data-fields";
 import { EmptyState, Icon, Metric } from "@/components/ui";
 import { createSponsorRecord, fetchSponsorRecords, type SponsorRecord } from "@/lib/sponsors-storage";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { emptySponsorMasterData, SponsorMasterDataFields, type PostalCodeStatus, type SponsorMasterData } from "@/components/sponsor-master-data-fields";
+import Link from "next/link";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 const exampleSponsors = [
   { name: "Niederrheinische Sparkasse", street: "Hagsche Straße", streetNumber: "12", postalCode: "47533", city: "Kleve", contactFirstName: "Anna", contactLastName: "Beispiel", email: "anna.beispiel+niederrheinische-sparkasse@example.com" },
@@ -116,6 +117,6 @@ export default function SponsorsPage() {
         return <tr key={sponsor.id}><td data-label="Sponsor"><Link href={`/sponsors/${sponsor.id}`} className="sponsor-name"><span className="sponsor-mark" style={sponsor.color ? { background: sponsor.color, color: "white" } : undefined}>{sponsor.initials}</span><b>{sponsor.name}</b></Link></td><td data-label="Ansprechperson">{contact || <span className="directory-missing">Noch nicht hinterlegt</span>}</td><td data-label="Events">{new Set(sponsor.eventIds).size}</td><td data-label="Vertragsvolumen">{contracts.length ? `${(amount / 100).toLocaleString("de-DE")} €` : <span className="directory-missing">Im Event erfassen</span>}</td><td data-label="Aktionen"><Link className="sponsor-open-link" href={`/sponsors/${sponsor.id}`} aria-label={`${sponsor.name} öffnen`}><Icon name="arrow" size={15}/></Link></td></tr>;
       })}</tbody></table></div>}
     </section>
-    {creating && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setCreating(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-sponsor-title"><div className="create-modal-head"><div><h2 id="create-sponsor-title">Sponsor hinzufügen</h2><p>Vollständige Stammdaten und Ansprechperson werden direkt angelegt.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setCreating(false)}><Icon name="close" size={16}/></button></div><form onSubmit={saveSponsor}><div className="sponsor-edit-sections"><SponsorMasterDataFields value={masterData} onChange={setMasterData} onPostalCodeStatusChange={setPostalCodeStatus} /></div>{formError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{formError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setCreating(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={saving || (postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim()))}>{saving ? "Wird gespeichert …" : "Sponsor speichern"}</button></div></form></section></div>}
+    {creating && <Modal labelledBy="create-sponsor-title" className="create-modal" backdropClassName="modal-backdrop" busy={saving} onClose={() => setCreating(false)}><div className="create-modal-head"><div><h2 id="create-sponsor-title">Sponsor hinzufügen</h2><p>Vollständige Stammdaten und Ansprechperson werden direkt angelegt.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setCreating(false)}><Icon name="close" size={16}/></button></div><form onSubmit={saveSponsor}><div className="sponsor-edit-sections"><SponsorMasterDataFields value={masterData} onChange={setMasterData} onPostalCodeStatusChange={setPostalCodeStatus} /></div>{formError && <p className="field-message error" role="alert" style={{ marginTop: 14 }}>{formError}</p>}<div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setCreating(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={saving || (postalCodeStatus !== "valid" && !(postalCodeStatus === "unavailable" && masterData.city.trim()))}>{saving ? "Wird gespeichert …" : "Sponsor speichern"}</button></div></form></Modal>}
   </main>;
 }

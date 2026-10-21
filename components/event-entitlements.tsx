@@ -1,11 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
-import { eventPlanLabel } from "@/lib/event-plan-labels";
-import { eventContractPackageLabel } from "@/lib/event-contract-package-labels";
+import { Modal } from "@/components/modal";
 import { Icon } from "@/components/ui";
+import { eventContractPackageLabel } from "@/lib/event-contract-package-labels";
+import { eventPlanLabel } from "@/lib/event-plan-labels";
+import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 export type EventPlanCode = "free" | "event" | "event_pro" | "enterprise";
 export type EventFeature = "contracts" | "benefits" | "tasks" | "evidence" | "reports";
@@ -146,15 +147,6 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
   const getEntitlement = useCallback((eventId: string) => entriesRef.current[eventId]?.data ?? null, []);
   const getPackageBooking = useCallback((eventId: string) => entriesRef.current[eventId]?.packageBooking ?? null, []);
 
-  useEffect(() => {
-    if (!dialog) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !redeeming) setDialog(null);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [dialog, redeeming]);
-
   async function redeemCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!dialog || !code.trim() || redeeming) return;
@@ -193,8 +185,7 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
 
   return <EventEntitlementsContext.Provider value={value}>
     {children}
-    {dialog && <div className="modal-backdrop entitlement-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !redeeming) setDialog(null); }}>
-      <section className="create-modal entitlement-modal" role="dialog" aria-modal="true" aria-labelledby="entitlement-title">
+    {dialog && <Modal labelledBy="entitlement-title" className="create-modal entitlement-modal" backdropClassName="modal-backdrop entitlement-backdrop" role="dialog" busy={redeeming} onClose={() => setDialog(null)}>
         <div className="create-modal-head"><div><div className="eyebrow">EVENT FREISCHALTEN</div><h2 id="entitlement-title">pacct für dieses Event freischalten</h2><p>{dialog.title}{dialog.reason ? ` · ${dialog.reason}` : ""}</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={redeeming} onClick={() => setDialog(null)}><Icon name="close" size={16}/></button></div>
         {currentPackageBooking ? <section className="entitlement-package-current"><div><strong>Paket gebucht: {eventContractPackageLabel(currentPackageBooking.max_contracts, currentPackageBooking.package_code)}</strong><span>{currentPackageBooking.payment_status === "comped" ? "Über Freischaltcode aktiviert" : `Gesamtbetrag ${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(currentPackageBooking.total_amount_cents / 100)}`}</span></div><p>{currentPackageBooking.signature_addon_selected ? `Digitale Signaturen inklusive (${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(currentPackageBooking.signature_addon_amount_cents / 100)} Add-on).` : currentPackageBooking.payment_status === "comped" ? "Das Paket wurde mit einem Freischaltcode aktiviert." : "Ohne Signatur-Add-on gebucht."}</p></section> : currentEntitlement?.plan_code === "event" || currentEntitlement?.plan_code === "event_pro" ? <section className="entitlement-package-current"><div><strong>Bestehender Tarif: {eventPlanLabel(currentEntitlement.plan_code)}</strong><span>Für dieses Event wurde bereits ein Tarif freigeschaltet.</span></div><p>Die neuen Vertragspakete gelten für neu gebuchte Events. Ein Wechsel bestehender Tarife benötigt eine separate Zuordnung.</p></section> : <>
           <div className="entitlement-package-grid" role="radiogroup" aria-label="Paket auswählen">{contractPackages.map((item) => {
@@ -209,8 +200,7 @@ export function EventEntitlementsProvider({ children }: { children: ReactNode })
         {dialogError && <p className="field-message error" role="alert">{dialogError}</p>}{dialogMessage && <p className="field-message success" role="status">{dialogMessage}</p>}
         <form className="entitlement-code-form" onSubmit={redeemCode}><label className="settings-field"><span>Du hast einen Freischaltcode?</span><input autoComplete="off" autoCapitalize="characters" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder={`S-${new Date().getFullYear()}-00000000 (Beispiel, nicht einlösbar)`} maxLength={80} /></label><button className="btn btn-primary" type="submit" disabled={redeeming || !code.trim()}>{redeeming ? "Wird eingelöst …" : "Einlösen"}</button></form>
         <p className="entitlement-payment-note">Pakete und Preise sind vorbereitet. Eine Online-Zahlung ist noch nicht verbunden; bis zur bestätigten Zahlung wird keine Berechtigung freigeschaltet.</p>
-      </section>
-    </div>}
+      </Modal>}
   </EventEntitlementsContext.Provider>;
 }
 

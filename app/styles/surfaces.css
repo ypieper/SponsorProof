@@ -1,0 +1,57 @@
+/* pacct design direction: warm paper, deep ink, bright actions and fewer nested cards. */
+:root {
+  --ink: #172b3d;
+  --muted: #6f7e8e;
+  --line: #e8e1d7;
+  --soft: #f3efe6;
+  --navy: #142a3e;
+  --accent: #e96549;
+  --accent-strong: #bd482f;
+  --accent-soft: #fff0e8;
+  --accent-border: #f1c8bb;
+  --action: #3859c9;
+  --action-strong: #263f9f;
+  --surface: #fffefa;
+  --canvas: #f7f4ed;
+  --shadow-card: 0 5px 18px rgba(34, 43, 52, .045);
+  --shadow-raised: 0 14px 34px rgba(34, 43, 52, .11);
+}
+body, .app-frame { background: var(--canvas); }
+::selection { color: #263f9f; background: #e8edff; }
+:focus-visible { outline-color: rgba(56, 89, 201, .38); }
+.sidebar { background: #142a3e; border-right-color: #21394c; }
+.sidebar .brand-mark, .mobile-drawer .brand-mark { background: linear-gradient(145deg, #f17a5b, #e96549); box-shadow: 0 5px 13px rgba(233, 101, 73, .22); }
+.brand-wordmark { display:inline-flex; align-items:center; font-weight:800; letter-spacing:-.065em; line-height:1; }
+.brand-wordmark-cc { display:inline-block; color:var(--accent); letter-spacing:-.115em; transform:rotate(-9deg) translateY(-1px); transform-origin:center; }
+.brand-mark svg { display:block; width:78%; height:78%; }
+.sidebar .nav-link.active, .mobile-drawer .nav-link.active { background: linear-gradient(105deg, #f17a5b, #e96549) !important; border-color: #e96549 !important; color: #fff !important; box-shadow: 0 8px 18px rgba(10, 22, 34, .16); }
+.sidebar .sidebar-legal-links a[href="/kontakt"] { color: #ff9b7f; }
+.main-area { background: linear-gradient(180deg, #faf8f3 0, #f4f0e7 100%); }
+.topbar { background: #142a3e; border-bottom-color: #294257; }
+.topbar .crumb { color:#afbecc; }
+.topbar .crumb b { color:#fffefa; }
+.topbar .icon-button.menu-toggle { border-color:#365168; background:#1d3a53; color:#fffefa; }
+.btn-primary { border-color: var(--action); background: linear-gradient(135deg, #5270d4, #3859c9); box-shadow: 0 6px 16px rgba(56, 89, 201, .2); }
+.btn-primary:hover { border-color: var(--action-strong); background: linear-gradient(135deg, #3c59bd, #263f9f); box-shadow: 0 8px 19px rgba(56, 89, 201, .24); }
+.icon-button:hover, .tab:hover { border-color: var(--accent-border); color: var(--accent-strong); }
+.metric-card, .panel, .event-card { border-color: #ece5db; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-card); }
+.metric-card, .panel { box-shadow: 0 4px 15px rgba(34, 43, 52, .035); }
+.metric-icon, .dashboard-kpi-label .metric-icon { color: var(--accent-strong); background: #fff0e8; }
+.dashboard-event-row { border-color: transparent; border-radius: 11px; background: #f7f4ed; box-shadow: none; }
+.dashboard-event-row:hover { border-color: #e8e1d7; background: #fffefa; box-shadow: none; }
+.dashboard-kpi-card { border-color: transparent; border-radius: 15px; background: #fffefa; box-shadow: 0 5px 17px rgba(34, 43, 52, .045); }
+.dashboard-kpi-card:first-child { background: #142a3e; box-shadow: 0 10px 24px rgba(20, 42, 62, .12); }
+.dashboard-kpi-card:first-child .dashboard-kpi-label,
+.dashboard-kpi-card:first-child > small { color: #c2d0db; }
+.dashboard-kpi-card:first-child > strong { color: #fffefa; }
+.dashboard-kpi-card:first-child .metric-icon { color: #bd482f; background: #fff0e8; }
+.dashboard-grid > .panel { border-color: transparent; box-shadow: 0 5px 18px rgba(34, 43, 52, .04); }
+.landing-page { color: #172b3d; }
+.landing-hero::before { background: radial-gradient(ellipse at 75% 38%, rgba(255, 214, 194, .6), transparent 36%), radial-gradient(ellipse at 18% 65%, rgba(219, 227, 255, .65), transparent 33%); }
+.landing-flow-card, .landing-pricing-card { border-color: #e8e1d7; border-radius: 20px; box-shadow: 0 8px 24px rgba(34, 43, 52, .04); }
+.landing-pricing-card.is-featured { border-color: #e96549; background: linear-gradient(180deg, #fff0e8, #fffefa 52%); box-shadow: 0 13px 30px rgba(233, 101, 73, .12); }
+.landing-pricing-popular { background: #fff0e8; color: #bd482f; }
+@media (prefers-reduced-motion: no-preference) {
+  .btn-primary, .nav-link.active { transition: transform .18s ease, box-shadow .18s ease, background .18s ease; }
+  .btn-primary:hover { transform: translateY(-1px); }
+}

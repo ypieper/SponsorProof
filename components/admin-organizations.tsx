@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Modal } from "@/components/modal";
 import { Icon } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type OrganizerArea = {
   id: string;
@@ -132,7 +133,7 @@ export function AdminOrganizations() {
                 </tr>)}</tbody>
               </table></div>}
       </section>
-    {deleteTarget && <div className="admin-delete-overlay" role="presentation"><section className="panel admin-delete-dialog admin-organization-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-organization-heading" aria-describedby="delete-organization-description">
+    {deleteTarget && <Modal labelledBy="delete-organization-heading" describedBy="delete-organization-description" className="panel admin-delete-dialog admin-organization-delete-dialog" backdropClassName="admin-delete-overlay" role="alertdialog" busy={busy} onClose={closeDialog}>
       <button className="icon-button admin-delete-close" type="button" aria-label="Dialog schließen" disabled={busy} onClick={closeDialog}><Icon name="close" size={16}/></button>
       <span className="eyebrow">UNWIDERRUFLICHE LÖSCHUNG</span>
       <h2 id="delete-organization-heading">Veranstalterbereich endgültig löschen?</h2>
@@ -140,6 +141,6 @@ export function AdminOrganizations() {
       <label className="settings-field admin-delete-phrase"><span>Gib zur Bestätigung exakt <b>{confirmationPhrase}</b> ein.</span><input autoComplete="off" spellCheck={false} value={confirmation} disabled={busy} onChange={(event) => setConfirmation(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (confirmation === confirmationPhrase) void deleteOrganization(); } }} /></label>
       {actionError && <p className="field-message error" role="alert">{actionError}</p>}
       <div className="admin-delete-actions"><button className="btn" type="button" disabled={busy} onClick={closeDialog}>Abbrechen</button><button className="btn btn-danger-soft" type="button" disabled={busy || confirmation !== confirmationPhrase} onClick={() => void deleteOrganization()}><Icon name="trash" size={14}/>{busy ? "Wird gelöscht …" : "Bereich und Konten löschen"}</button></div>
-    </section></div>}
+    </Modal>}
   </>;
 }

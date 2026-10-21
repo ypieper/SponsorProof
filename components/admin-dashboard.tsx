@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Icon, PageHeading } from "@/components/ui";
+import { Modal } from "@/components/modal";
 import { AdminActivationCodes } from "@/components/admin-activation-codes";
-import { AdminEnterpriseAccess } from "@/components/admin-enterprise-access";
-import { AdminContactRequests } from "@/components/admin-contact-requests";
-import { AdminOrganizations } from "@/components/admin-organizations";
-import { AdminTransactions } from "@/components/admin-transactions";
-import { AdminPartners } from "@/components/admin-partners";
-import { AdminCommissions } from "@/components/admin-commissions";
 import { AdminCommissionRules } from "@/components/admin-commission-rules";
+import { AdminCommissions } from "@/components/admin-commissions";
+import { AdminContactRequests } from "@/components/admin-contact-requests";
+import { AdminEnterpriseAccess } from "@/components/admin-enterprise-access";
+import { AdminOrganizations } from "@/components/admin-organizations";
+import { AdminPartners } from "@/components/admin-partners";
+import { AdminTransactions } from "@/components/admin-transactions";
+import { Icon, PageHeading } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type AdminUser = {
   id: string;
@@ -167,6 +168,6 @@ export default function AdminPage({ section }: { section: AdminSection }) {
             </table></div>}
           </>}
     </> : section === "transactions" ? <AdminTransactions/> : section === "codes" ? <AdminActivationCodes/> : section === "enterprise" ? <AdminEnterpriseAccess/> : section === "contacts" ? <AdminContactRequests/> : section === "organizations" ? <AdminOrganizations/> : section === "partners" ? <AdminPartners/> : section === "commissions" ? <AdminCommissions/> : <AdminCommissionRules/>}
-    {deleteTarget && <div className="admin-delete-overlay" role="presentation"><section className="panel admin-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="admin-delete-heading" aria-describedby="admin-delete-description"><button className="icon-button admin-delete-close" type="button" aria-label="Dialog schließen" disabled={deleting} onClick={closeDeleteDialog}><Icon name="close" size={16}/></button><span className="eyebrow">BENUTZERKONTO ENTFERNEN</span><h2 id="admin-delete-heading">Konto dauerhaft löschen?</h2><p id="admin-delete-description">Das Konto <strong>{deleteTarget.email}</strong> und seine Anmeldedaten werden unwiderruflich entfernt. Veranstalterdaten bleiben für die übrigen Mitglieder bestehen. Ein Konto kann nicht gelöscht werden, wenn dadurch der letzte Inhaber oder der letzte Plattform-Admin wegfällt.</p><label className="settings-field admin-delete-phrase"><span>Zur Bestätigung gib <b>BENUTZERKONTO LÖSCHEN</b> ein.</span><input autoComplete="off" spellCheck={false} value={deletePhrase} disabled={deleting} onChange={(event) => setDeletePhrase(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /></label><label className="account-delete-check"><input type="checkbox" checked={deleteConfirmed} disabled={deleting} onChange={(event) => setDeleteConfirmed(event.target.checked)} /><span>Ich bestätige, dass das Konto unwiderruflich gelöscht werden soll.</span></label>{deleteError && <p className="field-message error" role="alert">{deleteError}</p>}<div className="admin-delete-actions"><button className="btn" type="button" disabled={deleting} onClick={closeDeleteDialog}>Abbrechen</button><button className="btn btn-danger-soft" type="button" disabled={deleting || deletePhrase !== "BENUTZERKONTO LÖSCHEN" || !deleteConfirmed} onClick={() => void deleteUser()}><Icon name="trash" size={14}/>{deleting ? "Wird gelöscht …" : "Konto löschen"}</button></div></section></div>}
+    {deleteTarget && <Modal labelledBy="admin-delete-heading" describedBy="admin-delete-description" className="panel admin-delete-dialog" backdropClassName="admin-delete-overlay" role="alertdialog" busy={deleting} onClose={closeDeleteDialog}><button className="icon-button admin-delete-close" type="button" aria-label="Dialog schließen" disabled={deleting} onClick={closeDeleteDialog}><Icon name="close" size={16}/></button><span className="eyebrow">BENUTZERKONTO ENTFERNEN</span><h2 id="admin-delete-heading">Konto dauerhaft löschen?</h2><p id="admin-delete-description">Das Konto <strong>{deleteTarget.email}</strong> und seine Anmeldedaten werden unwiderruflich entfernt. Veranstalterdaten bleiben für die übrigen Mitglieder bestehen. Ein Konto kann nicht gelöscht werden, wenn dadurch der letzte Inhaber oder der letzte Plattform-Admin wegfällt.</p><label className="settings-field admin-delete-phrase"><span>Zur Bestätigung gib <b>BENUTZERKONTO LÖSCHEN</b> ein.</span><input autoComplete="off" spellCheck={false} value={deletePhrase} disabled={deleting} onChange={(event) => setDeletePhrase(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} /></label><label className="account-delete-check"><input type="checkbox" checked={deleteConfirmed} disabled={deleting} onChange={(event) => setDeleteConfirmed(event.target.checked)} /><span>Ich bestätige, dass das Konto unwiderruflich gelöscht werden soll.</span></label>{deleteError && <p className="field-message error" role="alert">{deleteError}</p>}<div className="admin-delete-actions"><button className="btn" type="button" disabled={deleting} onClick={closeDeleteDialog}>Abbrechen</button><button className="btn btn-danger-soft" type="button" disabled={deleting || deletePhrase !== "BENUTZERKONTO LÖSCHEN" || !deleteConfirmed} onClick={() => void deleteUser()}><Icon name="trash" size={14}/>{deleting ? "Wird gelöscht …" : "Konto löschen"}</button></div></Modal>}
   </main>;
 }

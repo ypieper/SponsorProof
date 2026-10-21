@@ -1,0 +1,66 @@
+/* Guided, linear task builder for reusable benefit workflows. */
+.block-editor-workflow-section .benefit-template-task-frequency { margin-top:0; }
+.block-editor-workflow-section .benefit-template-subtasks { display:grid; gap:11px; margin:0; padding:14px; border-color:#dfe7ee; background:#f7f9fb; }
+.block-editor-workflow-section .benefit-template-subtasks-heading { align-items:center; }
+.block-editor-workflow-section .benefit-template-subtasks-heading p { max-width:520px; line-height:1.5; }
+.block-editor-workflow-section .benefit-template-subtasks-heading > .btn { min-height:34px; padding:0 11px; font-size:10px; }
+.block-editor-workflow-section .block-editor-workflow-warning { margin:0; border-color:#e1e8ed; background:#fff; color:#69798a; }
+.block-editor-workflow-section .block-editor-workflow-warning b { color:#405569; }
+.block-editor-workflow-section .benefit-template-subtask-list { gap:9px; margin:0; }
+.block-editor-workflow-section .benefit-template-subtask-row { position:relative; grid-template-columns:26px minmax(0,1fr) 30px; align-items:stretch; gap:8px; }
+.block-editor-workflow-section .benefit-template-subtask-row:not(:last-child)::after { position:absolute; z-index:0; top:31px; bottom:-10px; left:11px; border-left:2px solid #d6e1e9; content:""; }
+.block-editor-workflow-section .block-editor-subtask-number { position:relative; z-index:1; width:24px; height:24px; margin-top:11px; border:1px solid #d3dfeb; background:#edf3f8; color:#3859c9 !important; }
+.benefit-template-subtask-card { display:grid; min-width:0; gap:11px; padding:12px; border:1px solid #dfe7ee; border-radius:10px; background:#fff; }
+.benefit-template-step-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; min-width:0; }
+.benefit-template-step-heading > div { display:grid; gap:3px; min-width:0; }
+.benefit-template-step-heading b { color:#34485d; font-size:11px; }
+.benefit-template-step-heading small { color:#8190a0; font-size:9px; line-height:1.4; }
+.benefit-template-step-owner { flex:none; padding:4px 8px; border-radius:99px; font-size:9px; font-weight:700; }
+.benefit-template-step-owner.organizer { background:#edf2ff; color:#405fc3; }
+.benefit-template-step-owner.sponsor { background:#fff1e9; color:#b65c3c; }
+.block-editor-workflow-section .benefit-template-subtask-fields { grid-template-columns:minmax(0,1fr) minmax(240px,.72fr); gap:12px; }
+.block-editor-workflow-section .benefit-template-subtask-fields .settings-field { margin:0; }
+.block-editor-workflow-section .benefit-template-subtask-fields .settings-field > span { font-size:9px; }
+.block-editor-workflow-section .benefit-template-subtask-fields .settings-field input,
+.block-editor-workflow-section .benefit-template-subtask-fields .settings-field select { height:37px; font-size:10px; }
+.benefit-template-step-controls { display:flex; flex-direction:column; gap:4px; align-items:center; padding-top:7px; }
+.benefit-template-step-controls .icon-button { width:28px; height:28px; min-height:28px; padding:0; border-color:#e1e7ed; background:#fff; color:#687b8e; }
+.benefit-template-step-controls .icon-button:disabled { opacity:.35; cursor:not-allowed; }
+.benefit-template-step-controls button[aria-label*="nach oben"] svg { transform:rotate(-90deg); }
+.benefit-template-step-controls button[aria-label*="nach unten"] svg { transform:rotate(90deg); }
+.benefit-template-step-controls .benefit-template-step-remove { color:#9a6870; }
+.benefit-template-workflow-preview { display:grid; gap:8px; padding:11px 12px; border:1px solid #dce6ed; border-radius:9px; background:#eef3f7; }
+.benefit-template-workflow-preview > b { color:#405569; font-size:10px; }
+.benefit-template-workflow-preview > ol { display:flex; align-items:stretch; gap:7px; margin:0; padding:0; list-style:none; }
+.benefit-template-workflow-preview > ol > li { position:relative; display:flex; flex:1 1 0; align-items:center; gap:7px; min-width:0; padding:7px 9px; border:1px solid #dce5ec; border-radius:8px; background:#fff; }
+.benefit-template-workflow-preview > ol > li:not(:last-child)::after { position:absolute; top:50%; right:-7px; z-index:1; width:7px; border-top:1px solid #aab8c4; content:""; }
+.benefit-template-workflow-preview > ol > li > span { display:grid; width:20px; height:20px; flex:none; place-items:center; border-radius:50%; background:#e9efff; color:#405fc3; font-size:9px; font-weight:750; }
+.benefit-template-workflow-preview > ol > li > div { display:grid; gap:2px; min-width:0; }
+.benefit-template-workflow-preview strong { overflow:hidden; color:#45586b; font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
+.benefit-template-workflow-preview li small,.benefit-template-workflow-preview > small { color:#8190a0; font-size:9px; }
+.benefit-template-workflow-preview > small { line-height:1.4; }
+@media (max-width:700px) {
+  .add-event-sponsor-modal .create-modal-actions { display:grid; grid-template-columns:minmax(0,1fr); }
+  .add-event-sponsor-modal .create-modal-actions .btn { width:100%; min-height:42px; }
+  .add-sponsor-success-summary { grid-template-columns:34px minmax(0,1fr); }
+  .add-sponsor-assignment-status { grid-column:2; }
+  .block-editor-workflow-section .benefit-template-subtasks { padding:11px; }
+  .block-editor-workflow-section .benefit-template-subtasks-heading { align-items:flex-start; }
+  .block-editor-workflow-section .benefit-template-subtasks-heading > .btn { align-self:flex-start; }
+  .block-editor-workflow-section .benefit-template-subtask-row { grid-template-columns:23px minmax(0,1fr) 28px; gap:6px; }
+  .block-editor-workflow-section .benefit-template-subtask-row:not(:last-child)::after { left:10px; }
+  .block-editor-workflow-section .block-editor-subtask-number { width:22px; height:22px; font-size:9px !important; }
+  .benefit-template-subtask-card { gap:9px; padding:10px; }
+  .block-editor-workflow-section .benefit-template-subtask-fields { grid-template-columns:minmax(0,1fr); gap:9px; }
+  .benefit-template-step-heading { align-items:flex-start; }
+  .benefit-template-step-owner { margin-top:1px; }
+  .benefit-template-step-controls { gap:3px; padding-top:5px; }
+  .benefit-template-step-controls .icon-button { width:26px; height:26px; min-height:26px; }
+  .benefit-template-workflow-preview > ol { flex-direction:column; }
+  .benefit-template-workflow-preview > ol > li:not(:last-child)::after { top:auto; right:auto; bottom:-8px; left:19px; height:8px; border-top:0; border-left:1px solid #aab8c4; }
+}
+
+@media (max-width: 700px) {
+  .event-location-fields { grid-template-columns: minmax(0, 1fr); }
+  .event-location-lookup-message { grid-column: 1; }
+}

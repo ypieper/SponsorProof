@@ -1,19 +1,21 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import type { Sponsor, SponsorContract } from "@/lib/sponsor-types";
+import { benefitWorkflowCount } from "@/lib/benefit-workflow";
+import { Modal } from "@/components/modal";
+import { useEventEntitlements } from "@/components/event-entitlements";
 import { EmptyState, Icon, Progress, SponsoLogo, Status } from "@/components/ui";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { fetchStoredBenefits } from "@/lib/benefits-storage";
-import { fetchStoredTasks } from "@/lib/tasks-storage";
-import { fetchStoredEvidence } from "@/lib/evidence-storage";
+import { createCompletionReportPdf } from "@/lib/completion-report-pdf";
 import { fetchContractReportStates, saveContractReportState } from "@/lib/contract-documents-storage";
 import { formatContractValue, parseContractValue } from "@/lib/event-contract-values";
-import { useEventEntitlements } from "@/components/event-entitlements";
-import { createCompletionReportPdf } from "@/lib/completion-report-pdf";
-import { deleteEventReportMetric, fetchEventReportMetrics, saveEventReportMetric, type EventReportMetric } from "@/lib/event-report-metrics-storage";
 import { formatEventReportMetricValue } from "@/lib/event-report-metric-format";
+import { deleteEventReportMetric, fetchEventReportMetrics, saveEventReportMetric, type EventReportMetric } from "@/lib/event-report-metrics-storage";
+import { fetchStoredEvidence } from "@/lib/evidence-storage";
+import type { Sponsor,SponsorContract } from "@/lib/sponsor-types";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { fetchStoredTasks } from "@/lib/tasks-storage";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
 const reportNumberFormat = new Intl.NumberFormat("de-DE");
 
@@ -142,7 +144,7 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
             const benefit = task.benefit_id ? benefitsById.get(task.benefit_id) : undefined;
             if (benefit?.completionRequired === false) return false;
             if (task.source !== "Leistung" || !task.benefit_id || !benefit) return true;
-            return task.workflow_instance <= (benefit.tasksPerUnit ? benefit.quantity : 1);
+            return task.workflow_instance <= (benefitWorkflowCount(benefit.quantity, benefit.tasksPerUnit));
           });
           const benefitsWithTasks = new Set(currentSponsorTasks.filter((task) => task.source === "Leistung" && task.benefit_id).map((task) => task.benefit_id));
           const legacyBenefitTasks: ReportTask[] = contractedBenefits.filter((benefit) => benefit.completionRequired !== false && !benefitsWithTasks.has(benefit.id)).map((benefit) => {
@@ -287,8 +289,8 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
       <td data-label="Versand"><span className={`status ${report.sent ? "status-done" : report.ready ? "status-progress" : "status-open"}`}>{report.sent ? "Versendet" : report.ready ? "Bereit" : "Nicht bereit"}</span></td>
       <td data-label="Aktionen"><div className="event-report-actions"><button className="btn btn-primary" type="button" onClick={async () => { if (await ensureFeature(eventId, eventTitle, "reports")) setSelectedReport(report); }} disabled={!ready || !report.ready}><Icon name="file" size={14}/> Report erstellen</button><button className={`btn event-report-sent-button${report.sent ? " is-sent" : ""}`} type="button" onClick={() => report.sent ? void updateReportSentStatus(report, false) : setPendingSentReport(report)} disabled={!ready || !report.ready || updatingReportId === report.contract.id}>{updatingReportId === report.contract.id ? "Speichert …" : report.sent ? "Versand zurücknehmen" : "Versand bestätigen"}</button></div></td>
     </tr>)}</tbody></table></div>}{message && <p className="task-feedback" role="status">{message}</p>}</section>
-    {pendingSentReport && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !updatingReportId) setPendingSentReport(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="report-sent-confirm-title"><div className="create-modal-head"><div><h2 id="report-sent-confirm-title">Versand bestätigen?</h2><p>Wurde der Abschlussreport für {pendingSentReport.sponsor.name} tatsächlich an den Sponsor versendet? Der Status wird erst nach deiner Bestätigung aktualisiert.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(updatingReportId)} onClick={() => setPendingSentReport(null)}><Icon name="close" size={16}/></button></div><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(updatingReportId)} onClick={() => setPendingSentReport(null)}>Noch nicht</button><button className="btn btn-primary" type="button" disabled={Boolean(updatingReportId)} onClick={async () => { await updateReportSentStatus(pendingSentReport, true); setPendingSentReport(null); }}>{updatingReportId === pendingSentReport.contract.id ? "Speichert …" : "Versand bestätigen"}</button></div></section></div>}
-    {selectedReport && <div className="modal-backdrop completion-report-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedReport(null); }}><section className="create-modal completion-report-modal" role="dialog" aria-modal="true" aria-labelledby="completion-report-title">
+    {pendingSentReport && <Modal labelledBy="report-sent-confirm-title" className="create-modal" backdropClassName="modal-backdrop" role="dialog" busy={Boolean(updatingReportId)} onClose={() => setPendingSentReport(null)}><div className="create-modal-head"><div><h2 id="report-sent-confirm-title">Versand bestätigen?</h2><p>Wurde der Abschlussreport für {pendingSentReport.sponsor.name} tatsächlich an den Sponsor versendet? Der Status wird erst nach deiner Bestätigung aktualisiert.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(updatingReportId)} onClick={() => setPendingSentReport(null)}><Icon name="close" size={16}/></button></div><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(updatingReportId)} onClick={() => setPendingSentReport(null)}>Noch nicht</button><button className="btn btn-primary" type="button" disabled={Boolean(updatingReportId)} onClick={async () => { await updateReportSentStatus(pendingSentReport, true); setPendingSentReport(null); }}>{updatingReportId === pendingSentReport.contract.id ? "Speichert …" : "Versand bestätigen"}</button></div></Modal>}
+    {selectedReport && <Modal labelledBy="completion-report-title" className="create-modal completion-report-modal" backdropClassName="modal-backdrop completion-report-backdrop" busy={reportAction !== null} onClose={() => setSelectedReport(null)}>
       <div className="completion-report-document">
         <header className="completion-report-brand-row">
           <div className="completion-report-pacct-brand"><SponsoLogo markSize={30}/></div>
@@ -308,6 +310,6 @@ export function EventReports({ eventId, eventTitle, organizerLogoUrl, sponsors, 
       </div>
       <div className="create-modal-actions completion-report-actions"><button className="btn" type="button" onClick={() => setSelectedReport(null)}>Schließen</button><button className="btn" type="button" onClick={downloadReportPdf} disabled={reportAction !== null}>{reportAction === "download" ? "PDF wird erstellt …" : "PDF herunterladen"}</button><button className="btn btn-primary" type="button" onClick={sendReportToSponsor} disabled={reportAction !== null}>{reportAction === "share" ? "Wird vorbereitet …" : "PDF teilen"}</button></div>
       {message && <p className="task-feedback completion-report-feedback" role="status">{message}</p>}
-    </section></div>}
+    </Modal>}
   </>;
 }

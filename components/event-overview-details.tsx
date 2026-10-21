@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { Modal } from "@/components/modal";
+import { EventLocationFields } from "@/components/event-location-fields";
 import { Icon } from "@/components/ui";
 import { updateStoredEventDetails } from "@/lib/events-storage";
 import { createClient } from "@/lib/supabase/client";
-import { EventLocationFields } from "@/components/event-location-fields";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 type EventDetails = { title: string; startDate: string; endDate: string; location: string; locationStreet: string; locationPostalCode: string; locationCity: string; responsible: string; contactFirstName: string; contactLastName: string; contactEmail: string; contactPhone: string; organizerLogoPath: string | null; organizerLogoUrl?: string | null };
 const maxLogoSize = 5 * 1024 * 1024;
@@ -152,8 +153,7 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
       <div className="event-details-grid"><div><span>Zeitraum</span><b>{formatDate(details.startDate)} – {formatDate(details.endDate)}</b></div><div><span>Veranstaltungsort</span><b>{details.location || "Noch nicht hinterlegt"}</b></div><div><span>Ansprechperson</span><b>{[details.contactFirstName, details.contactLastName].filter(Boolean).join(" ") || "Noch nicht hinterlegt"}</b><small>{[details.contactEmail, details.contactPhone].filter(Boolean).join(" · ")}</small></div></div>
       {message && <p className="event-details-message" role="status">{message}</p>}
     </section>
-    {editing && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditing(false); }}>
-      <section className="create-modal event-details-edit-modal" role="dialog" aria-modal="true" aria-labelledby="event-details-title">
+    {editing && <Modal labelledBy="event-details-title" className="create-modal event-details-edit-modal" backdropClassName="modal-backdrop" role="dialog" busy={saving} onClose={() => setEditing(false)}>
         <div className="create-modal-head">
           <div><h2 id="event-details-title">Event-Stammdaten bearbeiten</h2><p>Veranstaltungsdaten und Kontakt für Sponsoren aktualisieren.</p></div>
           <button className="icon-button" type="button" aria-label="Dialog schließen" disabled={saving} onClick={() => setEditing(false)}><Icon name="close" size={16}/></button>
@@ -191,7 +191,6 @@ export function EventOverviewDetails({ eventId, initialDetails, onDetailsSaved }
           {message && <p className="field-message error" role="alert" style={{ marginTop: 12 }}>{message}</p>}
           <div className="create-modal-actions"><button className="btn" type="button" disabled={saving} onClick={() => setEditing(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={!ready || saving}>{saving ? "Wird gespeichert …" : "Speichern"}</button></div>
         </form>
-      </section>
-    </div>}
+      </Modal>}
   </>;
 }

@@ -1,0 +1,107 @@
+/* Keep the event identity and milestones compact so the active workspace gets more room. */
+main.content > .page-heading:has(.event-heading-actions) {
+  gap: 12px;
+  margin-bottom: 14px;
+}
+main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main { gap: 11px; }
+main.content > .page-heading:has(.event-heading-actions) .event-page-logo { width: 84px; height: 42px; padding: 4px 7px; }
+
+.event-benefits-data-table tbody tr.event-benefit-completed td { background-color:#f0f8f3; }
+.event-benefits-data-table tbody tr.event-benefit-completed:hover td { background-color:#e6f4eb; }
+.event-benefits-data-table tbody tr.event-benefit-completed .event-benefit-name b { color:#287653; }
+@media (max-width:760px) {
+  .event-benefits-data-table tbody tr.event-benefit-completed { border-color:#c9e5d3; background:#f0f8f3; }
+  .event-benefits-data-table tbody tr.event-benefit-completed:hover td { background:transparent; }
+}
+main.content > .page-heading:has(.event-heading-actions) .event-heading-summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:5px 18px; margin-top:5px; }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-summary > div { display:flex; align-items:baseline; gap:5px; min-width:0; }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-summary strong { color:var(--ink); font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-summary span { color:var(--muted); font-size:12px; line-height:1.3; }
+main.content > .page-heading:has(.event-heading-actions) .eyebrow { margin-bottom: 3px; font-size: 9px; }
+main.content > .page-heading:has(.event-heading-actions) h1 { font-size: clamp(22px, 2vw, 27px); line-height: 1.1; }
+main.content > .page-heading:has(.event-heading-actions) .subtitle { margin-top: 4px; font-size: 11px; line-height: 1.35; }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-actions { gap: 7px; }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-actions .btn { height: 34px; padding-inline: 10px; font-size: 11px; }
+main.content > .page-heading:has(.event-heading-actions) .event-lifecycle-status,
+main.content > .page-heading:has(.event-heading-actions) .event-plan-badge { min-height: 22px; padding: 3px 7px; font-size: 9px; }
+.event-timeline { margin-bottom: 12px; padding: 11px 14px; border-radius: 12px; }
+.event-timeline-steps { padding: 1px 0; }
+.event-timeline-step { gap: 4px; padding-inline: 5px; }
+.event-timeline-step:not(:last-child)::after { top: 10px; }
+.event-timeline-node { width: 22px; height: 22px; }
+.event-timeline-node svg { width: 11px; height: 11px; }
+.event-timeline-step b { font-size: 10px; line-height: 1.25; }
+.event-timeline-step small { font-size: 9px; line-height: 1.25; }
+/* The event label and subtitle repeat context already visible elsewhere; reclaim their vertical space. */
+main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main .eyebrow,
+main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main .subtitle { display: none; }
+main.content > .page-heading:has(.event-heading-actions) .event-page-logo { width: 68px; height: 38px; }
+main.content > .page-heading:has(.event-heading-actions) h1 { font-size: clamp(20px, 1.8vw, 24px); }
+main.content > .page-heading:has(.event-heading-actions) .event-heading-actions .btn { height: 30px; }
+.event-timeline { margin-bottom: 8px; padding: 8px 12px; }
+.event-timeline-step { gap: 3px; }
+.event-timeline-step:not(:last-child)::after { top: 9px; }
+.event-timeline-node { width: 20px; height: 20px; }
+.event-timeline-node svg { width: 10px; height: 10px; }
+.event-timeline-step b { max-width: none; font-size: 9px; line-height: 1.2; }
+.event-timeline-step small { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; line-height: 1.2; }
+@media (max-width: 700px) {
+  .sponsor-directory-page-heading { align-items:center; gap:10px; margin-bottom:14px; }
+  .sponsor-directory-page-heading h1 { font-size:24px; }
+  main.content > .page-heading:has(.event-heading-actions) { gap: 8px; margin-bottom: 9px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-page-heading-main { gap: 9px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-heading-summary { gap:4px 12px; margin-top:4px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-heading-summary strong { font-size:11px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-heading-summary span { font-size:11px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-page-logo { width: 58px; height: 34px; }
+  main.content > .page-heading:has(.event-heading-actions) h1 { font-size: 20px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-heading-actions { gap: 6px; }
+  main.content > .page-heading:has(.event-heading-actions) .event-heading-actions .btn { height: 29px; }
+  .event-timeline { margin: 0 -4px 8px; padding: 7px 9px; }
+  .event-timeline-steps { min-width: 720px; }
+  .event-timeline-step b { font-size: 8px; }
+  .event-timeline-step small { font-size: 8px; }
+}
+
+/* Keep the sponsor directory's summary useful while returning vertical space to the list. */
+main.content:has(> .sponsor-directory-page-heading) { padding-top:20px; }
+.sponsor-directory-page-heading { margin-bottom:14px; }
+.sponsor-directory-metrics { gap:9px; margin-bottom:14px; }
+.sponsor-directory-metrics .metric-card {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  min-height:58px;
+  padding:9px 14px;
+  border-radius:11px;
+  box-shadow:none;
+}
+.sponsor-directory-metrics .metric-card::after,
+.sponsor-directory-metrics .metric-icon { display:none; }
+.sponsor-directory-metrics .metric-value { margin:0; font-size:20px; }
+@media (max-width:700px) {
+  main.content:has(> .sponsor-directory-page-heading) { padding-top:16px; }
+  .sponsor-directory-metrics { gap:7px; margin-bottom:12px; }
+  .sponsor-directory-metrics .metric-card { min-height:54px; padding:8px 10px; }
+  .sponsor-directory-metrics .metric-top { font-size:10px; }
+  .sponsor-directory-metrics .metric-value { font-size:18px; }
+  .sponsor-directory-page-heading { margin-bottom:12px; }
+}
+
+/* Compact sponsor portal benefits; the green treatment appears only after every workflow is done. */
+.sponsor-portal-agreed-benefits { gap:8px; margin-top:12px; }
+.sponsor-portal-agreed-benefit { gap:0; padding:10px 12px; border-radius:10px; }
+.sponsor-portal-agreed-benefit > header { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px 10px; }
+.sponsor-portal-agreed-benefit > header > div { gap:2px; }
+.sponsor-portal-agreed-benefit > header b { font-size:13px; line-height:1.35; }
+.sponsor-portal-agreed-benefit > header > div > span { font-size:11px; line-height:1.4; }
+.sponsor-portal-agreed-benefit > header > .sponsor-benefit-type { grid-column:1; grid-row:1; align-self:start; padding:3px 7px; }
+.sponsor-portal-agreed-benefit > header > .sponsor-benefit-status { grid-column:3; grid-row:1; padding:4px 8px; font-size:9px; }
+.sponsor-portal-agreed-benefit.is-complete { border-color:#cfe5d3; background:#f0f8f1; box-shadow:inset 3px 0 #62a675; }
+@media (max-width:700px) {
+  .sponsor-portal-agreed-benefit { padding:10px; }
+  .sponsor-portal-agreed-benefit > header { grid-template-columns:auto minmax(0,1fr); align-items:start; gap:6px 9px; }
+  .sponsor-portal-agreed-benefit > header > .sponsor-benefit-type { grid-column:1; grid-row:1; }
+  .sponsor-portal-agreed-benefit > header > div { grid-column:2; grid-row:1; }
+  .sponsor-portal-agreed-benefit > header > .sponsor-benefit-status { grid-column:2; grid-row:2; }
+}

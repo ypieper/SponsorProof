@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Modal } from "@/components/modal";
 import { EmptyState, Icon, iconNames, PageHeading } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 type BenefitType = "monetary" | "in_kind";
 type CompletionType = "file_required" | "organizer_approval" | "sponsor_approval" | "sponsor_upload";
@@ -143,14 +144,9 @@ export default function LibraryPage() {
     function handlePointerDown(event: MouseEvent) {
       if (!iconPickerRef.current?.contains(event.target as Node)) setIconPickerOpen(false);
     }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setIconPickerOpen(false);
-    }
     document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [iconPickerOpen]);
 
@@ -345,14 +341,11 @@ export default function LibraryPage() {
       {ready && !libraryError && shown.length === 0 && <EmptyState className="empty-state-fill" title={category === "Alle Bausteine" ? "Noch keine Bausteine" : `Noch keine Bausteine in „${category}“`} description="Erstelle deinen ersten Baustein für wiederverwendbare Sponsoringleistungen." action={<button className="btn btn-primary" type="button" onClick={() => { setDraft({ ...emptyDraft, category: category === "Alle Bausteine" ? defaultCategories[0] : category, icon: defaultIconForCategory(category === "Alle Bausteine" ? defaultCategories[0] : category) }); setEditingBlockId(null); setShowCreate(true); }}><Icon name="plus" size={14}/> Baustein erstellen</button>} />}
     </div>
     {showCreate && (
-      <div className="modal-backdrop" onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          setShowCreate(false);
-          setEditingBlockId(null);
-          setIconPickerOpen(false);
-        }
-      }}>
-        <section className="create-modal block-create-modal" role="dialog" aria-modal="true" aria-labelledby="create-block-title">
+      <Modal labelledBy="create-block-title" className="create-modal block-create-modal" backdropClassName="modal-backdrop" role="dialog" onClose={() => {
+              setShowCreate(false);
+              setEditingBlockId(null);
+              setIconPickerOpen(false);
+            }}>
           <div className="create-modal-head">
             <div>
               <h2 id="create-block-title">{editingBlockId ? "Baustein bearbeiten" : "Baustein erstellen"}</h2>
@@ -384,7 +377,13 @@ export default function LibraryPage() {
                 <label className="settings-field"><span>Leistungsart *</span><select value={draft.benefitType} onChange={(event) => setDraft((current) => ({ ...current, benefitType: event.target.value as BenefitType }))}><option value="monetary">Geldleistung</option><option value="in_kind">Sachleistung</option></select></label>
                 <div className="settings-field">
                   <span>Icon</span>
-                  <div className="icon-picker" ref={iconPickerRef}>
+                  <div className="icon-picker" ref={iconPickerRef} onKeyDown={(event) => {
+                    if (event.key === "Escape" && iconPickerOpen) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setIconPickerOpen(false);
+                    }
+                  }}>
                     <button className="icon-picker-trigger" type="button" aria-haspopup="true" aria-expanded={iconPickerOpen} aria-label={`Icon auswählen, aktuell ${blockIconLabels[draft.icon] ?? draft.icon}`} onClick={() => setIconPickerOpen((open) => !open)}>
                       <span className="icon-picker-current"><span className="block-icon"><Icon name={draft.icon} size={18}/></span><span>{blockIconLabels[draft.icon] ?? draft.icon}</span></span><Icon name="chevron" size={15}/>
                     </button>
@@ -449,9 +448,8 @@ export default function LibraryPage() {
               <button className="btn btn-primary" type="submit" disabled={!ready || saving}>{saving ? "Wird gespeichert …" : editingBlockId ? "Änderungen speichern" : "Baustein speichern"}</button>
             </div>
           </form>
-        </section>
-      </div>
+        </Modal>
     )}
-    {deletingBlock && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeletingBlock(null); }}><section className="create-modal block-delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-block-title"><div className="create-modal-head"><div><h2 id="delete-block-title">Baustein löschen?</h2><p>„{deletingBlock.title}“ wird aus der Bibliothek entfernt. Bereits erstellte Vertragsleistungen bleiben erhalten.</p></div></div><div className="create-modal-actions"><button className="btn" type="button" onClick={() => setDeletingBlock(null)}>Abbrechen</button><button className="btn block-delete-confirm" type="button" onClick={confirmDeleteBlock}>Baustein löschen</button></div></section></div>}
+    {deletingBlock && <Modal labelledBy="delete-block-title" className="create-modal block-delete-modal" backdropClassName="modal-backdrop" onClose={() => setDeletingBlock(null)}><div className="create-modal-head"><div><h2 id="delete-block-title">Baustein löschen?</h2><p>„{deletingBlock.title}“ wird aus der Bibliothek entfernt. Bereits erstellte Vertragsleistungen bleiben erhalten.</p></div></div><div className="create-modal-actions"><button className="btn" type="button" onClick={() => setDeletingBlock(null)}>Abbrechen</button><button className="btn block-delete-confirm" type="button" onClick={confirmDeleteBlock}>Baustein löschen</button></div></Modal>}
   </main>;
 }

@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { benefitWorkflowCount } from "@/lib/benefit-workflow";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -94,7 +95,7 @@ export async function GET(request: Request) {
     const organizationNames = new Map((organizations ?? []).map((organization) => [organization.id, organization.name]));
     const allowed = new Set(assignments.map((item) => `${item.event_id}:${item.sponsor_id}`));
     const sponsorNamesById = new Map((sponsorsResult.data ?? []).map((sponsor) => [sponsor.id, sponsor.name.trim().toLocaleLowerCase()]));
-    const benefitWorkflowCounts = new Map((benefitResult.data ?? []).map((benefit) => [benefit.id, benefit.tasks_per_unit === false ? 1 : benefit.quantity ?? 1]));
+    const benefitWorkflowCounts = new Map((benefitResult.data ?? []).map((benefit) => [benefit.id, benefitWorkflowCount(benefit.quantity ?? 1, benefit.tasks_per_unit !== false)]));
     const tasks = (taskResult.data ?? []).flatMap((task) => {
       if (task.benefit_id && benefitWorkflowCounts.has(task.benefit_id) && task.workflow_instance > (benefitWorkflowCounts.get(task.benefit_id) ?? 1)) return [];
       if (task.sponsor_id) return allowed.has(`${task.event_id}:${task.sponsor_id}`) ? [task] : [];
@@ -187,7 +188,7 @@ export async function GET(request: Request) {
         : ["Erfüllt", "Erledigt", "Abgeschlossen"].includes(benefit.status)
           ? "Abgeschlossen"
           : benefit.status === "In Arbeit" ? "In Bearbeitung" : "Offen";
-      const workflowCount = benefit.tasks_per_unit === false ? 1 : Math.max(1, benefit.quantity ?? 1);
+      const workflowCount = benefitWorkflowCount(benefit.quantity ?? 1, benefit.tasks_per_unit !== false);
       const units = Array.from({ length: workflowCount }, (_, index) => {
         const instance = index + 1;
         const instanceTasks = allBenefitTasks.filter((task) => task.workflow_instance === instance);

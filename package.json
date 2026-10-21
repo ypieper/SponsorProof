@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test:db": "supabase test db"
+    "test": "node scripts/test-unit.mjs",
+    "test:db": "node scripts/test-db.mjs",
+    "test:sandbox": "node scripts/test-sandbox.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -1,23 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
-import type { Sponsor, SponsorContract } from "@/lib/sponsor-types";
+import { benefitWorkflowCount, normalizeBenefitTitle } from "@/lib/benefit-workflow";
+import { Modal } from "@/components/modal";
+import { useEventEntitlements } from "@/components/event-entitlements";
+import { EventSponsorInvoice } from "@/components/event-sponsor-invoice";
+import { SponsorDocumentArea } from "@/components/sponsor-document-area";
 import { EmptyState, Icon, Progress, Status } from "@/components/ui";
-import { contractDateForInput, formatContractDate } from "@/lib/event-contract-dates";
+import { createStoredBenefits, fetchStoredBenefits, updateStoredBenefit, type StoredBenefit } from "@/lib/benefits-storage";
+import { deleteContractDocument, downloadContractDocument, fetchContractDocuments, saveContractDocument, type ContractDocument } from "@/lib/contract-documents-storage";
+import { contractDateForInput } from "@/lib/event-contract-dates";
 import { formatContractValue, parseContractValue, parseContractValueInput } from "@/lib/event-contract-values";
+import { fetchStoredEvidence } from "@/lib/evidence-storage";
+import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
 import { contractFilename, fillContractTemplate } from "@/lib/render-contract-template";
+import type { Sponsor,SponsorContract } from "@/lib/sponsor-types";
+import { setContractSigningDocument, updateContractRecord } from "@/lib/sponsors-storage";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { createStoredBenefits, fetchStoredBenefits, updateStoredBenefit, type StoredBenefit } from "@/lib/benefits-storage";
 import { createStoredTasks, deleteStoredTasks, fetchStoredTasks, normalizeLegacyBenefitTaskInstances, updateStoredTask, type StoredTaskRecord, type TaskInput } from "@/lib/tasks-storage";
-import { fetchStoredEvidence } from "@/lib/evidence-storage";
-import { deleteContractDocument, downloadContractDocument, fetchContractDocuments, saveContractDocument, type ContractDocument } from "@/lib/contract-documents-storage";
-import { setContractSigningDocument, updateContractRecord } from "@/lib/sponsors-storage";
-import { fetchOrganizerSettings } from "@/lib/organization-settings-storage";
-import { useEventEntitlements } from "@/components/event-entitlements";
-import { SponsorDocumentArea } from "@/components/sponsor-document-area";
-import { EventSponsorInvoice } from "@/components/event-sponsor-invoice";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type CompletionType = "file_required" | "organizer_approval" | "sponsor_approval" | "sponsor_upload";
 type BenefitType = "monetary" | "in_kind";
@@ -33,10 +35,6 @@ const SPONSOR_ASSIGNEE = "__sponsor__";
 
 function grossValueFromNet(netValue: number) {
   return Math.round((netValue * 1.19 + Number.EPSILON) * 100) / 100;
-}
-
-function normalizeBenefitTitle(title: string) {
-  return title.trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
 }
 
 function storedBenefitToEventBenefit(benefit: StoredBenefit): EventBenefit {
@@ -289,7 +287,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   const filteredBenefits = benefits.filter((benefit) => benefitTypeFilter === "all" || (benefitTypeFilter === "in_kind" ? benefit.benefitType === "in_kind" || Boolean(benefit.materialLogistics?.trim()) : benefit.benefitType !== "in_kind" && !benefit.materialLogistics?.trim()));
   const quantityBoundAssignedTasks = assignedTasks.filter((task) => {
     const benefit = benefits.find((item) => item.id === task.benefit_id);
-    return !benefit || task.workflow_instance <= (benefit.tasksPerUnit ? benefit.quantity : 1);
+    return !benefit || task.workflow_instance <= (benefitWorkflowCount(benefit.quantity, benefit.tasksPerUnit));
   });
   const existingBenefitTitles = new Set(benefits.map((benefit) => normalizeBenefitTitle(benefit.title)));
   const legacyBenefitTaskIds = benefits.filter((benefit) => benefit.completionRequired !== false && !quantityBoundAssignedTasks.some((task) => task.source === "Leistung" && task.benefit_id === benefit.id)).map((benefit) => benefitTaskId(eventId, benefit));
@@ -297,7 +295,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
   const completedTasks = taskIds.filter((taskId) => evidenceTaskIds.includes(taskId) || quantityBoundAssignedTasks.some((task) => task.id === taskId && task.status === "Erledigt") || benefits.some((benefit) => benefitTaskId(eventId, benefit) === taskId && Boolean(benefit.evidence && benefit.evidence !== "Noch kein Nachweis"))).length;
   const taskProgress = taskIds.length ? Math.round(completedTasks / taskIds.length * 100) : 0;
   const contractStatus = !signedOn ? "Offen" : taskIds.length > 0 && completedTasks === taskIds.length ? "Erledigt" : "In Arbeit";
-  const editingTasks = editingBenefit ? assignedTasks.filter((task) => task.source === "Leistung" && task.benefit_id === editingBenefit.id && task.workflow_instance <= (editingBenefit.tasksPerUnit ? editingBenefit.quantity : 1)).sort((a, b) => (a.workflow_instance - b.workflow_instance) || (a.workflow_order ?? 0) - (b.workflow_order ?? 0)) : [];
+  const editingTasks = editingBenefit ? assignedTasks.filter((task) => task.source === "Leistung" && task.benefit_id === editingBenefit.id && task.workflow_instance <= (benefitWorkflowCount(editingBenefit.quantity, editingBenefit.tasksPerUnit))).sort((a, b) => (a.workflow_instance - b.workflow_instance) || (a.workflow_order ?? 0) - (b.workflow_order ?? 0)) : [];
   const activeBlock = availableBlocks.find((block) => blockKey(block) === editingBlockKey && selectedBlocks.includes(editingBlockKey)) ?? availableBlocks.find((block) => selectedBlocks.includes(blockKey(block))) ?? null;
 
   function updateNetContractValue(value: string) {
@@ -456,7 +454,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       assignedTo: null,
     })) : [];
     const taskBlueprints = existingBlueprints.length ? existingBlueprints : templateBlueprints;
-    if (editingBenefit.completionRequired !== false && !taskBlueprints.length && nextWorkflowCount > (editingBenefit.tasksPerUnit ? editingBenefit.quantity : 1)) {
+    if (editingBenefit.completionRequired !== false && !taskBlueprints.length && nextWorkflowCount > (benefitWorkflowCount(editingBenefit.quantity, editingBenefit.tasksPerUnit))) {
       setMessage("Die zugehörigen Aufgaben konnten nicht ermittelt werden. Bitte lade die Seite neu und versuche es erneut.");
       return;
     }
@@ -605,7 +603,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
       const taskInputs = eligible.flatMap((block) => {
         const benefit = savedAdditions.find((item) => normalizeBenefitTitle(item.title) === normalizeBenefitTitle(block.title));
         if (!benefit?.id) return [];
-        const workflowCount = benefit.tasksPerUnit ? benefit.quantity : 1;
+        const workflowCount = benefitWorkflowCount(benefit.quantity, benefit.tasksPerUnit);
         return Array.from({ length: workflowCount }, (_, instanceIndex) => tasksForBlock(block).map((task) => {
           const key = subtaskKey(block, task);
           return {
@@ -1080,14 +1078,13 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
     {activeTab === "Rechnung" && <EventSponsorInvoice eventId={eventId} sponsorId={sponsor.id} sponsorName={sponsor.name} mode="organizer" />}
     {activeTab === "Dokumente" && <div className="event-sponsor-documents"><SponsorDocumentArea eventId={eventId} sponsorId={sponsor.id} sponsorName={sponsor.name}/>{signedContractFile && <section className="panel signed-contract-file"><div><b>{signedContractFile.fileName}</b><span>Gezeichnete Fassung · hochgeladen am {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(signedContractFile.createdAt))}</span></div><button className="btn" type="button" onClick={() => { void downloadSignedContractFile(); }}><Icon name="file" size={14}/> Herunterladen</button></section>}</div>}
     {message && <p className="task-feedback" role="status">{message}</p>}
-    {editingBenefit && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingBenefitId) setEditingBenefit(null); }}><section className="create-modal add-benefit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-benefit-tasks-title"><div className="create-modal-head"><div><h2 id="edit-benefit-tasks-title">{editingBenefit.benefitType === "in_kind" ? "Sachleistung bearbeiten" : "Leistung bearbeiten"}</h2><p>Ändere Anzahl, Fälligkeit und zuständige Person für „{editingBenefit.title}“.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(savingBenefitId)} onClick={() => setEditingBenefit(null)}><Icon name="close" size={16}/></button></div><label className="settings-field benefit-edit-quantity"><span>Anzahl</span><input type="number" min="1" step="1" value={editingBenefitQuantity} disabled={Boolean(savingBenefitId)} onChange={(event) => setEditingBenefitQuantity(event.target.value)}/><small>Erledigte Einheiten und vorhandene Nachweise bleiben für die Historie gespeichert, zählen bei geringerer Anzahl aber nicht mehr mit.</small></label><div className="add-benefit-options">{editingTasks.length ? editingTasks.map((task) => {
+    {editingBenefit && <Modal labelledBy="edit-benefit-tasks-title" className="create-modal add-benefit-modal" backdropClassName="modal-backdrop" role="dialog" busy={Boolean(savingBenefitId)} onClose={() => setEditingBenefit(null)}><div className="create-modal-head"><div><h2 id="edit-benefit-tasks-title">{editingBenefit.benefitType === "in_kind" ? "Sachleistung bearbeiten" : "Leistung bearbeiten"}</h2><p>Ändere Anzahl, Fälligkeit und zuständige Person für „{editingBenefit.title}“.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(savingBenefitId)} onClick={() => setEditingBenefit(null)}><Icon name="close" size={16}/></button></div><label className="settings-field benefit-edit-quantity"><span>Anzahl</span><input type="number" min="1" step="1" value={editingBenefitQuantity} disabled={Boolean(savingBenefitId)} onChange={(event) => setEditingBenefitQuantity(event.target.value)}/><small>Erledigte Einheiten und vorhandene Nachweise bleiben für die Historie gespeichert, zählen bei geringerer Anzahl aber nicht mehr mit.</small></label><div className="add-benefit-options">{editingTasks.length ? editingTasks.map((task) => {
       const value = taskEditValues[task.id] ?? { dueAt: task.due_at ?? "", assigneeId: task.assigned_to_sponsor ? SPONSOR_ASSIGNEE : task.assigned_to ?? "" };
       const isNeedDate = (editingBenefit.benefitType === "in_kind" || Boolean(editingBenefit.materialLogistics?.trim())) && task.completion_type !== "sponsor_approval" && !editingTasks.some((other) => other.workflow_instance === task.workflow_instance && other.completion_type !== "sponsor_approval" && (other.workflow_order ?? 0) < (task.workflow_order ?? 0));
       const sponsorCompletesTask = task.completion_type === "sponsor_approval" || task.completion_type === "sponsor_upload";
       return <div className="add-benefit-subtask-row benefit-edit-subtask-row" key={task.id}><span><b>{editingBenefit.quantity > 1 ? `Leistung ${task.workflow_instance} · ` : ""}{task.title}</b></span>{!sponsorCompletesTask ? <label className="settings-field"><span>Zugeordnete Person</span><select value={value.assigneeId} onChange={(event) => setTaskEditValues((current) => ({ ...current, [task.id]: { ...value, assigneeId: event.target.value } }))}><option value="">Nicht zugewiesen</option><option value={SPONSOR_ASSIGNEE}>Sponsor</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{organizerMemberName(member)} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label> : <span className="benefit-edit-sponsor-note">{task.completion_type === "sponsor_upload" ? "Datei-Upload durch Sponsor" : "Durch Sponsor erledigt"}</span>}<label className="settings-field"><span>{isNeedDate ? "Benötigt am" : "Fällig am"}</span><input type="date" value={value.dueAt} onChange={(event) => setTaskEditValues((current) => ({ ...current, [task.id]: { ...value, dueAt: event.target.value } }))}/></label></div>;
-    }) : <p className="task-empty">Für diese Leistung wurden keine Unteraufgaben angelegt.</p>}</div><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(savingBenefitId)} onClick={() => setEditingBenefit(null)}>Abbrechen</button><button className="btn btn-primary" type="button" disabled={Boolean(savingBenefitId)} onClick={() => { void saveBenefitTaskEdits(); }}>{savingBenefitId === editingBenefit.id ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></section></div>}
-    {adding && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeAddBenefits(); }}>
-      <section className="create-modal add-benefit-modal add-benefit-picker-modal" role="dialog" aria-modal="true" aria-labelledby="add-benefit-title">
+    }) : <p className="task-empty">Für diese Leistung wurden keine Unteraufgaben angelegt.</p>}</div><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(savingBenefitId)} onClick={() => setEditingBenefit(null)}>Abbrechen</button><button className="btn btn-primary" type="button" disabled={Boolean(savingBenefitId)} onClick={() => { void saveBenefitTaskEdits(); }}>{savingBenefitId === editingBenefit.id ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></Modal>}
+    {adding && <Modal labelledBy="add-benefit-title" className="create-modal add-benefit-modal add-benefit-picker-modal" backdropClassName="modal-backdrop" role="dialog" onClose={closeAddBenefits}>
         <div className="create-modal-head"><div><h2 id="add-benefit-title">Leistungen hinzufügen</h2><p>Wähle links die Bausteine aus und richte rechts Anzahl und Aufgaben ein. Unteraufgaben werden nacheinander freigeschaltet.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={closeAddBenefits}><Icon name="close" size={16}/></button></div>
         <div className="add-benefit-picker-layout">
           <section className="add-benefit-picker-list" aria-labelledby="add-benefit-picker-list-title">
@@ -1129,10 +1126,8 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
           </section>
         </div>
         <div className="create-modal-actions"><button className="btn" type="button" onClick={closeAddBenefits}>Abbrechen</button><button className="btn btn-primary" type="button" onClick={addSelectedBlocks} disabled={selectedBlocks.length === 0}>Auswahl hinzufügen</button></div>
-      </section>
-    </div>}
-    {showContractOutput && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowContractOutput(false); }}>
-      <section className="create-modal contract-output-modal" role="dialog" aria-modal="true" aria-labelledby="contract-output-title">
+      </Modal>}
+    {showContractOutput && <Modal labelledBy="contract-output-title" className="create-modal contract-output-modal" backdropClassName="modal-backdrop" role="dialog" onClose={() => setShowContractOutput(false)}>
         <div className="create-modal-head"><div><h2 id="contract-output-title">Vertrag erstellen</h2><p>Wähle das gewünschte Dateiformat für {sponsor.name}.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => setShowContractOutput(false)}><Icon name="close" size={16}/></button></div>
         {templateLoading ? <p className="task-empty">Zugeordnete Vorlage wird geladen …</p> : <>
           {contractTemplate ? <p className="contract-output-note">Verwendete Vorlage: {contractTemplate.name}</p> : <div
@@ -1152,8 +1147,7 @@ export function EventSponsorDetail({ eventId, eventTitle, eventStartDate, eventE
           </div>
           {contractTemplate && <p className="contract-output-note">Die PDF-Datei wird aus der Vorlage erstellt und direkt heruntergeladen.</p>}
         </>}
-      </section>
-    </div>}
+      </Modal>}
     <div ref={printPreviewRef} className={`contract-print-preview ${printReady ? "active" : ""}`} aria-hidden={!printReady}/>
   </section>;
 }

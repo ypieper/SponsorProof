@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
-
-export type CompletionType = "file_required" | "organizer_approval" | "sponsor_approval" | "sponsor_upload";
-export type StoredTaskRecord = { id: string; organization_id: string; event_id: string | null; sponsor_id: string | null; sponsor_name: string; benefit_id: string | null; assigned_to: string | null; assigned_to_sponsor: boolean; template_task_id: string | null; workflow_order: number | null; workflow_instance: number; completion_type: CompletionType; requires_sponsor_approval: boolean; sponsor_approval_status: string; sponsor_approved_at: string | null; publish_ready: boolean; title: string; description: string; due_at: string | null; status: string; source: string; created_at: string };
-export type TaskInput = { title: string; eventId?: string; sponsorId?: string; sponsorName?: string; dueAt?: string; source?: "Manuell" | "Leistung"; benefitId?: string; assignedTo?: string; assignedToSponsor?: boolean; templateTaskId?: string; workflowOrder?: number; workflowInstance?: number; completionType?: CompletionType };
+import { taskInsertValues } from "./tasks/input";
+import type { StoredTaskRecord,TaskInput } from "./tasks/types";
+export type { CompletionType, StoredTaskRecord, TaskInput } from "./tasks/types";
 const taskSelect = "id, organization_id, event_id, sponsor_id, sponsor_name, benefit_id, assigned_to, assigned_to_sponsor, template_task_id, workflow_order, workflow_instance, completion_type, requires_sponsor_approval, sponsor_approval_status, sponsor_approved_at, publish_ready, title, description, due_at, status, source, created_at";
 
 export async function fetchStoredTasks(eventId?: string) {
@@ -35,25 +34,7 @@ export async function createStoredTask(input: TaskInput) {
   const supabase = createClient();
   const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
   if (organizationError || typeof organizationId !== "string") return { data: null, error: organizationError ?? new Error("Veranstalterbereich nicht gefunden.") };
-  const { data, error } = await supabase.from("tasks").insert({
-    organization_id: organizationId,
-    event_id: input.eventId || null,
-    sponsor_id: input.sponsorId || null,
-    sponsor_name: input.sponsorName || "",
-    benefit_id: input.benefitId || null,
-    assigned_to: input.assignedTo || null,
-    assigned_to_sponsor: input.assignedToSponsor ?? false,
-    template_task_id: input.templateTaskId || null,
-    workflow_order: input.workflowOrder ?? null,
-    workflow_instance: input.workflowInstance ?? 1,
-    completion_type: input.completionType ?? "file_required",
-    requires_sponsor_approval: input.completionType === "sponsor_approval",
-    sponsor_approval_status: input.completionType === "sponsor_approval" ? "pending" : "not_required",
-    title: input.title,
-    due_at: input.dueAt || null,
-    status: "Offen",
-    source: input.source ?? "Manuell",
-  }).select(taskSelect).single();
+  const { data, error } = await supabase.from("tasks").insert(taskInsertValues(input, organizationId, "Manuell")).select(taskSelect).single();
   return { data: data as StoredTaskRecord | null, error };
 }
 
@@ -62,25 +43,7 @@ export async function createStoredTasks(inputs: TaskInput[]) {
   const supabase = createClient();
   const { data: organizationId, error: organizationError } = await supabase.rpc("current_organization_id");
   if (organizationError || typeof organizationId !== "string") return { data: [] as StoredTaskRecord[], error: organizationError ?? new Error("Veranstalterbereich nicht gefunden.") };
-  const { data, error } = await supabase.from("tasks").insert(inputs.map((input) => ({
-    organization_id: organizationId,
-    event_id: input.eventId || null,
-    sponsor_id: input.sponsorId || null,
-    sponsor_name: input.sponsorName || "",
-    benefit_id: input.benefitId || null,
-    assigned_to: input.assignedTo || null,
-    assigned_to_sponsor: input.assignedToSponsor ?? false,
-    template_task_id: input.templateTaskId || null,
-    workflow_order: input.workflowOrder ?? null,
-    workflow_instance: input.workflowInstance ?? 1,
-    completion_type: input.completionType ?? "file_required",
-    requires_sponsor_approval: input.completionType === "sponsor_approval",
-    sponsor_approval_status: input.completionType === "sponsor_approval" ? "pending" : "not_required",
-    title: input.title,
-    due_at: input.dueAt || null,
-    status: "Offen",
-    source: input.source ?? "Leistung",
-  }))).select(taskSelect);
+  const { data, error } = await supabase.from("tasks").insert(inputs.map((input) => taskInsertValues(input, organizationId, "Leistung"))).select(taskSelect);
   return { data: (data ?? []) as StoredTaskRecord[], error };
 }
 

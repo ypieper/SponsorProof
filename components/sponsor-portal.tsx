@@ -1,225 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import Link from "next/link";
+import { formatFeedbackDate } from "@/lib/display-format";
+import { demoPortalEvent } from "@/lib/sponsor-portal/demo-data";
+import { formatPortalDate, statusLabel } from "@/lib/sponsor-portal/format";
+import { sponsorTabFingerprint, sponsorTabReadKey, sponsorTabReadStorageKey } from "@/lib/sponsor-portal/tab-updates";
+import type { PortalContract,PortalEvent,PortalEventSummary,SponsorPortalTab } from "@/lib/sponsor-portal/types";
+import { SponsorBenefits } from "./sponsor-portal/benefits";
+import { DemoSponsorInvoice } from "./sponsor-portal/demo-invoice";
+import { SponsorEventsList } from "./sponsor-portal/events-list";
+import { SponsorCompletedTaskRow, SponsorEvidenceHistory } from "./sponsor-portal/evidence";
+import { SponsorUploadTaskCard } from "./sponsor-portal/upload";
+import { Modal } from "@/components/modal";
+import { EventSponsorInvoice } from "@/components/event-sponsor-invoice";
+import { FirstLoginWalkthrough } from "@/components/first-login-walkthrough";
+import { LogoutButton } from "@/components/logout-button";
+import { SponsorDocumentArea } from "@/components/sponsor-document-area";
 import { Icon, SponsoLogo } from "@/components/ui";
 import { formatEventReportMetricValue } from "@/lib/event-report-metric-format";
-import { LogoutButton } from "@/components/logout-button";
-import { EventSponsorInvoice } from "@/components/event-sponsor-invoice";
-import { SponsorDocumentArea } from "@/components/sponsor-document-area";
 import { createClient } from "@/lib/supabase/client";
-import { FirstLoginWalkthrough } from "@/components/first-login-walkthrough";
-
-type PortalContract = {
-  id: string;
-  title: string;
-  sponsor_name: string;
-  value_cents: number;
-  signature_status: "draft" | "pending_sponsor" | "pending_organizer" | "signed";
-  sponsor_signed_at: string | null;
-  organizer_signed_at: string | null;
-  signed_at: string | null;
-  signing_url: string | null;
-};
-type PortalFile = { id: string; file_name: string; content_type: string; created_at: string; url: string };
-type PortalTask = { id: string; benefit_id: string | null; title: string; due_at: string | null; planned_publish_date: string | null; status: string; completion_type: string; requires_sponsor_approval: boolean; assigned_to_sponsor: boolean; sponsor_approval_status: string; sponsor_approved_at: string | null; ready: boolean; blocked_by?: string | null; workflow_order: number | null; workflow_instance: number; files: PortalFile[] };
-type PortalStandaloneTask = { id: string; title: string; due_at: string | null; status: string; completion_type: string; requires_sponsor_approval: boolean; sponsor_approval_status: string; sponsor_approved_at: string | null; ready: boolean; blocked_by?: string | null; files: PortalFile[] };
-type PortalBenefit = { id: string; title: string; benefit_type: "monetary" | "in_kind"; material_logistics: string | null; description: string; quantity: number; tasks_per_unit: boolean; due_at: string | null; status: "Offen" | "In Bearbeitung" | "Abgeschlossen"; units: Array<{ instance: number; needed_at: string | null; status: "Offen" | "In Bearbeitung" | "Abgeschlossen"; hasSponsorApproval: boolean; tasks: PortalTask[] }> };
-type PortalApproval = PortalTask;
-type PortalPartnership = { sponsor_id: string; sponsor_name: string; tasks: PortalStandaloneTask[]; contracts: PortalContract[]; benefits: PortalBenefit[]; tab_updates?: { invoices: Array<{ id: string; updated_at: string }>; documents: Array<{ id: string; uploaded_at: string | null }> } };
-type PortalEvent = { id: string; title: string; start_date: string | null; end_date: string | null; location: string; organizer_logo_url: string | null; organizer_name: string; contact_first_name: string; contact_last_name: string; contact_email: string; contact_phone: string; signature_addon_enabled: boolean; report_metrics?: Array<{ id: string; name: string; value: string }>; sponsor_assignments: PortalPartnership[] };
-type PortalEventSummary = Pick<PortalEvent, "id" | "title" | "start_date" | "end_date" | "location" | "organizer_logo_url"> & { benefit_count: number; signed_volume_cents: number };
-
-const demoFile: PortalFile = { id: "demo-document", file_name: "Beispiel-Nachweis.pdf", content_type: "application/pdf", created_at: "2026-10-17T12:22:00.000Z", url: "/downloads/pacct-muster-vertriebspartnervereinbarung.pdf" };
-const demoPortalEvent: PortalEvent = {
-  id: "demo",
-  title: "Aloha Open-Air 2027",
-  start_date: "2027-06-10",
-  end_date: "2027-06-10",
-  location: "Festivalwiese 23",
-  organizer_logo_url: null,
-  organizer_name: "Aloha Events",
-  contact_first_name: "Jonas",
-  contact_last_name: "Kastenholz",
-  contact_email: "jonas@pacct.de",
-  contact_phone: "0175 34396572",
-  signature_addon_enabled: true,
-  report_metrics: [{ id: "demo-attendance", name: "Besucherzahl", value: "12.500" }, { id: "demo-social-reach", name: "Social-Media-Reichweite", value: "85.000" }],
-  sponsor_assignments: [{
-    sponsor_id: "demo-sponsor",
-    sponsor_name: "Elspass Autoland GmbH",
-    contracts: [{ id: "demo-contract", title: "Sponsoringvertrag", sponsor_name: "Elspass Autoland GmbH", value_cents: 500000, signature_status: "signed", sponsor_signed_at: "2026-10-14T14:10:00.000Z", organizer_signed_at: "2026-10-14T14:12:00.000Z", signed_at: "2026-10-14T14:12:00.000Z", signing_url: "/downloads/pacct-muster-vertriebspartnervereinbarung.pdf" }],
-    tasks: [
-      { id: "demo-manual-upload", title: "Logo für die Event-Website bereitstellen", due_at: "2027-05-20", status: "Offen", completion_type: "sponsor_upload", requires_sponsor_approval: false, sponsor_approval_status: "pending", sponsor_approved_at: null, ready: true, files: [] },
-      { id: "demo-manual-approval", title: "Social-Media-Beitrag freigeben", due_at: "2027-05-28", status: "In Bearbeitung", completion_type: "sponsor_approval", requires_sponsor_approval: true, sponsor_approval_status: "pending", sponsor_approved_at: null, ready: true, files: [demoFile] },
-      { id: "demo-manual-changes-requested", title: "Social-Media-Beitrag erneut freigeben", due_at: "2027-05-30", status: "In Bearbeitung", completion_type: "sponsor_approval", requires_sponsor_approval: true, sponsor_approval_status: "changes_requested", sponsor_approved_at: null, ready: false, files: [demoFile] },
-      { id: "demo-manual-completed", title: "Sponsorlogo im Programmheft freigeben", due_at: "2027-05-10", status: "Erledigt", completion_type: "sponsor_approval", requires_sponsor_approval: true, sponsor_approval_status: "approved", sponsor_approved_at: "2026-10-15T14:08:00.000Z", ready: true, files: [demoFile] },
-    ],
-    benefits: [{
-      id: "demo-benefit",
-      title: "Logo auf der Event-Website",
-      benefit_type: "in_kind",
-      material_logistics: null,
-      description: "Platzierung des Sponsors auf der Event-Website",
-      quantity: 1,
-      tasks_per_unit: true,
-      due_at: "2027-06-01",
-      status: "In Bearbeitung",
-      units: [{ instance: 1, needed_at: "2027-06-01", status: "In Bearbeitung", hasSponsorApproval: true, tasks: [
-        { id: "demo-benefit-approval", benefit_id: "demo-benefit", title: "Website-Entwurf freigeben", due_at: "2027-05-25", planned_publish_date: null, status: "In Bearbeitung", completion_type: "sponsor_approval", requires_sponsor_approval: true, assigned_to_sponsor: false, sponsor_approval_status: "pending", sponsor_approved_at: null, ready: true, workflow_order: 1, workflow_instance: 1, files: [demoFile] },
-      ] }],
-    }],
-  }],
-};
-
-type SponsorPortalTab = "contract" | "invoice" | "benefits" | "tasks" | "documents" | "leistungsnachweis";
-const sponsorTabReadStorageKey = "sponso:sponsor-tab-read:v1";
-
-function sponsorTabFingerprint(value: unknown) {
-  const text = JSON.stringify(value);
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `${text.length}-${(hash >>> 0).toString(36)}`;
-}
-
-function sponsorTabReadKey(eventId: string, sponsorId: string, tab: SponsorPortalTab) {
-  return `${eventId}:${sponsorId}:${tab}`;
-}
-
-function DemoSponsorInvoice({ sponsorName }: { sponsorName: string }) {
-  return <section className="panel sponsor-invoice-area">
-    <div className="table-head"><div><h2>Rechnung</h2><p className="subtitle" style={{ fontSize: 11, marginTop: 4 }}>Veröffentlichte Rechnungen für {sponsorName} in diesem Event.</p></div></div>
-    <article className="sponsor-invoice-total-card"><span>Gesamtrechnungswert (netto)</span><strong>5.000,00&nbsp;€</strong></article>
-    <div className="sponsor-invoice-list"><article className="sponsor-invoice-card">
-      <header className="sponsor-invoice-card-head"><div><span className="sponsor-invoice-card-label">Beispieldatensatz</span><b>Rechnung RE-2027-014</b></div><div className="sponsor-invoice-card-statuses"><span className="sponsor-invoice-payment-status unpaid">Offen</span></div></header>
-      <div className="sponsor-invoice-grid">
-        <label className="settings-field"><span>Rechnungsnummer</span><input type="text" value="RE-2027-014" disabled readOnly /></label>
-        <label className="settings-field"><span>Rechnungsdatum</span><input type="text" value="10.06.2027" disabled readOnly /></label>
-        <label className="settings-field"><span>Fällig am</span><input type="text" value="24.06.2027" disabled readOnly /></label>
-        <label className="settings-field"><span>Versanddatum</span><input type="text" value="10.06.2027" disabled readOnly /></label>
-        <label className="settings-field"><span>Nettobetrag</span><input type="text" value="5.000,00 €" disabled readOnly /></label>
-        <label className="settings-field"><span>Bruttobetrag</span><input type="text" value="5.950,00 €" disabled readOnly /></label>
-      </div>
-      <div className="sponsor-invoice-file-row"><span>Beispielhafte Rechnungsangaben</span><button className="btn" type="button" disabled title="In der Demo nicht verfügbar"><Icon name="file" size={14}/> Rechnung herunterladen</button></div>
-    </article><p className="sponsor-invoice-vat-note">Diese Angaben sind Beispieldaten. In der Demo wird keine Rechnung erstellt oder heruntergeladen.</p></div>
-  </section>;
-}
-
-function SponsorBenefits({ benefits }: { benefits: PortalBenefit[] }) {
-  return <section className="panel sponsor-portal-detail-panel sponsor-portal-benefits-list">
-    <div className="sponsor-portal-tab-heading"><h2>Leistungen</h2><p>Hier findest du deine vereinbarten Leistungen für dieses Event.</p></div>
-    <div className="sponsor-portal-agreed-benefits">{benefits.map((benefit) => {
-      const quantity = Math.max(1, benefit.quantity || 1);
-      const workflowCount = benefit.tasks_per_unit ? quantity : 1;
-      const units = benefit.units.slice(0, workflowCount);
-      const complete = units.length === workflowCount && units.every((unit) => unit.status === "Abgeschlossen");
-      const status = complete ? "Abgeschlossen" : units.some((unit) => unit.status === "In Bearbeitung") ? "In Bearbeitung" : "Offen";
-      return <article className={`sponsor-portal-agreed-benefit${complete ? " is-complete" : ""}`} key={benefit.id}>
-        <header><span className="sponsor-benefit-type">{benefit.benefit_type === "in_kind" ? "Sachleistung" : "Geldleistung"}</span><div><b>{benefit.title}</b><span>{[benefit.description, `Anzahl: ${quantity}`].filter(Boolean).join(" · ")}</span></div><span className={`sponsor-benefit-status sponsor-benefit-status-${complete ? "done" : status === "In Bearbeitung" ? "progress" : "open"}`}>{status}</span></header>
-      </article>;
-    })}</div>
-  </section>;
-}
-
-function statusLabel(status: PortalContract["signature_status"]) {
-  if (status === "signed") return "Vollständig gezeichnet";
-  if (status === "pending_organizer") return "Wartet auf Veranstalter";
-  if (status === "pending_sponsor") return "Deine Zeichnung steht aus";
-  return "Noch nicht freigegeben";
-}
-function formatFeedbackDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(date);
-}
-function formatPortalDate(value: string | null) {
-  if (!value) return "Noch nicht geplant";
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
-}
-
-function SponsorEvidenceLink({ file, disabled = false }: { file: PortalFile; disabled?: boolean }) {
-  const canPreview = file.content_type === "application/pdf" || file.content_type.startsWith("image/");
-  const versionDate = formatFeedbackDate(file.created_at);
-  if (disabled) return <button className="btn" type="button" disabled title="Dateien können in der Demo nicht geöffnet oder heruntergeladen werden." aria-label={`Datei in der Demo nicht verfügbar: ${file.file_name}`} key={file.id}><Icon name="file" size={14}/>{file.file_name}</button>;
-  return <a className="btn" href={file.url} target="_blank" rel="noopener noreferrer" key={file.id}><Icon name="file" size={14}/>{canPreview ? "In neuem Tab ansehen" : "Datei herunterladen"}: {file.file_name}{versionDate && ` · ${versionDate}`}</a>;
-}
-
-function SponsorEvidenceHistory({ files, disabled = false }: { files: PortalFile[]; disabled?: boolean }) {
-  const versions = files.slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const [current, ...previous] = versions;
-  if (!current) return null;
-  return <div className="sponsor-portal-review-files">
-    <SponsorEvidenceLink file={current} disabled={disabled}/>
-    {previous.length > 0 && <details className="sponsor-portal-previous-versions"><summary>Vorherige Versionen ({previous.length})<Icon name="chevron" size={13}/></summary><div>{previous.map((file) => <SponsorEvidenceLink file={file} disabled={disabled} key={file.id}/>)}</div></details>}
-  </div>;
-}
-
-function SponsorCompletedTaskRow({ task, benefitName, demoMode = false }: { task: { id: string; title: string; sponsor_approval_status: string; sponsor_approved_at: string | null; files: PortalFile[] }; benefitName?: string; demoMode?: boolean }) {
-  const approved = task.sponsor_approval_status === "approved";
-  return <article className="sponsor-portal-completed-task" key={task.id}>
-    <div className="sponsor-portal-completed-task-copy">
-      <b>{task.title}</b>
-      <small>{approved ? `Freigegeben${task.sponsor_approved_at ? ` am ${formatFeedbackDate(task.sponsor_approved_at)}` : ""}` : "Abgeschlossen"}</small>
-      {benefitName && <small className="sponsor-portal-task-benefit-label">Leistung: {benefitName}</small>}
-    </div>
-    <div className="sponsor-portal-completed-task-files">
-      {task.files.length > 0 ? <SponsorEvidenceHistory files={task.files} disabled={demoMode}/> : <small className="sponsor-portal-unit-wait">Kein Nachweis angehängt.</small>}
-    </div>
-    <span className="sponsor-benefit-status sponsor-benefit-status-done">{approved ? "Freigegeben" : "Abgeschlossen"}</span>
-  </article>;
-}
-
-function SponsorTaskUpload({ taskId, busy, disabled, onUpload, onBrandKitSelect }: { taskId: string; busy: boolean; disabled: boolean; onUpload: (file: File) => void; onBrandKitSelect: (id: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [files, setFiles] = useState<Array<{ id: string; file_name: string; label: string; content_type: string; url: string | null }>>([]);
-  const [selected, setSelected] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  async function showBrandKit() {
-    if (open) { setOpen(false); return; }
-    setOpen(true); setLoading(true); setError("");
-    try {
-      const response = await fetch(`/api/sponsor/brand-kit?taskId=${encodeURIComponent(taskId)}`, { cache: "no-store" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Das Brand-Kit konnte nicht geladen werden.");
-      setFiles(result.files ?? []);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Das Brand-Kit konnte nicht geladen werden."); }
-    finally { setLoading(false); }
-  }
-  return <div className="sponsor-task-upload-options"><div><label className="btn btn-primary sponsor-task-upload-button"><Icon name="file" size={14}/>{busy ? "Wird hochgeladen …" : "Datei hochladen"}<input type="file" accept="image/jpeg,image/png,image/webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" hidden disabled={disabled || busy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }}/></label><button className="btn" type="button" disabled={disabled || busy} onClick={() => void showBrandKit()}>Aus Brand-Kit auswählen</button></div>
-    {open && <div className="sponsor-task-brand-kit-picker" aria-label="Datei aus Brand-Kit auswählen">{loading ? <small>Brand-Kit wird geladen …</small> : error ? <small className="field-message error">{error}</small> : files.length ? <><div className="sponsor-task-brand-kit-options">{files.map((file) => <button className={selected === file.id ? "selected" : ""} type="button" key={file.id} disabled={busy} onClick={() => setSelected(file.id)}><Icon name="file" size={14}/><span>{file.label}</span><small>{file.file_name}</small></button>)}</div>{selected && <div className="sponsor-task-brand-kit-preview">{files.find((file) => file.id === selected)?.url && <a href={files.find((file) => file.id === selected)?.url ?? undefined} target="_blank" rel="noreferrer">Datei vorab ansehen</a>}<button className="btn btn-primary" type="button" disabled={busy} onClick={() => { const chosen = files.find((file) => file.id === selected); if (chosen && window.confirm(`„${chosen.label}“ als Nachweis für diese Aufgabe einreichen?`)) onBrandKitSelect(chosen.id); }}>{busy ? "Wird eingereicht …" : "Auswahl bestätigen und einreichen"}</button></div>}</> : <small>Im Brand-Kit sind noch keine Dateien vorhanden. Du kannst zuerst eine Datei direkt hochladen.</small>}</div>}
-  </div>;
-}
-
-function SponsorUploadTaskCard({ task, benefitName, busy, disabled, onUpload, onBrandKitSelect }: { task: Pick<PortalTask, "id" | "title" | "due_at" | "status" | "ready" | "blocked_by" | "files">; benefitName?: string; busy: boolean; disabled: boolean; onUpload: (file: File) => void; onBrandKitSelect: (id: string) => void }) {
-  const done = task.status === "Erledigt";
-  const inProgress = task.status === "In Bearbeitung";
-  return <article className="sponsor-portal-benefit-task sponsor-portal-approval-card sponsor-portal-manual-approval sponsor-portal-upload-card">
-    <div className="sponsor-portal-approval-placeholder" aria-hidden="true"><Icon name="file" size={25}/><span>Upload</span></div>
-    <div className="sponsor-portal-approval-content">
-      <header><div className="sponsor-portal-review-copy"><span className="sponsor-portal-approval-eyebrow">Datei vom Sponsor</span><b>{task.title}</b><small>{task.due_at ? `Fällig am ${formatPortalDate(task.due_at)}` : "Bitte lade den vereinbarten Nachweis hoch."}</small>{benefitName && <small className="sponsor-portal-task-benefit-label">Leistung: {benefitName}</small>}</div><span className={`sponsor-benefit-status sponsor-benefit-status-${done ? "done" : inProgress ? "progress" : "open"}`}>{done ? "Abgeschlossen" : inProgress ? "In Bearbeitung" : "Upload offen"}</span></header>
-      <div className="sponsor-portal-review-footer">{done ? task.files.length ? <SponsorEvidenceHistory files={task.files} disabled={disabled}/> : <small className="sponsor-portal-unit-wait">Nachweis hochgeladen</small> : task.ready ? <SponsorTaskUpload taskId={task.id} busy={busy} disabled={disabled} onUpload={onUpload} onBrandKitSelect={onBrandKitSelect}/> : <small className="sponsor-portal-unit-wait">{task.blocked_by ? `Wird nach Abschluss von „${task.blocked_by}“ freigeschaltet.` : "Wird nach dem vorherigen Schritt freigeschaltet."}</small>}</div>
-    </div>
-  </article>;
-}
-
-function SponsorEventsList({ events, ongoingCount, completedCount, selectedTab, onSelectTab }: { events: PortalEventSummary[]; ongoingCount: number; completedCount: number; selectedTab: "ongoing" | "completed"; onSelectTab: (tab: "ongoing" | "completed") => void }) {
-  return <>
-    <div className="sponsor-portal-event-list-tabs" id="sponsor-events" role="tablist" aria-label="Events nach Status">
-      <button type="button" role="tab" id="sponsor-events-ongoing-tab" aria-selected={selectedTab === "ongoing"} aria-controls="sponsor-events-panel" className={selectedTab === "ongoing" ? "active" : ""} onClick={() => onSelectTab("ongoing")}>Laufende Events<span>{ongoingCount}</span></button>
-      <button type="button" role="tab" id="sponsor-events-completed-tab" aria-selected={selectedTab === "completed"} aria-controls="sponsor-events-panel" className={selectedTab === "completed" ? "active" : ""} onClick={() => onSelectTab("completed")}>Abgeschlossene Events<span>{completedCount}</span></button>
-    </div>
-    {events.length ? <div className="sponsor-portal-event-list" id="sponsor-events-panel" role="tabpanel" aria-labelledby={selectedTab === "ongoing" ? "sponsor-events-ongoing-tab" : "sponsor-events-completed-tab"}>{events.map((event) => <Link className="sponsor-portal-event-card" href={`/sponsor/events/${event.id}`} key={event.id}>
-      {event.organizer_logo_url ? <img className="sponsor-portal-event-card-logo" src={event.organizer_logo_url} alt={`Logo ${event.title}`} /> : <span className="sponsor-portal-event-card-logo sponsor-portal-event-card-logo-placeholder" aria-hidden="true">{event.title.slice(0, 1).toLocaleUpperCase("de-DE")}</span>}
-      <span className="sponsor-portal-event-card-copy"><b>{event.title}</b><small>{[event.start_date && new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(new Date(`${event.start_date}T00:00:00`)), event.location].filter(Boolean).join(" · ") || "Event"}</small></span>
-      <span className="sponsor-portal-event-card-stats" aria-label="Eventübersicht"><span className="sponsor-portal-benefit-count-badge"><b>{event.benefit_count}</b><small>Leistungen</small></span></span>
-      <span className="sponsor-portal-event-card-arrow" aria-hidden="true">→</span>
-    </Link>)}</div> : <section className="panel sponsor-portal-empty sponsor-portal-event-empty" id="sponsor-events-panel" role="tabpanel" aria-labelledby={selectedTab === "ongoing" ? "sponsor-events-ongoing-tab" : "sponsor-events-completed-tab"}><p>{selectedTab === "ongoing" ? "Zurzeit gibt es keine laufenden Events." : "Es gibt noch keine abgeschlossenen Events."}</p></section>}
-  </>;
-}
+import Link from "next/link";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 export function SponsorPortal({ eventId, demoMode = false, view = "dashboard" }: { eventId?: string; demoMode?: boolean; view?: "dashboard" | "events" }) {
   const [events, setEvents] = useState<PortalEvent[]>(() => demoMode ? [demoPortalEvent] : []);
@@ -630,8 +430,8 @@ export function SponsorPortal({ eventId, demoMode = false, view = "dashboard" }:
         </section> : <section className="panel sponsor-portal-empty"><div className="metric-icon"><Icon name="file" size={18}/></div><h2>Noch keine verknüpften Events</h2><p>Füge mit dem Einladungscode deines Veranstalters dein erstes Event hinzu.</p><Link className="btn" href="/login/sponsor">Zum Sponsor-Login</Link></section>}
       </>}
     </section>
-    {showEventInvite && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !redeeming) setShowEventInvite(false); }} onKeyDown={(event) => { if (event.key === "Escape" && !redeeming) setShowEventInvite(false); }}><section className="create-modal sponsor-invite-dialog" role="dialog" aria-modal="true" aria-labelledby="sponsor-invite-title"><div className="create-modal-head"><div><h2 id="sponsor-invite-title">Event hinzufügen</h2><p>Gib den Einladungscode deines Veranstalters ein, um eine Partnerschaft freizuschalten.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={redeeming} onClick={() => setShowEventInvite(false)}><Icon name="close" size={16}/></button></div><form onSubmit={(event) => void redeemInvite(event)}><label className="settings-field"><span>Einladungscode</span><input autoFocus autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={96} value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Einladungscode eingeben" required/></label><div className="create-modal-actions"><button className="btn" type="button" disabled={redeeming} onClick={() => setShowEventInvite(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={redeeming || !inviteCode.trim()}>{redeeming ? "Wird verknüpft …" : "Event hinzufügen"}</button></div></form></section></div>}
+    {showEventInvite && <Modal labelledBy="sponsor-invite-title" className="create-modal sponsor-invite-dialog" backdropClassName="modal-backdrop" role="dialog" busy={redeeming} onClose={() => setShowEventInvite(false)}><div className="create-modal-head"><div><h2 id="sponsor-invite-title">Event hinzufügen</h2><p>Gib den Einladungscode deines Veranstalters ein, um eine Partnerschaft freizuschalten.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={redeeming} onClick={() => setShowEventInvite(false)}><Icon name="close" size={16}/></button></div><form onSubmit={(event) => void redeemInvite(event)}><label className="settings-field"><span>Einladungscode</span><input autoFocus autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={96} value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Einladungscode eingeben" required/></label><div className="create-modal-actions"><button className="btn" type="button" disabled={redeeming} onClick={() => setShowEventInvite(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={redeeming || !inviteCode.trim()}>{redeeming ? "Wird verknüpft …" : "Event hinzufügen"}</button></div></form></Modal>}
     <footer className="sponsor-portal-footer"><span>© {new Date().getFullYear()} pacct</span><nav aria-label="Rechtliche Hinweise"><Link href="/impressum">Impressum</Link><Link href="/agb">AGB</Link><Link href="/datenschutz">Datenschutzerklärung</Link><Link href="/kontakt">Kontakt</Link></nav></footer>
-    {returningTaskId && <div className="modal-backdrop sponsor-return-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyId) { setReturningTaskId(""); setError(""); } }}><section className="create-modal sponsor-return-modal" role="dialog" aria-modal="true" aria-labelledby="sponsor-return-title"><div className="create-modal-head"><div><h2 id="sponsor-return-title">Aufgabe ablehnen</h2><p>{returningTaskHasBenefit ? "Dein Kommentar wird dem Veranstalter angezeigt. Die Unteraufgaben werden zurückgesetzt." : "Dein Kommentar wird dem Veranstalter angezeigt, damit die Aufgabe überarbeitet werden kann."}</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(busyId)} onClick={() => { setReturningTaskId(""); setError(""); }}><Icon name="close" size={16}/></button></div>{error && <p className="field-message error" role="alert">{error}</p>}<label className="sponsor-portal-comment"><span>Kommentar zu den gewünschten Änderungen *</span><textarea autoFocus required rows={4} maxLength={2000} value={approvalComments[returningTaskId] ?? ""} onChange={(event) => setApprovalComments((current) => ({ ...current, [returningTaskId]: event.target.value }))} placeholder="Was soll geändert werden?" /></label><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(busyId)} onClick={() => { setReturningTaskId(""); setError(""); }}>Abbrechen</button><button className="btn btn-primary" type="button" disabled={Boolean(busyId) || !(approvalComments[returningTaskId] ?? "").trim()} onClick={() => void submitReturn()}>{busyId === returningTaskId ? "Wird gespeichert …" : "Ablehnen und zurückgeben"}</button></div></section></div>}
+    {returningTaskId && <Modal labelledBy="sponsor-return-title" className="create-modal sponsor-return-modal" backdropClassName="modal-backdrop sponsor-return-modal-backdrop" role="dialog" busy={Boolean(busyId)} onClose={() => { setReturningTaskId(""); setError(""); }}><div className="create-modal-head"><div><h2 id="sponsor-return-title">Aufgabe ablehnen</h2><p>{returningTaskHasBenefit ? "Dein Kommentar wird dem Veranstalter angezeigt. Die Unteraufgaben werden zurückgesetzt." : "Dein Kommentar wird dem Veranstalter angezeigt, damit die Aufgabe überarbeitet werden kann."}</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={Boolean(busyId)} onClick={() => { setReturningTaskId(""); setError(""); }}><Icon name="close" size={16}/></button></div>{error && <p className="field-message error" role="alert">{error}</p>}<label className="sponsor-portal-comment"><span>Kommentar zu den gewünschten Änderungen *</span><textarea autoFocus required rows={4} maxLength={2000} value={approvalComments[returningTaskId] ?? ""} onChange={(event) => setApprovalComments((current) => ({ ...current, [returningTaskId]: event.target.value }))} placeholder="Was soll geändert werden?" /></label><div className="create-modal-actions"><button className="btn" type="button" disabled={Boolean(busyId)} onClick={() => { setReturningTaskId(""); setError(""); }}>Abbrechen</button><button className="btn btn-primary" type="button" disabled={Boolean(busyId) || !(approvalComments[returningTaskId] ?? "").trim()} onClick={() => void submitReturn()}>{busyId === returningTaskId ? "Wird gespeichert …" : "Ablehnen und zurückgeben"}</button></div></Modal>}
   </main>;
 }

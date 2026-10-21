@@ -29,6 +29,12 @@ on conflict (id) do nothing;
 insert into public.sales_partners(id,user_id,referral_code,is_active)
 values ('93000000-0000-4000-8000-000000000002','91000000-0000-4000-8000-000000000004','TESTPARTNER02',false)
 on conflict (id) do nothing;
+-- Joining a team requires a valid join code; a fake string would abort signup
+-- before the referral-attribution rule can be exercised.
+insert into public.organizations(id,name,created_by)
+values ('94000000-0000-4000-8000-000000000003','Team Join Fixture','91000000-0000-4000-8000-000000000001');
+insert into public.organization_join_codes(organization_id,code,code_hash,expires_at)
+values ('94000000-0000-4000-8000-000000000003','JOIN-CODE',encode(extensions.digest('JOINCODE','sha256'),'hex'),now()+interval '1 day');
 insert into public.partner_referral_clicks(id,partner_id,clicked_at) values
  ('92000000-0000-4000-8000-000000000002','93000000-0000-4000-8000-000000000002',now()),
  ('92000000-0000-4000-8000-000000000003','93000000-0000-4000-8000-000000000001',now()-interval '60 days'),

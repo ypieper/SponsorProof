@@ -47,6 +47,9 @@ set local role authenticated;
 select lives_ok($$select public.set_organization_member_role('61000000-0000-4000-8000-000000000002', 'owner')$$, 'An owner can promote a team member');
 select lives_ok($$select public.set_organization_member_role('61000000-0000-4000-8000-000000000002', 'member')$$, 'An owner can change a member role back');
 select throws_ok($$select public.set_organization_member_role('61000000-0000-4000-8000-000000000001', 'member')$$, 'P0001', 'At least one workspace owner must remain', 'The last owner cannot demote themselves');
+-- The Storage API sets this transaction-local flag before deleting metadata.
+-- Keep the RLS check while allowing the same metadata deletion in this SQL test.
+set local storage.allow_delete_query = 'true';
 select lives_ok($$delete from storage.objects where bucket_id = 'sponsorproof-files' and name = '71000000-0000-4000-8000-000000000001/events/72000000-0000-4000-8000-000000000001/evidence/team-test.jpg'$$, 'A workspace member can delete a stored file');
 reset role;
 select is((select count(*)::integer from storage.objects where bucket_id = 'sponsorproof-files' and name = '71000000-0000-4000-8000-000000000001/events/72000000-0000-4000-8000-000000000001/evidence/team-test.jpg'), 0, 'Deleted workspace file is removed from storage');

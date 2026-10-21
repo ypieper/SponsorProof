@@ -1,218 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { EmptyState, Icon, PageHeading, Status } from "@/components/ui";
-import { fetchSponsorRecords } from "@/lib/sponsors-storage";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { fetchStoredEventsFromDatabase } from "@/lib/events-storage";
-import { fetchStoredBenefits, updateStoredBenefit } from "@/lib/benefits-storage";
-import { createStoredTask, deleteStoredTask, fetchStoredTasks, updateStoredTask, type CompletionType } from "@/lib/tasks-storage";
-import { deleteStoredEvidenceRecord, downloadStoredEvidence, fetchStoredEvidence, uploadStoredEvidence, type StoredEvidence } from "@/lib/evidence-storage";
+import { benefitWorkflowCount } from "@/lib/benefit-workflow";
+import { formatDue } from "@/lib/display-format";
+import type { Evidence,OrganizerMember,OrganizerTaskFeedback,SponsorTaskFeedback,Task } from "@/lib/tasks/types";
+import { applyWorkflowDependencies, isSponsorApprovalTask, taskStatus, workflowStatus } from "@/lib/tasks/workflow";
+import { OrganizerApprovalControl, SponsorApprovalStatus, SponsorProofPendingNotice } from "./tasks/approval-control";
+import { TaskFeedbackNotice, TaskVersionHistory } from "./tasks/feedback";
+import { TaskProofControl } from "./tasks/proof-control";
+import { Modal } from "@/components/modal";
 import { useEventEntitlements } from "@/components/event-entitlements";
-import { createClient } from "@/lib/supabase/client";
 import { SponsorGroup } from "@/components/sponsor-group";
-
-type SponsorTaskFeedback = { id: string; decision: string; comment: string; created_at: string };
-type OrganizerTaskFeedback = { id: string; decision: string; comment: string; created_at: string };
-type OrganizerMember = { user_id: string; email: string; role: string; full_name?: string };
-type Task = { id: string; title: string; sponsor: string; sponsorId: string; due: string; dueAt?: string; status: "Offen" | "Erledigt"; eventId: string; eventTitle: string; source: "Leistung" | "Manuell"; storedTask?: boolean; benefitId?: string; benefitTitle?: string; benefitQuantity?: number; benefitTasksPerUnit?: boolean; benefitType?: "monetary" | "in_kind"; workflowOrder?: number; workflowInstance?: number; completionType?: CompletionType; blockedBy?: string; currentWorkflowStep?: boolean; assignee?: string; assigneeId?: string; assignedToSponsor?: boolean; publishReady?: boolean; sponsorApprovalStatus?: string; requiresSponsorApproval?: boolean; sponsorFeedback?: SponsorTaskFeedback[]; organizerFeedback?: OrganizerTaskFeedback[] };
-
-function applyWorkflowDependencies(tasks: Task[]): Task[] {
-  const blockers = new Map<string, string>();
-  const currentSteps = new Set<string>();
-  const workflows = new Map<string, Task[]>();
-  for (const task of tasks) {
-    if (task.storedTask && task.benefitId && task.workflowOrder != null) {
-      const groupKey = `${task.benefitId}:${task.workflowInstance ?? 1}`;
-      const group = workflows.get(groupKey) ?? [];
-      group.push(task);
-      workflows.set(groupKey, group);
-    }
-  }
-  for (const workflow of workflows.values()) {
-    workflow.sort((a, b) => (a.workflowOrder ?? 0) - (b.workflowOrder ?? 0));
-    const firstIncomplete = workflow.find((task) => task.status !== "Erledigt");
-    if (firstIncomplete) currentSteps.add(firstIncomplete.id);
-    for (let index = 1; index < workflow.length; index += 1) {
-      const incomplete = workflow.slice(0, index).find((previous) => previous.status !== "Erledigt");
-      if (incomplete) blockers.set(workflow[index].id, incomplete.title);
-    }
-  }
-  return tasks.map((task) => ({ ...task, blockedBy: blockers.get(task.id), currentWorkflowStep: currentSteps.has(task.id) }));
-}
-type Evidence = StoredEvidence;
+import { EmptyState, Icon, PageHeading, Status } from "@/components/ui";
+import { fetchStoredBenefits, updateStoredBenefit } from "@/lib/benefits-storage";
+import { fetchStoredEventsFromDatabase } from "@/lib/events-storage";
+import { deleteStoredEvidenceRecord, fetchStoredEvidence, uploadStoredEvidence } from "@/lib/evidence-storage";
+import { fetchSponsorRecords } from "@/lib/sponsors-storage";
+import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createStoredTask, deleteStoredTask, fetchStoredTasks, updateStoredTask, type CompletionType } from "@/lib/tasks-storage";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 const emptyDraft = { title: "", sponsor: "", sponsorId: "", assigneeId: "", due: "", eventId: "", completionType: "file_required" as CompletionType };
 const SPONSOR_TASK_ASSIGNEE = "__sponsor__";
-function formatDue(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return value;
-  return new Intl.DateTimeFormat("de-DE").format(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-}
-function formatFeedbackDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(date);
-}
-
-function TaskFeedbackNotice({ feedback, decision, collapsed = false }: { feedback: SponsorTaskFeedback | OrganizerTaskFeedback; decision: "sponsor_return" | "organizer_return" | "organizer_revoked"; collapsed?: boolean }) {
-  const label = decision === "organizer_revoked" ? "Bestätigung zurückgenommen" : "Grund der Rückgabe";
-  if (collapsed) return <details className="task-feedback-archive"><summary><span>{label}</span><time dateTime={feedback.created_at}>{formatFeedbackDate(feedback.created_at)}</time></summary><p>{feedback.comment}</p></details>;
-  return <span className="task-sponsor-feedback"><b>{label}<time dateTime={feedback.created_at}>{formatFeedbackDate(feedback.created_at)}</time></b><span>{feedback.comment}</span></span>;
-}
-
-function TaskVersionHistory({ versions, feedback, onDownloadError }: { versions: Evidence[]; feedback: Array<{ feedback: SponsorTaskFeedback | OrganizerTaskFeedback; decision: "sponsor_return" | "organizer_return" }>; onDownloadError: () => void }) {
-  if (!versions.length && !feedback.length) return null;
-  const historyCount = versions.length + feedback.length;
-  return <details className="task-version-history">
-    <summary><span>Versionsverlauf</span><small>{historyCount}</small><Icon name="chevron" size={13}/></summary>
-    <div className="task-version-history-content">
-      {feedback.map(({ feedback: entry, decision }) => <TaskFeedbackNotice feedback={entry} decision={decision} key={`${decision}-${entry.id}`}/>)}
-      {versions.map((version) => <button className="btn task-version-file" type="button" key={version.id} onClick={async () => {
-        const { data, error } = await downloadStoredEvidence(version);
-        if (error || !data) { onDownloadError(); return; }
-        const url = URL.createObjectURL(data);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = version.name;
-        link.click();
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }}><Icon name="file" size={13}/><span>{version.name}</span><time>{version.createdAt ? formatFeedbackDate(version.createdAt) : ""}</time></button>)}
-    </div>
-  </details>;
-}
-
-function TaskProofControl({ task, evidence, disabled, mobileMode = false, actionMenu = false, extraActions, onProofAdded, onProofDeleted }: { task: Task; evidence?: Evidence; disabled: boolean; mobileMode?: boolean; actionMenu?: boolean; extraActions?: ReactNode; onProofAdded: (task: Task, file: File) => Promise<boolean>; onProofDeleted: (task: Task) => Promise<void> }) {
-  const uploadRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [proofSaved, setProofSaved] = useState(false);
-
-  async function handleFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Dateien dürfen höchstens 10 MB groß sein.");
-      return;
-    }
-    setSaving(true);
-    setError("");
-    setProofSaved(false);
-    try {
-      if (await onProofAdded(task, file)) setProofSaved(true);
-    } catch {
-      setError("Der Nachweis konnte nicht gespeichert werden.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function downloadEvidence() {
-    if (!evidence) return;
-    const { data, error } = await downloadStoredEvidence(evidence);
-    if (error || !data) { setError("Der Nachweis konnte nicht geladen werden."); return; }
-    const url = URL.createObjectURL(data);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = evidence.name;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  async function removeEvidence() {
-    if (!evidence || !window.confirm(`Möchtest du den Nachweis „${evidence.name}“ wirklich löschen?`)) return;
-    setSaving(true);
-    setError("");
-    setProofSaved(false);
-    try {
-      await onProofDeleted(task);
-    } catch {
-      setError("Der Nachweis konnte nicht gelöscht werden.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return <div className={`task-proof-control ${evidence ? "has-evidence" : ""} ${mobileMode ? "mobile-proof-control" : ""}`}>
-    <input ref={uploadRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" hidden onChange={handleFile} />
-    <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={handleFile} />
-    {evidence && <span className="task-proof-file" title={`${evidence.name}${evidence.createdAt ? ` · ${new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(evidence.createdAt))}` : ""}`}><Icon name="check" size={13}/>{evidence.name}{evidence.createdAt && ` · ${new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(evidence.createdAt))}`}</span>}
-    <div className={`task-proof-actions ${evidence ? "compact" : ""} ${actionMenu ? "task-proof-actions-menu-mode" : ""}`}>
-      {(() => {
-        const returned = task.status !== "Erledigt" && Boolean(task.sponsorApprovalStatus === "changes_requested" || task.sponsorFeedback?.length || task.organizerFeedback?.some((feedback) => feedback.decision === "organizer_changes_requested"));
-        const replaceLabel = evidence || returned ? "Datei ersetzen" : "Datei hochladen";
-        return <button className={`btn task-proof-upload ${evidence && !returned && !actionMenu ? "task-proof-icon-button" : ""} ${returned ? "btn-primary task-proof-replace-prominent" : ""}`} type="button" onClick={() => uploadRef.current?.click()} disabled={disabled || saving || !task.eventId} aria-label={evidence || returned ? replaceLabel : undefined} title={evidence || returned ? replaceLabel : undefined}><Icon name="file" size={14}/>{!evidence || returned || actionMenu ? replaceLabel : null}</button>;
-      })()}
-      {actionMenu ? <details className="task-overflow-menu task-proof-overflow-menu"><summary className="btn" aria-label="Weitere Aufgabenaktionen" title="Weitere Aufgabenaktionen"><Icon name="menu" size={15}/></summary><div className="task-overflow-menu-items"><button className="btn task-overflow-menu-item" type="button" onClick={() => cameraRef.current?.click()} disabled={disabled || saving || !task.eventId}><Icon name="camera" size={14}/> Foto aufnehmen</button>{evidence && <><button className="btn task-overflow-menu-item" type="button" onClick={() => void downloadEvidence()} disabled={saving}><Icon name="download" size={14}/> Datei herunterladen</button><button className="btn task-overflow-menu-item" type="button" onClick={() => { void removeEvidence(); }} disabled={disabled || saving}><Icon name="trash" size={14}/> Datei löschen</button></>}{extraActions}</div></details> : <><button className={`btn task-proof-camera ${evidence ? "task-proof-icon-button" : ""}`} type="button" onClick={() => cameraRef.current?.click()} disabled={disabled || saving || !task.eventId} aria-label={evidence ? "Foto aufnehmen" : undefined} title={evidence ? "Foto aufnehmen" : undefined}><Icon name="camera" size={14}/>{!evidence && (mobileMode ? "Foto aufnehmen" : "Kamera")}</button>{evidence && <><button className="btn task-proof-icon-button" type="button" onClick={downloadEvidence} disabled={saving} aria-label="Datei herunterladen" title="Herunterladen"><Icon name="download" size={14}/></button><button className="btn task-proof-delete task-proof-icon-button" type="button" onClick={() => { void removeEvidence(); }} disabled={disabled || saving} aria-label="Datei löschen" title="Löschen"><Icon name="trash" size={14}/></button></>}</>}
-    </div>
-    {!task.eventId && <span className="task-proof-error">Ordne die Aufgabe zuerst einem Event zu, um einen Nachweis hinzuzufügen.</span>}
-    {mobileMode && proofSaved && <span className="task-proof-success" role="status"><Icon name="check" size={14}/> Nachweis gespeichert</span>}
-    {error && <span className="task-proof-error" role="alert">{error}</span>}
-    {saving && <span className="task-proof-saving" role="status">Nachweis wird gespeichert …</span>}
-  </div>;
-}
-
-function OrganizerApprovalControl({ task, previousEvidence, sponsorApprovalFollows, canRevoke = true, disabled, busy, onApprove, onReject, onRevoke }: { task: Task; previousEvidence?: Evidence; sponsorApprovalFollows: boolean; canRevoke?: boolean; disabled: boolean; busy: boolean; onApprove: (task: Task, sharePreviousFile: boolean) => Promise<boolean>; onReject: (task: Task, comment: string) => Promise<boolean>; onRevoke: (task: Task, comment: string) => Promise<boolean> }) {
-  const [dialog, setDialog] = useState<"approve" | "reject" | "revoke" | null>(null);
-  const [comment, setComment] = useState("");
-  const [sharePreviousFile, setSharePreviousFile] = useState(false);
-  const completed = task.status === "Erledigt";
-  async function submit() {
-    const succeeded = dialog === "approve" ? await onApprove(task, sharePreviousFile) : dialog === "reject" ? await onReject(task, comment) : dialog === "revoke" ? await onRevoke(task, comment) : false;
-    if (succeeded) { setDialog(null); setComment(""); setSharePreviousFile(false); }
-  }
-  function startApproval() {
-    if (sponsorApprovalFollows) {
-      setSharePreviousFile(false);
-      setDialog("approve");
-      return;
-    }
-    void onApprove(task, false);
-  }
-  return <div className="organizer-approval-control">{completed ? <div className="organizer-approval-completed"><span className="task-sponsor-approved"><Icon name="check" size={13}/> Bestätigt</span>{canRevoke && <button className="btn organizer-approval-revoke" type="button" disabled={disabled || busy} onClick={() => { setComment(""); setDialog("revoke"); }}>Freigabe zurücknehmen</button>}</div> : <div className="organizer-approval-actions"><button className="btn" type="button" disabled={disabled || busy} onClick={() => { setComment(""); setDialog("reject"); }}>Ablehnen</button><button className="btn btn-primary" type="button" disabled={disabled || busy} onClick={startApproval}>{busy ? "Wird gespeichert …" : "Bestätigen"}</button></div>}
-    {dialog && <div className="modal-backdrop organizer-task-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setDialog(null); }}><section className="create-modal organizer-task-modal" role="dialog" aria-modal="true" aria-labelledby={`organizer-task-dialog-${task.id}`}><div className="create-modal-head"><div><h2 id={`organizer-task-dialog-${task.id}`}>{dialog === "approve" ? "Aufgabe bestätigen" : dialog === "reject" ? "Aufgabe ablehnen" : "Freigabe zurücknehmen"}</h2><p>{dialog === "approve" ? "Für die folgende Sponsorenfreigabe muss die Datei bereitgestellt werden." : dialog === "reject" ? "Die Aufgabe geht an den vorherigen Arbeitsschritt zurück. Der vorherige Nachweis wird gelöscht; spätere Schritte müssen danach erneut abgeschlossen werden." : "Die vorherige Datei wird gelöscht. Alle späteren Schritte werden zurückgesetzt und müssen erneut abgeschlossen werden; eine Sponsorenfreigabe wird ausgeblendet."}</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={busy} onClick={() => setDialog(null)}><Icon name="close" size={16}/></button></div>
-      {dialog === "approve" ? previousEvidence ? <label className="organizer-task-share-choice"><input type="checkbox" checked={sharePreviousFile} onChange={(event) => setSharePreviousFile(event.target.checked)}/><span><b>Datei für die Sponsorenfreigabe bereitstellen *</b><small>{previousEvidence.name}</small></span></label> : <p className="organizer-task-no-file">Für die folgende Sponsorenfreigabe muss zuerst eine Datei in der vorherigen Aufgabe hochgeladen werden.</p> : <label className="settings-field organizer-task-reject-comment"><span>{dialog === "revoke" ? "Grund für die Rücknahme *" : "Grund für die Ablehnung *"}</span><textarea autoFocus rows={4} required maxLength={2000} value={comment} onChange={(event) => setComment(event.target.value)} placeholder={dialog === "revoke" ? "Warum wird die Freigabe zurückgenommen?" : "Was muss geändert werden?"} /></label>}
-      <div className="create-modal-actions"><button className="btn" type="button" disabled={busy} onClick={() => setDialog(null)}>Abbrechen</button><button className={`btn ${dialog === "approve" ? "btn-primary" : "organizer-task-reject-button"}`} type="button" disabled={disabled || busy || (dialog !== "approve" && !comment.trim()) || (dialog === "approve" && sponsorApprovalFollows && (!previousEvidence || !sharePreviousFile))} onClick={() => void submit()}>{busy ? "Wird gespeichert …" : dialog === "approve" ? "Bestätigung speichern" : dialog === "revoke" ? "Freigabe zurücknehmen" : "Ablehnung senden"}</button></div></section></div>}
-  </div>;
-}
-
-function SponsorApprovalStatus({ task }: { task: Task }) {
-  if (task.sponsorApprovalStatus === "approved") return <span className="task-sponsor-approved"><Icon name="check" size={13}/> Vom Sponsor freigegeben</span>;
-  if (task.sponsorApprovalStatus === "changes_requested" && task.blockedBy) return <span className="task-sponsor-returned">Änderung angefragt · wartet auf die neue Datei.</span>;
-  if (task.sponsorApprovalStatus === "changes_requested") return <span className="task-caption">Wartet auf Freigabe des Sponsors.</span>;
-  return <span className="task-caption">{task.blockedBy ? "Sponsorenfreigabe wird vorbereitet." : "Wartet auf Sponsorenfreigabe"}</span>;
-}
-
-function isSponsorApprovalTask(task: Task) {
-  return task.completionType === "sponsor_approval" || task.requiresSponsorApproval;
-}
-
-function SponsorProofPendingNotice({ task, evidence }: { task: Task; evidence?: Evidence }) {
-  if (task.source !== "Manuell" || task.benefitId || !isSponsorApprovalTask(task) || evidence) return null;
-  return <span className="sponsor-proof-pending-notice">Nachweis noch nicht hochgeladen · für den Sponsor erst nach dem Upload sichtbar.</span>;
-}
-
-function workflowStatus(tasks: Task[]) {
-  if (!tasks.length) return "Offen";
-  if (tasks.every((task) => task.status === "Erledigt")) return "Abgeschlossen";
-  if (tasks.some((task) => (task.assignedToSponsor || task.completionType === "sponsor_upload") && task.status !== "Erledigt" && !task.blockedBy)) return "Warte auf Sponsor";
-  if (tasks.some((task) => isSponsorApprovalTask(task) && task.sponsorApprovalStatus !== "approved" && !task.blockedBy)) return "Warte auf Sponsor";
-  if (tasks.some((task) => task.completionType === "organizer_approval" && task.status !== "Erledigt" && !task.blockedBy)) return "Bestätigung erforderlich";
-  if (tasks.some((task) => task.completionType === "file_required" && task.status !== "Erledigt" && !task.blockedBy)) return "Datei hochladen";
-  return tasks.some((task) => task.status === "Erledigt") ? "In Bearbeitung" : "Offen";
-}
-
-function taskStatus(task: Task, hasEvidence = false) {
-  if (task.status === "Erledigt") return "Abgeschlossen";
-  if (task.sponsorApprovalStatus === "changes_requested" && !task.blockedBy) return "Warte auf Sponsor";
-  if (task.sponsorApprovalStatus === "changes_requested" && task.blockedBy) return "Änderung angefragt";
-  if (task.blockedBy) return "Wartet auf Abschluss";
-  if (task.assignedToSponsor || task.completionType === "sponsor_upload") return "Warte auf Sponsor";
-  if (isSponsorApprovalTask(task)) return task.source === "Manuell" && !hasEvidence ? "Nachweis fehlt" : "Warte auf Sponsor";
-  if (task.completionType === "organizer_approval") return "Bestätigung erforderlich";
-  if (task.completionType === "file_required" && !hasEvidence) return "Datei hochladen";
-  return task.status;
-}
 
 export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all", eventSponsors = [], embedded = false, mobileMode = false, allowCreate = false }: { sponsorFilter?: string; sponsorName?: string; eventFilter?: string; eventSponsors?: Array<{ id: string; name: string }>; embedded?: boolean; mobileMode?: boolean; allowCreate?: boolean } = {}) {
   const { ensureFeature } = useEventEntitlements();
@@ -271,7 +79,7 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
         const quantityBoundTasks = storedTasks.filter((task) => {
           if (task.source !== "Leistung" || !task.benefit_id) return true;
           const benefit = benefitsById.get(task.benefit_id);
-          return !benefit || task.workflow_instance <= (benefit.tasksPerUnit ? benefit.quantity : 1);
+          return !benefit || task.workflow_instance <= (benefitWorkflowCount(benefit.quantity, benefit.tasksPerUnit));
         });
         const assignedBenefitIds = new Set(quantityBoundTasks.filter((task) => task.source === "Leistung" && task.benefit_id).map((task) => task.benefit_id as string));
         const legacyBenefitTasks: Task[] = (benefitResult.data ?? []).filter((benefit) => benefit.completionRequired !== false && !assignedBenefitIds.has(benefit.id)).map((benefit) => ({ id: `benefit-${benefit.id}`, title: benefit.title, sponsor: sponsorNameMap[benefit.sponsorId ?? ""] ?? "—", sponsorId: benefit.sponsorId ?? "", due: benefit.dueAt ? formatDue(benefit.dueAt) : "—", dueAt: benefit.dueAt, status: (evidenceMap[`benefit-${benefit.id}`] || benefit.status === "Erfüllt" || benefit.status === "Erledigt" ? "Erledigt" : "Offen"), eventId: benefit.eventId, eventTitle: eventNameMap[benefit.eventId] ?? "Event nicht gefunden", source: "Leistung", benefitType: benefit.benefitType }));
@@ -767,7 +575,7 @@ export function TasksOverview({ sponsorFilter, sponsorName, eventFilter = "all",
       {ready && visibleItems.length === 0 && workflowGroups.length === 0 && standaloneItems.length === 0 && (items.length === 0 ? <EmptyState className="empty-state-compact" title="Noch keine Aufgaben" description="Aufgaben erscheinen hier, sobald du Leistungen vereinbart oder Aufgaben ergänzt hast." /> : hideCompleted && filteredItems.length > 0 ? <EmptyState className="empty-state-compact" title="Keine offenen Aufgaben" description="Mit diesen Filtern werden keine offenen Aufgaben angezeigt." action={<button className="btn" type="button" onClick={() => setHideCompleted(false)}>Abgeschlossene Aufgaben anzeigen</button>} /> : <EmptyState className="empty-state-compact" title="Keine passenden Aufgaben" description="Passe die Filter an, um andere Aufgaben zu sehen." action={<button className="btn" type="button" onClick={() => { setSelectedSponsor("all"); setSelectedEvent(eventFilter); setHideCompleted(false); setSelectedAssignee("all"); }}>Filter zurücksetzen</button>} />)}
       {message && <p className="task-feedback" role="status">{message}</p>}
     </section>}
-    {editingTask && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingTaskEdit) setEditingTask(null); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="edit-manual-task-title"><div className="create-modal-head"><div><h2 id="edit-manual-task-title">Manuelle Aufgabe bearbeiten</h2><p>Ändere Titel, Sponsor, Bearbeiter oder Fälligkeit.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={savingTaskEdit} onClick={() => setEditingTask(null)}><Icon name="close" size={16}/></button></div><form onSubmit={(event) => { void saveManualTaskEdit(event); }}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Aufgabe *</span><input autoFocus required maxLength={100} value={editingTaskDraft.title} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, title: event.target.value }))}/></label><label className="settings-field settings-field-full"><span>Sponsor</span><select value={editingTaskDraft.sponsorId} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, sponsorId: event.target.value }))}><option value="">Keinem Sponsor zugeordnet</option>{sponsorOptions.filter((sponsor) => !editingTask.eventId || sponsor.eventIds.includes(editingTask.eventId)).map((sponsor) => <option key={sponsor.id} value={sponsor.id}>{sponsor.name}</option>)}</select></label><label className="settings-field"><span>Bearbeiter</span><select value={editingTaskDraft.assigneeId} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, assigneeId: event.target.value }))}><option value="">Nicht zugewiesen</option><option value={SPONSOR_TASK_ASSIGNEE}>Sponsor</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label><label className="settings-field"><span>Fällig</span><input type="date" lang="de" value={editingTaskDraft.due} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, due: event.target.value }))}/></label></div><div className="create-modal-actions"><button className="btn" type="button" disabled={savingTaskEdit} onClick={() => setEditingTask(null)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingTaskEdit}>{savingTaskEdit ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></form></section></div>}
-    {allowCreate && showCreate && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowCreate(false); }}><section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-task-title"><div className="create-modal-head"><div><h2 id="create-task-title">Aufgabe anlegen</h2><p>Wähle, ob eine Datei benötigt wird, der Sponsor eine Datei hochlädt oder eine Aufgabe durch Veranstalter bzw. Sponsor bestätigt wird.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => setShowCreate(false)}><Icon name="close" size={16}/></button></div><form onSubmit={createTask}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Aufgabe *</span><input autoFocus required maxLength={100} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Was muss erledigt werden?" /></label><label className="settings-field settings-field-full"><span>Abschlussart</span><select value={draft.completionType} onChange={(event) => setDraft({ ...draft, completionType: event.target.value as CompletionType, sponsorId: "" })}><option value="file_required">Datei erforderlich</option><option value="organizer_approval">Bestätigung durch Veranstalter</option><option value="sponsor_approval">Freigabe durch Sponsor</option><option value="sponsor_upload">Upload durch Sponsor</option></select></label><label className="settings-field settings-field-full"><span>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Event *" : "Event"}</span><select required={draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload"} value={draft.eventId || (eventFilter !== "all" ? eventFilter : "")} disabled={eventFilter !== "all"} onChange={(event) => setDraft({ ...draft, eventId: event.target.value, sponsorId: "" })}><option value="">Keinem Event zugeordnet</option>{eventOptions.map((option) => <option key={option.id} value={option.id}>{option.title}</option>)}</select></label>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" || draft.eventId || eventFilter !== "all" ? <label className="settings-field settings-field-full"><span>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Sponsor *" : "Sponsor (optional)"}</span><select required={draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload"} value={taskFormSponsorId} onChange={(event) => setDraft({ ...draft, sponsorId: event.target.value })}><option value="">{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Sponsor auswählen" : "Keinem Sponsor zugeordnet"}</option>{taskFormSponsors.map((sponsor) => <option key={sponsor.id} value={sponsor.id}>{sponsor.name}</option>)}</select>{(draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload") && taskFormSponsors.length === 0 && <small>Für dieses Event wurde noch kein Sponsor geladen. Lade die Seite neu oder prüfe die Event-Zuordnung.</small>}</label> : <label className="settings-field"><span>Sponsor</span><input value={draft.sponsor} onChange={(event) => setDraft({ ...draft, sponsor: event.target.value })} placeholder="Optional" /></label>}{draft.completionType !== "sponsor_approval" && draft.completionType !== "sponsor_upload" && <label className="settings-field"><span>Bearbeiter / Login</span><select value={draft.assigneeId} onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })}><option value="">Nicht zugewiesen</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label>}<label className="settings-field"><span>Fällig</span><input type="date" lang="de" value={draft.due} onChange={(event) => setDraft({ ...draft, due: event.target.value })} /></label></div><div className="create-modal-actions"><button className="btn" type="button" onClick={() => setShowCreate(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={!ready}>Aufgabe speichern</button></div></form></section></div>}
+    {editingTask && <Modal labelledBy="edit-manual-task-title" className="create-modal" backdropClassName="modal-backdrop" role="dialog" busy={savingTaskEdit} onClose={() => setEditingTask(null)}><div className="create-modal-head"><div><h2 id="edit-manual-task-title">Manuelle Aufgabe bearbeiten</h2><p>Ändere Titel, Sponsor, Bearbeiter oder Fälligkeit.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" disabled={savingTaskEdit} onClick={() => setEditingTask(null)}><Icon name="close" size={16}/></button></div><form onSubmit={(event) => { void saveManualTaskEdit(event); }}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Aufgabe *</span><input autoFocus required maxLength={100} value={editingTaskDraft.title} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, title: event.target.value }))}/></label><label className="settings-field settings-field-full"><span>Sponsor</span><select value={editingTaskDraft.sponsorId} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, sponsorId: event.target.value }))}><option value="">Keinem Sponsor zugeordnet</option>{sponsorOptions.filter((sponsor) => !editingTask.eventId || sponsor.eventIds.includes(editingTask.eventId)).map((sponsor) => <option key={sponsor.id} value={sponsor.id}>{sponsor.name}</option>)}</select></label><label className="settings-field"><span>Bearbeiter</span><select value={editingTaskDraft.assigneeId} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, assigneeId: event.target.value }))}><option value="">Nicht zugewiesen</option><option value={SPONSOR_TASK_ASSIGNEE}>Sponsor</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label><label className="settings-field"><span>Fällig</span><input type="date" lang="de" value={editingTaskDraft.due} onChange={(event) => setEditingTaskDraft((current) => ({ ...current, due: event.target.value }))}/></label></div><div className="create-modal-actions"><button className="btn" type="button" disabled={savingTaskEdit} onClick={() => setEditingTask(null)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={savingTaskEdit}>{savingTaskEdit ? "Wird gespeichert …" : "Änderungen speichern"}</button></div></form></Modal>}
+    {allowCreate && showCreate && <Modal labelledBy="create-task-title" className="create-modal" backdropClassName="modal-backdrop" role="dialog" onClose={() => setShowCreate(false)}><div className="create-modal-head"><div><h2 id="create-task-title">Aufgabe anlegen</h2><p>Wähle, ob eine Datei benötigt wird, der Sponsor eine Datei hochlädt oder eine Aufgabe durch Veranstalter bzw. Sponsor bestätigt wird.</p></div><button className="icon-button" type="button" aria-label="Dialog schließen" onClick={() => setShowCreate(false)}><Icon name="close" size={16}/></button></div><form onSubmit={createTask}><div className="settings-grid"><label className="settings-field settings-field-full"><span>Aufgabe *</span><input autoFocus required maxLength={100} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Was muss erledigt werden?" /></label><label className="settings-field settings-field-full"><span>Abschlussart</span><select value={draft.completionType} onChange={(event) => setDraft({ ...draft, completionType: event.target.value as CompletionType, sponsorId: "" })}><option value="file_required">Datei erforderlich</option><option value="organizer_approval">Bestätigung durch Veranstalter</option><option value="sponsor_approval">Freigabe durch Sponsor</option><option value="sponsor_upload">Upload durch Sponsor</option></select></label><label className="settings-field settings-field-full"><span>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Event *" : "Event"}</span><select required={draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload"} value={draft.eventId || (eventFilter !== "all" ? eventFilter : "")} disabled={eventFilter !== "all"} onChange={(event) => setDraft({ ...draft, eventId: event.target.value, sponsorId: "" })}><option value="">Keinem Event zugeordnet</option>{eventOptions.map((option) => <option key={option.id} value={option.id}>{option.title}</option>)}</select></label>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" || draft.eventId || eventFilter !== "all" ? <label className="settings-field settings-field-full"><span>{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Sponsor *" : "Sponsor (optional)"}</span><select required={draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload"} value={taskFormSponsorId} onChange={(event) => setDraft({ ...draft, sponsorId: event.target.value })}><option value="">{draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload" ? "Sponsor auswählen" : "Keinem Sponsor zugeordnet"}</option>{taskFormSponsors.map((sponsor) => <option key={sponsor.id} value={sponsor.id}>{sponsor.name}</option>)}</select>{(draft.completionType === "sponsor_approval" || draft.completionType === "sponsor_upload") && taskFormSponsors.length === 0 && <small>Für dieses Event wurde noch kein Sponsor geladen. Lade die Seite neu oder prüfe die Event-Zuordnung.</small>}</label> : <label className="settings-field"><span>Sponsor</span><input value={draft.sponsor} onChange={(event) => setDraft({ ...draft, sponsor: event.target.value })} placeholder="Optional" /></label>}{draft.completionType !== "sponsor_approval" && draft.completionType !== "sponsor_upload" && <label className="settings-field"><span>Bearbeiter / Login</span><select value={draft.assigneeId} onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })}><option value="">Nicht zugewiesen</option>{organizerMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.email} · {member.role === "owner" ? "Inhaber" : "Mitglied"}</option>)}</select></label>}<label className="settings-field"><span>Fällig</span><input type="date" lang="de" value={draft.due} onChange={(event) => setDraft({ ...draft, due: event.target.value })} /></label></div><div className="create-modal-actions"><button className="btn" type="button" onClick={() => setShowCreate(false)}>Abbrechen</button><button className="btn btn-primary" type="submit" disabled={!ready}>Aufgabe speichern</button></div></form></Modal>}
   </>;
 }

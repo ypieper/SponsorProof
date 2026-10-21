@@ -1,0 +1,87 @@
+/* Keep the sponsor's next action and task cards easy to scan on wide screens. */
+.sponsor-portal-page .sponsor-portal-next-action {
+  width: 100%;
+  min-width: 0;
+  min-height: 104px;
+  margin: 0;
+  padding: 15px 17px;
+  gap: 11px;
+  border-radius: 12px;
+  container: sponsor-next-action / inline-size;
+}
+.sponsor-portal-page .sponsor-portal-next-action-icon { width: 40px; height: 40px; border-radius: 11px; }
+.sponsor-portal-page .sponsor-portal-next-action-copy { gap: 2px; }
+.sponsor-portal-page .sponsor-portal-next-action-copy > span { font-size: 10px; }
+.sponsor-portal-page .sponsor-portal-next-action-copy strong { font-size: 13px; }
+.sponsor-portal-page .sponsor-portal-next-action-copy small { font-size: 11px; }
+.sponsor-portal-page .sponsor-portal-next-action > .btn { min-height: 36px; font-size: 11px; }
+.sponsor-portal-task-list > .sponsor-portal-task-content {
+  grid-column: 1 / -1;
+  width: min(100%, 1240px);
+  margin-inline: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
+.sponsor-portal-task-list .sponsor-portal-task-card-grid { display:contents; }
+.sponsor-portal-task-card-icon { display:grid; width:34px; height:34px; grid-area:icon; place-items:center; align-self:start; border-radius:10px; background:linear-gradient(145deg, #eaf4fb, #dbeaf5); color:#4b82a5; }
+.sponsor-portal-task-card-icon.is-done { background:linear-gradient(145deg, #edf8f2, #dcefe4); color:#25805d; }
+.sponsor-portal-task-list .sponsor-portal-upload-card .sponsor-portal-review-footer { align-items:center; }
+.sponsor-portal-task-list .sponsor-portal-upload-card .sponsor-task-upload-button { min-height:36px; padding:7px 12px; font-size:10px; }
+.sponsor-portal-task-list .sponsor-portal-benefit-task.sponsor-portal-assigned-task {
+  grid-template-columns:34px minmax(0, 1fr) auto;
+  align-items:center;
+  min-height:104px;
+  gap:10px;
+  padding:14px;
+  border-color:#e2e9ef;
+  border-radius:13px;
+  background:linear-gradient(145deg, #fff 48%, #fafbfd);
+  box-shadow:0 5px 17px rgba(29, 54, 75, .045);
+}
+.sponsor-portal-task-list .sponsor-portal-benefit-task.sponsor-portal-assigned-task:hover { border-color:#cbdbe5; box-shadow:0 8px 20px rgba(29, 54, 75, .08); transform:translateY(-1px); }
+.sponsor-portal-task-list .sponsor-portal-assigned-task .sponsor-portal-task-card-icon { align-self:start; }
+.sponsor-portal-task-list .sponsor-portal-assigned-task .sponsor-portal-review-copy { gap:4px; }
+.sponsor-portal-task-list .sponsor-portal-assigned-task .sponsor-portal-review-copy > b { color:#263d52; font-size:12px; line-height:1.4; }
+.sponsor-portal-task-list .sponsor-portal-assigned-task .sponsor-portal-review-copy > small { font-size:10px; line-height:1.4; }
+@media (max-width: 760px) {
+  .sponsor-portal-page .sponsor-portal-next-action { width:100%; min-width:0; margin:0; }
+  .sponsor-portal-task-list > .sponsor-portal-task-content { grid-template-columns:minmax(0, 1fr); gap:10px; }
+  .sponsor-portal-task-list .sponsor-portal-benefit-task.sponsor-portal-assigned-task { min-height:90px; padding:12px; }
+}
+@media (min-width: 761px) and (max-width: 1180px) {
+  .sponsor-portal-page .sponsor-portal-next-action { width:100%; }
+}
+@media (max-width: 700px) {
+  .event-report-metrics-panel > .event-report-metrics-empty { padding:12px 16px 8px; }
+  .event-report-metrics-panel > .event-report-metrics-footer { padding:8px 16px 16px; }
+}
+.sponsor-portal-event-top-grid .sponsor-portal-overview-grid .sponsor-portal-contact b,
+.sponsor-portal-event-top-grid .sponsor-portal-overview-grid .sponsor-portal-next-action-copy > span {
+  font-family:inherit;
+  font-size:10px;
+  font-weight:700;
+  line-height:1.3;
+  letter-spacing:0;
+  text-transform:none;
+}
+.sponsor-portal-event-top-grid .sponsor-portal-overview-grid .sponsor-portal-contact strong,
+.sponsor-portal-event-top-grid .sponsor-portal-overview-grid .sponsor-portal-next-action-copy strong {
+  font-family:inherit;
+  font-size:13px;
+  font-weight:700;
+  line-height:1.3;
+}
+.sponsor-portal-event-top-grid .sponsor-portal-overview-grid .sponsor-portal-contact a,
+.sponsor-portal-event-top-grid .sponsor-portal-overview-grid .sponsor-portal-contact div > span,
+.sponsor-portal-event-top-grid .sponsor-portal-overview-grid .sponsor-portal-next-action-copy small {
+  font-family:inherit;
+  font-size:11px;
+  font-weight:400;
+  line-height:1.4;
+}
+
+@container sponsor-next-action (max-width: 360px) {
+  .sponsor-portal-next-action-copy { grid-column:2 / -1; grid-row:1; }
+  .sponsor-portal-next-action > .btn { grid-column:2 / -1; grid-row:2; justify-self:start; }
+}
